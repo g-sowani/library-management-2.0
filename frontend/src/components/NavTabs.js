@@ -1,0 +1,19 @@
+import React from 'react';
+
+function NavTabs({ tabs, active, onChange }) {
+  return (
+    <div className="nav-tabs">
+      {tabs.map(({ id, label }) => (
+        <button
+          key={id}
+          className={`nav-tab ${active === id ? 'active' : ''}`}
+          onClick={() => onChange(id)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export default NavTabs;

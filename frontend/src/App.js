@@ -1,27 +1,13 @@
-import React, { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import api from "./api";
-import Login from "./pages/Login";
-import MemberDashboard from "./pages/MemberDashboard";
-import AdminDashboard from "./pages/AdminDashboard";
-import "./App.css";
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Login from './pages/Login';
+import MemberDashboard from './pages/MemberDashboard';
+import AdminDashboard from './pages/AdminDashboard';
+import './App.css';
 
-function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api
-      .get("/auth/me")
-      .then((res) => setUser(res.data))
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const handleLogin = (userData) => setUser(userData);
-  const handleLogout = () => {
-    api.post("/auth/logout").then(() => setUser(null));
-  };
+function AppRoutes() {
+  const { user, loading } = useAuth();
 
   if (loading) return <div className="loading">Loading...</div>;
 
@@ -30,22 +16,30 @@ function App() {
       <Routes>
         <Route
           path="/login"
-          element={user ? <Navigate to="/" /> : <Login onLogin={handleLogin} />}
+          element={user ? <Navigate to="/" /> : <Login />}
         />
         <Route
           path="/*"
           element={
             !user ? (
               <Navigate to="/login" />
-            ) : user.role === "admin" ? (
-              <AdminDashboard user={user} onLogout={handleLogout} />
+            ) : user.role === 'admin' ? (
+              <AdminDashboard />
             ) : (
-              <MemberDashboard user={user} onLogout={handleLogout} />
+              <MemberDashboard />
             )
           }
         />
       </Routes>
     </BrowserRouter>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
   );
 }
 

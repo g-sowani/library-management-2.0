@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import api from '../api';
+import { useAuth } from '../context/AuthContext';
 
-function Login({ onLogin }) {
+function Login() {
+  const { login } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -13,11 +15,9 @@ function Login({ onLogin }) {
     setError('');
     try {
       const endpoint = isRegister ? '/auth/register' : '/auth/login';
-      const payload = isRegister
-        ? { username, password, role }
-        : { username, password };
+      const payload = isRegister ? { username, password, role } : { username, password };
       const res = await api.post(endpoint, payload);
-      onLogin(res.data);
+      login(res.data);
     } catch (err) {
       setError(err.response?.data?.error || 'Something went wrong');
     }

@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, session
+from flask import Blueprint, jsonify, request, session
 from datetime import datetime, timedelta
 from sqlalchemy import update as sa_update
 from extensions import db
@@ -70,6 +70,7 @@ def borrow_book(book_id):
 @login_required
 def return_book(borrow_id):
     from models.reservation import Reservation
+    from models.review import Review
 
     borrow = db.session.get(Borrow, borrow_id)
     if not borrow or borrow.user_id != session['user_id']:
@@ -101,6 +102,24 @@ def return_book(borrow_id):
             .values(available_copies=Book.available_copies + 1)
             .execution_options(synchronize_session=False)
         )
+
+    # Optional review submitted at return time.
+    data = request.get_json(silent=True) or {}
+    rating = data.get('rating')
+    if rating is not None:
+        rating = int(rating)
+        if not (1 <= rating <= 5):
+            return jsonify({'error': 'Rating must be between 1 and 5'}), 400
+        if not Review.query.filter_by(borrow_id=borrow_id).first():
+            review = Review(
+                book_id=borrow.book_id,
+                user_id=session['user_id'],
+                borrow_id=borrow_id,
+                rating=rating,
+                review_text=(data.get('review_text') or '').strip() or None,
+                is_anonymous=bool(data.get('is_anonymous', False)),
+            )
+            db.session.add(review)
 
     db.session.commit()
     return jsonify(borrow.to_dict())

@@ -4,6 +4,7 @@ from models.borrow import Borrow
 from models.setting import Setting
 from models.book_log import BookLog
 from models.reservation import Reservation
+from models.review import Review
 
 
 def seed_data():

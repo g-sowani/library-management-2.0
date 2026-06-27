@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from datetime import datetime
 from extensions import db
 from models import Borrow
+from models.user import User
 from models.setting import Setting, get_setting
 from decorators import admin_required
 
@@ -34,6 +35,38 @@ def get_policy():
         'fine_per_day': get_setting('fine_per_day', default=1.0, cast=float),
         'borrow_days': get_setting('borrow_days', default=14, cast=int),
     })
+
+
+@admin_bp.route('/members')
+@admin_required
+def admin_members():
+    members = User.query.filter_by(role='member').order_by(User.username).all()
+    result = []
+    for m in members:
+        for b in m.borrows:
+            b.calculate_fine()
+        result.append({
+            'id': m.id,
+            'username': m.username,
+            'currently_borrowed': sum(1 for b in m.borrows if b.return_date is None),
+            'total_borrows': len(m.borrows),
+            'fines_paid': sum(b.fine for b in m.borrows if b.fine_paid),
+            'fines_pending': sum(b.fine for b in m.borrows if not b.fine_paid and b.fine > 0),
+        })
+    db.session.commit()
+    return jsonify(result)
+
+
+@admin_bp.route('/members/<int:user_id>/borrows')
+@admin_required
+def admin_member_borrows(user_id):
+    m = db.session.get(User, user_id)
+    if not m or m.role != 'member':
+        return jsonify({'error': 'Member not found'}), 404
+    for b in m.borrows:
+        b.calculate_fine()
+    db.session.commit()
+    return jsonify([b.to_dict() for b in sorted(m.borrows, key=lambda b: b.borrow_date, reverse=True)])
 
 
 @admin_bp.route('/policy', methods=['PUT'])

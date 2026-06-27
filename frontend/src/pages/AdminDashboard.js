@@ -12,6 +12,7 @@ const TABS = [
   { id: 'books', label: 'Books' },
   { id: 'borrows', label: 'Borrowed Books' },
   { id: 'fines', label: 'Pending Fines' },
+  { id: 'members', label: 'Members' },
   { id: 'policy', label: 'Fine Policy' },
 ];
 
@@ -41,6 +42,13 @@ function AdminDashboard() {
   const [logs, setLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
+  // Members
+  const [members, setMembers] = useState([]);
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [memberBorrows, setMemberBorrows] = useState([]);
+  const [memberBorrowsLoading, setMemberBorrowsLoading] = useState(false);
+
   // Fine policy
   const [policy, setPolicy] = useState(null);
   const [policyForm, setPolicyForm] = useState({ fine_per_day: '', borrow_days: '' });
@@ -61,6 +69,28 @@ function AdminDashboard() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadMembers = useCallback(() => {
+    api.get('/admin/members').then(r => { setMembers(r.data); setMembersLoaded(true); });
+  }, []);
+
+  const handleTabChange = (t) => {
+    setTab(t);
+    setPolicySaved(false);
+    if (t === 'members' && !membersLoaded) loadMembers();
+  };
+
+  const openMember = async (member) => {
+    setSelectedMember(member);
+    setMemberBorrows([]);
+    setMemberBorrowsLoading(true);
+    try {
+      const res = await api.get(`/admin/members/${member.id}/borrows`);
+      setMemberBorrows(res.data);
+    } finally {
+      setMemberBorrowsLoading(false);
+    }
+  };
 
   // ── Add book ──────────────────────────────────────────────────
   const addBook = async (e) => {
@@ -166,7 +196,7 @@ function AdminDashboard() {
   return (
     <div className="layout">
       <TopBar title="Library Admin" username={user.username} onLogout={logout} />
-      <NavTabs tabs={TABS} active={tab} onChange={(t) => { setTab(t); setPolicySaved(false); }} />
+      <NavTabs tabs={TABS} active={tab} onChange={handleTabChange} />
       <div className="content">
         {loadError && <div className="error">{loadError}</div>}
 
@@ -260,6 +290,47 @@ function AdminDashboard() {
                       <td>{b.username}</td>
                       <td>{new Date(b.due_date).toLocaleDateString()}</td>
                       <td className="fine-amount">${b.fine.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+
+        {/* ── Members ── */}
+        {tab === 'members' && (
+          <>
+            <div className="section-header"><h3>All Members</h3></div>
+            {!membersLoaded ? (
+              <div className="empty">Loading…</div>
+            ) : members.length === 0 ? (
+              <div className="empty">No members registered</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Currently Borrowed</th>
+                    <th>Total Borrows</th>
+                    <th>Fines Pending</th>
+                    <th>Fines Paid</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {members.map(m => (
+                    <tr key={m.id}>
+                      <td>{m.username}</td>
+                      <td>{m.currently_borrowed}</td>
+                      <td>{m.total_borrows}</td>
+                      <td className={m.fines_pending > 0 ? 'fine-amount' : ''}>
+                        {m.fines_pending > 0 ? `$${m.fines_pending.toFixed(2)}` : <span className="muted">—</span>}
+                      </td>
+                      <td>{m.fines_paid > 0 ? `$${m.fines_paid.toFixed(2)}` : <span className="muted">—</span>}</td>
+                      <td>
+                        <button className="btn btn-sm btn-outline" onClick={() => openMember(m)}>View Records</button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -387,6 +458,78 @@ function AdminDashboard() {
               <button type="submit" className="btn btn-sm">Save</button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* ── Member Records Modal ── */}
+      {selectedMember && (
+        <Modal title={`Records — ${selectedMember.username}`} onClose={() => setSelectedMember(null)} wide>
+          <div className="member-stats">
+            <div className="member-stat">
+              <span className="member-stat-label">Currently Borrowed</span>
+              <span className="member-stat-value">{selectedMember.currently_borrowed}</span>
+            </div>
+            <div className="member-stat">
+              <span className="member-stat-label">Total Borrows</span>
+              <span className="member-stat-value">{selectedMember.total_borrows}</span>
+            </div>
+            <div className="member-stat">
+              <span className="member-stat-label">Fines Pending</span>
+              <span className={`member-stat-value${selectedMember.fines_pending > 0 ? ' fine-amount' : ''}`}>
+                {selectedMember.fines_pending > 0 ? `$${selectedMember.fines_pending.toFixed(2)}` : '—'}
+              </span>
+            </div>
+            <div className="member-stat">
+              <span className="member-stat-label">Fines Paid</span>
+              <span className="member-stat-value">
+                {selectedMember.fines_paid > 0 ? `$${selectedMember.fines_paid.toFixed(2)}` : '—'}
+              </span>
+            </div>
+          </div>
+          {memberBorrowsLoading ? (
+            <div className="empty">Loading…</div>
+          ) : memberBorrows.length === 0 ? (
+            <div className="empty">No borrow history</div>
+          ) : (
+            <div className="modal-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Book</th>
+                    <th>Borrowed</th>
+                    <th>Due</th>
+                    <th>Returned</th>
+                    <th>Fine</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {memberBorrows.map(b => (
+                    <tr key={b.id}>
+                      <td>{b.book_title}</td>
+                      <td>{new Date(b.borrow_date).toLocaleDateString()}</td>
+                      <td>{new Date(b.due_date).toLocaleDateString()}</td>
+                      <td>
+                        {b.return_date
+                          ? new Date(b.return_date).toLocaleDateString()
+                          : <Badge variant={b.is_overdue ? 'overdue' : 'active'}>{b.is_overdue ? 'Overdue' : 'Active'}</Badge>}
+                      </td>
+                      <td className={b.fine > 0 ? 'fine-amount' : ''}>
+                        {b.fine > 0 ? `$${b.fine.toFixed(2)}` : <span className="muted">—</span>}
+                      </td>
+                      <td>
+                        {b.fine > 0
+                          ? (b.fine_paid
+                            ? <Badge variant="returned">Paid</Badge>
+                            : <Badge variant="overdue">Unpaid</Badge>)
+                          : <span className="muted">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Modal>
       )}
 

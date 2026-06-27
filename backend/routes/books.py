@@ -10,6 +10,7 @@ books_bp = Blueprint('books', __name__, url_prefix='/api')
 @login_required
 def get_books():
     from models.reservation import Reservation
+    from models.review import Review
     from sqlalchemy import func
 
     books = Book.query.all()
@@ -18,12 +19,49 @@ def get_books():
         .group_by(Reservation.book_id)
         .all()
     )
+    rating_rows = (
+        db.session.query(Review.book_id, func.avg(Review.rating), func.count(Review.id))
+        .group_by(Review.book_id)
+        .all()
+    )
+    rating_stats = {row[0]: (row[1], row[2]) for row in rating_rows}
+
     result = []
     for b in books:
         d = b.to_dict()
         d['reservation_count'] = counts.get(b.id, 0)
+        stats = rating_stats.get(b.id)
+        d['avg_rating'] = round(float(stats[0]), 1) if stats else None
+        d['rating_count'] = stats[1] if stats else 0
         result.append(d)
     return jsonify(result)
+
+
+@books_bp.route('/books/<int:book_id>/reviews')
+@login_required
+def book_reviews(book_id):
+    if not db.session.get(Book, book_id):
+        return jsonify({'error': 'Book not found'}), 404
+
+    from models.review import Review
+    from models.user import User
+    from sqlalchemy import func
+
+    rows = (
+        db.session.query(Review, User.username)
+        .join(User, Review.user_id == User.id)
+        .filter(Review.book_id == book_id)
+        .order_by(Review.created_at.desc())
+        .all()
+    )
+    avg = db.session.query(func.avg(Review.rating)).filter(Review.book_id == book_id).scalar()
+    count = db.session.query(func.count(Review.id)).filter(Review.book_id == book_id).scalar()
+
+    return jsonify({
+        'avg_rating': round(float(avg), 1) if avg else None,
+        'rating_count': count,
+        'reviews': [r.to_dict(username=u) for r, u in rows],
+    })
 
 
 @books_bp.route('/books', methods=['POST'])

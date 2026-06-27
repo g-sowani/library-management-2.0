@@ -101,6 +101,90 @@
     font-size: 0.85rem;
     margin-bottom: 12px;
   }
+
+  .success {
+    color: #1a7a1a;
+    font-size: 0.85rem;
+    margin-bottom: 12px;
+  }
+
+  .policy-form {
+    max-width: 400px;
+  }
+
+  .field-hint {
+    font-size: 0.78rem;
+    color: #999;
+    margin-top: 4px;
+  }
+
+  .search-bar {
+    padding: 6px 12px;
+    border: 1px solid #ccc;
+    font-size: 0.875rem;
+    width: 220px;
+    background: #fff;
+    color: #111;
+  }
+
+  .search-bar:focus {
+    outline: none;
+    border-color: #111;
+  }
+
+  .section-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .muted {
+    color: #bbb;
+  }
+
+  .modal-wide {
+    width: 640px;
+  }
+
+  .modal-scroll {
+    max-height: 360px;
+    overflow-y: auto;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .required {
+    color: #c00;
+  }
+
+  .discard-reason input {
+    border-color: #c00;
+  }
+
+  .discard-reason input:focus {
+    border-color: #900;
+  }
+
+  .log-action {
+    font-weight: 500;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+
+  .log-details {
+    color: #555;
+    font-size: 0.85rem;
+  }
+
+  .log-date {
+    white-space: nowrap;
+    color: #888;
+    font-size: 0.8rem;
+  }
   
   .layout {
     min-height: 100vh;
@@ -250,6 +334,36 @@
   
   .fine-amount {
     font-weight: 600;
+  }
+
+  .clickable-row {
+    cursor: pointer;
+  }
+
+  .clickable-row:hover td {
+    background: #f9f9f9;
+  }
+
+  .book-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .book-detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 12px 0;
+    border-bottom: 1px solid #eee;
+  }
+
+  .book-detail-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #888;
+    font-weight: 500;
   }
   
   .btn-sm {

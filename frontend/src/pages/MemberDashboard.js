@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import TopBar from '../components/TopBar';
 import NavTabs from '../components/NavTabs';
 import Badge from '../components/Badge';
+import Modal from '../components/Modal';
+import SearchBar from '../components/SearchBar';
 
 const TABS = [
   { id: 'books', label: 'Available Books' },
@@ -16,65 +18,153 @@ function MemberDashboard() {
   const [tab, setTab] = useState('books');
   const [books, setBooks] = useState([]);
   const [borrows, setBorrows] = useState([]);
+  const [reservations, setReservations] = useState([]);
   const [fines, setFines] = useState([]);
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState('');
+
+  // Book detail modal
+  const [selectedBookId, setSelectedBookId] = useState(null);
+  const [actionError, setActionError] = useState('');
+
+  const selectedBook = books.find(b => b.id === selectedBookId) || null;
 
   const load = useCallback(() => {
-    api.get('/books').then(r => setBooks(r.data));
-    api.get('/my-borrows').then(r => setBorrows(r.data));
-    api.get('/my-fines').then(r => setFines(r.data));
+    setError('');
+    Promise.all([
+      api.get('/books').then(r => setBooks(r.data)),
+      api.get('/my-borrows').then(r => setBorrows(r.data)),
+      api.get('/my-fines').then(r => setFines(r.data)),
+      api.get('/my-reservations').then(r => setReservations(r.data)),
+    ]).catch(() => setError('Failed to load data. Is the server running?'));
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
+  const openBook = (bookId) => {
+    setSelectedBookId(bookId);
+    setActionError('');
+  };
+
+  const closeBook = () => {
+    setSelectedBookId(null);
+    setActionError('');
+  };
+
   const borrow = async (bookId) => {
-    await api.post(`/borrow/${bookId}`);
-    load();
+    setActionError('');
+    try {
+      await api.post(`/borrow/${bookId}`);
+      load();
+    } catch (e) {
+      setActionError(e.response?.data?.error || 'Failed to borrow book');
+    }
   };
 
   const returnBook = async (borrowId) => {
-    await api.post(`/return/${borrowId}`);
-    load();
+    try {
+      await api.post(`/return/${borrowId}`);
+      load();
+    } catch (e) {
+      setError(e.response?.data?.error || 'Failed to return book');
+    }
+  };
+
+  const reserve = async (bookId) => {
+    setActionError('');
+    try {
+      await api.post(`/reserve/${bookId}`);
+      load();
+    } catch (e) {
+      setActionError(e.response?.data?.error || 'Failed to reserve book');
+    }
+  };
+
+  const cancelReservation = async (reservationId) => {
+    try {
+      await api.delete(`/cancel-reservation/${reservationId}`);
+      load();
+    } catch (e) {
+      setError(e.response?.data?.error || 'Failed to cancel reservation');
+    }
   };
 
   const activeBorrows = borrows.filter(b => !b.return_date);
+  const borrowedBookIds = new Set(activeBorrows.map(b => b.book_id));
+  const reservedBooks = Object.fromEntries(reservations.map(r => [r.book_id, r]));
+
+  const filteredBooks = books.filter(b => {
+    const q = search.toLowerCase();
+    return b.title.toLowerCase().includes(q)
+      || b.author.toLowerCase().includes(q)
+      || (b.genre || '').toLowerCase().includes(q);
+  });
+
+  function BookActionButton({ book }) {
+    const res = reservedBooks[book.id];
+    const isBorrowed = borrowedBookIds.has(book.id);
+
+    if (isBorrowed) {
+      return <button className="btn btn-sm" disabled>Borrowed</button>;
+    }
+    if (book.available_copies > 0) {
+      return (
+        <button className="btn btn-sm" onClick={() => borrow(book.id)}>
+          Borrow
+        </button>
+      );
+    }
+    if (res) {
+      if (res.status === 'ready') {
+        return (
+          <button className="btn btn-sm" onClick={() => borrow(book.id)}>
+            Borrow (Ready)
+          </button>
+        );
+      }
+      return (
+        <button className="btn btn-sm" disabled>
+          Reserved #{res.queue_position}
+        </button>
+      );
+    }
+    return (
+      <button className="btn btn-sm btn-outline" onClick={() => reserve(book.id)}>
+        Reserve
+      </button>
+    );
+  }
 
   return (
     <div className="layout">
       <TopBar title="Library" username={user.username} onLogout={logout} />
       <NavTabs tabs={TABS} active={tab} onChange={setTab} />
       <div className="content">
+        {error && <div className="error">{error}</div>}
+
         {tab === 'books' && (
           <>
             <div className="section-header">
               <h3>Available Books</h3>
+              <SearchBar value={search} onChange={setSearch} placeholder="Search by title, author or genre…" />
             </div>
-            {books.length === 0 ? (
-              <div className="empty">No books available</div>
+            {filteredBooks.length === 0 ? (
+              <div className="empty">{search ? 'No books match your search' : 'No books available'}</div>
             ) : (
               <table>
                 <thead>
                   <tr>
                     <th>Title</th>
                     <th>Author</th>
-                    <th>Available</th>
-                    <th></th>
+                    <th>Genre</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {books.map(b => (
-                    <tr key={b.id}>
+                  {filteredBooks.map(b => (
+                    <tr key={b.id} className="clickable-row" onClick={() => openBook(b.id)}>
                       <td>{b.title}</td>
                       <td>{b.author}</td>
-                      <td>{b.available_copies} / {b.total_copies}</td>
-                      <td>
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => borrow(b.id)}
-                          disabled={b.available_copies < 1}
-                        >
-                          Borrow
-                        </button>
-                      </td>
+                      <td>{b.genre || <span className="muted">—</span>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -82,6 +172,7 @@ function MemberDashboard() {
             )}
           </>
         )}
+
         {tab === 'borrowed' && (
           <>
             <div className="section-header">
@@ -119,8 +210,50 @@ function MemberDashboard() {
                 </tbody>
               </table>
             )}
+
+            <div className="section-header" style={{ marginTop: 32 }}>
+              <h3>My Reservations</h3>
+            </div>
+            {reservations.length === 0 ? (
+              <div className="empty">No reservations</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Author</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reservations.map(r => (
+                    <tr key={r.id}>
+                      <td>{r.book_title}</td>
+                      <td>{r.book_author}</td>
+                      <td>
+                        {r.status === 'ready' ? (
+                          <Badge variant="active">Ready — go borrow!</Badge>
+                        ) : (
+                          <Badge variant="overdue">Queue #{r.queue_position}</Badge>
+                        )}
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-sm btn-outline"
+                          onClick={() => cancelReservation(r.id)}
+                        >
+                          Cancel
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </>
         )}
+
         {tab === 'fines' && (
           <>
             <div className="section-header">
@@ -157,6 +290,37 @@ function MemberDashboard() {
           </>
         )}
       </div>
+
+      {selectedBook && (
+        <Modal title={selectedBook.title} onClose={closeBook}>
+          <div className="book-detail">
+            <div className="book-detail-row">
+              <span className="book-detail-label">Author</span>
+              <span>{selectedBook.author}</span>
+            </div>
+            <div className="book-detail-row">
+              <span className="book-detail-label">Genre</span>
+              <span>{selectedBook.genre || <span className="muted">—</span>}</span>
+            </div>
+            <div className="book-detail-row">
+              <span className="book-detail-label">Available</span>
+              <span>
+                {selectedBook.available_copies} / {selectedBook.total_copies}
+                {selectedBook.available_copies === 0 && selectedBook.reservation_count > 0 && (
+                  <span className="muted" style={{ marginLeft: 6, fontSize: '0.8em' }}>
+                    ({selectedBook.reservation_count} waiting)
+                  </span>
+                )}
+              </span>
+            </div>
+          </div>
+          {actionError && <div className="error" style={{ marginTop: 16 }}>{actionError}</div>}
+          <div className="modal-actions">
+            <button className="btn btn-sm btn-outline" onClick={closeBook}>Close</button>
+            <BookActionButton book={selectedBook} />
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

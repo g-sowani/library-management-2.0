@@ -62,15 +62,17 @@ Created automatically on first run — no setup needed.
 ## Features
 
 **Member**
-- Browse all books with search, genre, availability, and rating filters
+- Browse all books grouped by genre in horizontal scrollable card strips with left/right arrow navigation (arrows appear on hover)
+- Search and filter via a collapsible panel (click the search icon to expand; text search + genre, availability, and rating dropdowns); results appear as a card grid
 - Borrow and return books; borrow limits enforced by membership tier
 - Reserve books when all copies are out; see your queue position
 - Rate (1–5 stars) and optionally review books at return time; post anonymously
-- Book detail modal: cover image, description, author bio, average rating, and all reviews
+- Book detail modal: cover image, description, author bio, average rating, and all reviews; Borrow/Reserve button appears above the description
 - Trending This Week strip — top 8 books by borrow count in the last 7 days
 - Personalised recommendations — content-based (genre/author preference profile)
 - Collaborative recommendations — users with similar reading history
 - **My Profile tab** — membership info card, active borrows, reservations, fines, and donation history in one place
+- **Profile photo** — upload and change a profile avatar from the My Profile tab; avatar shown in the top-bar dropdown and resized/compressed client-side before upload
 - **Donate a Book** — submit a physical book for the library; earn 1/4 of its estimated value as library credit upon admin approval
 - **Community tab** *(Gold members only)* — create and join member communities, make posts, comment with unlimited reply threading, and react with SVG reaction icons (like / love / haha / wow / sad / angry); red badge on the tab title shows new activity since your last visit
 
@@ -81,8 +83,8 @@ Created automatically on first run — no setup needed.
 - **Fines tab** — pending fines table + fine policy (fine-per-day rate and loan duration) in one place
 - **Members tab** — member list with borrow history, membership pricing cards, and per-member tier management in one place
 - Refresh book metadata (description, author bio, cover) from Open Library
-- **Communities tab** — review pending community requests; approve (auto-joins creator as moderator) or reject; filter by status (Pending / Approved / Rejected / All)
-- **Donations tab** — review pending donations; approve (adds book to catalogue and credits member) or reject with an optional reason; filter by status (Pending / Approved / Rejected / All)
+- **Communities tab** — review pending community requests; approve (auto-joins creator as moderator) or reject; filter by status
+- **Donations tab** — review pending donations; approve (adds book to catalogue and credits member) or reject with an optional reason; filter by status
 
 **Membership Tiers**
 
@@ -99,3 +101,7 @@ Rates are admin-configurable at runtime (defaults: Silver $9.99 · Gold $19.99 �
 - Cover images are fetched and stored by URL
 - First member view of any unscraped book triggers a one-time lazy scrape and caches the result in the database
 - Admins can re-scrape any book via the **Refresh** button in the Books tab
+
+**UI / Theme**
+- Light, Dark, and System (follows OS preference) colour modes — toggled from the profile dropdown in the top bar; preference persisted in `localStorage`
+- Profile dropdown in the top bar: avatar, username, membership tier badge, appearance toggle, and sign out — all in one place

@@ -50,7 +50,8 @@ backend/
   decorators.py       # @login_required, @admin_required
   utils.py            # lock_book() — dialect-aware SELECT FOR UPDATE SKIP LOCKED helper
   models/
-    user.py           # User (id, username, password_hash, role)
+    user.py           # User (id, username, password_hash, role, avatar)
+                      #   avatar: TEXT nullable — base64 data-URL stored in DB; NULL = no photo
                       #   has a joined-load `membership` relationship → Membership
     book.py           # Book (id, title, author, isbn, genre, total/available_copies,
                       #        description, author_bio, cover_url)
@@ -85,7 +86,7 @@ backend/
                       #   _seed_memberships() — randomly assigns tiers to any unassigned members
                       #     on every startup; groups family members by family_group_id (max 4)
   routes/
-    auth.py           # /api/auth/  — register, login, logout, me
+    auth.py           # /api/auth/  — register, login, logout, me, avatar (PUT)
                       #   /me now includes membership dict if user has one
     books.py          # /api/books/ — CRUD + PUT edit + GET logs + GET reviews
                       #   + GET trending + GET recommendations + GET collaborative-recommendations
@@ -132,7 +133,7 @@ backend/
 ### DB migrations
 `app.py` runs `_migrate_db()` on every startup. It uses a reusable `add_missing_cols(table, additions)` helper that calls `ALTER TABLE` for any column in models not yet present in the SQLite file. New tables (e.g. `community`, `community_membership`) are created automatically by `db.create_all()`. `_seed_memberships()` runs on every startup and silently no-ops when all members already have a tier.
 
-Tables currently patched by `_migrate_db()`: `book` (genre, description, author_bio, cover_url), `post_reaction` (created_at), `comment_reaction` (created_at).
+Tables currently patched by `_migrate_db()`: `book` (genre, description, author_bio, cover_url), `user` (avatar), `post_reaction` (created_at), `comment_reaction` (created_at).
 
 ### Fine calculation
 `Borrow.calculate_fine()` reads `fine_per_day` live from the `setting` table. `borrow_days` (loan duration) is also read from `setting` at borrow time. Both are configurable by the admin at runtime.
@@ -146,40 +147,67 @@ frontend/src/
   api.js                    # Axios instance — baseURL: /api, withCredentials: true
   constants.js              # GENRES list (shared across add/edit forms and filters)
   context/
-    AuthContext.js          # AuthProvider + useAuth() — user, login(), logout()
+    AuthContext.js          # AuthProvider + useAuth() — user, login(), logout(), updateUser()
                             # Axios interceptor: 401 clears user; 403 re-fetches /auth/me
                             # to re-sync React state with the real Flask session
+                            # updateUser(patch) merges patch into user state (used after avatar upload)
+    ThemeContext.js         # ThemeProvider + useTheme() — theme ('light'|'dark'|'system'), setTheme()
+                            # applies data-theme attribute on <html>; listens to OS prefers-color-scheme
+                            # when in 'system' mode; persists choice in localStorage under key 'theme'
   components/
-    TopBar.js               # Header with title, username, optional badge slot, sign-out
-                            #   accepts a `badge` prop rendered between username and sign-out
+    TopBar.js               # Header with title on left; avatar button on right opens a profile dropdown
+                            #   Dropdown contains: avatar + username + tier badge, Appearance section
+                            #   (Light/System/Dark rows with active checkmark), Sign Out row
+                            #   Closes on outside click; fade+slide animation
+                            #   Props: title, username, avatar, tier, onLogout
+    UserAvatar.js           # Circular avatar — renders <img> when avatar (base64) is set,
+                            #   otherwise a styled circle with the username's first initial
+                            #   Props: avatar, username, size (default 32)
     NavTabs.js              # Tab bar driven by a tabs config array
                             #   accepts `badges = {}` prop: { [tabId]: number }
                             #   renders a red pill badge next to the tab label when count > 0
     Badge.js                # Status chip (active / overdue / returned)
     Modal.js                # Overlay modal; wide prop for 640px variant
-    SearchBar.js            # Controlled search input
+                            #   Header row has title on left and ✕ close button on right
+    SearchBar.js            # Controlled search input; supports autoFocus prop
   pages/
     Login.js                # Sign-in / register form (role selector on register)
     MemberDashboard.js      # Available Books · My Profile · Community tabs
-                            #   TopBar shows membership tier badge (Gold amber, Silver grey, Family blue)
+                            #   TopBar receives avatar and tier; no badge prop
                             #   fetches /api/membership on mount alongside books/borrows
                             #
                             # Available Books tab (top → bottom):
-                            #   1. Filter bar — genre + availability + min-rating dropdowns + Clear
-                            #   2. Search bar
-                            #   3. Filtered results table (shown only when filters active)
-                            #   4. Trending This Week strip — horizontal scrollable cards,
-                            #      each showing borrow count this week; cards have dark border
-                            #   5. Recommended for you strip — content-based recs
+                            #   1. Search trigger row — magnifying-glass icon button + book count
+                            #      Active filters shown as a dot on the icon when panel is closed
+                            #   2. Collapsible search panel (searchOpen state) — text SearchBar
+                            #      (autoFocus) + genre / availability / rating dropdowns + Clear;
+                            #      animates in with fade+translateY
+                            #   3. Filtered results card grid (shown only when filters active) —
+                            #      same rec-card style as strips; trending books get inline badge
+                            #   4. Trending This Week strip — BookStrip with hover-reveal arrows;
+                            #      cards identical in style to other strips
+                            #   5. Recommended for you strip — content-based recs (BookStrip)
                             #   6. Readers like you also enjoyed strip — collab-filtered recs
-                            #      (deduped against content-based strip client-side)
-                            #   7. All books grouped by genre — scrollable card strips per genre
+                            #      (deduped against content-based strip client-side) (BookStrip)
+                            #   7. All books grouped by genre — BookStrip per genre
                             #      Trending books show an inline "Trending" badge in the card title
-                            #      Click any card/row → Book Detail modal (wide):
-                            #        copies, avg rating + count, reviews list,
-                            #        Borrow / Reserve / Borrow (Ready) / Borrowed action button
                             #
-                            # My Profile tab (single tab combining borrows + fines + donations):
+                            #   BookStrip component — wraps rec-strip with left/right chevron arrows;
+                            #     arrows hidden by default, fade in on wrapper hover; scrolls 420px
+                            #     per click with smooth behavior; each strip has its own useRef
+                            #
+                            #   Click any card → Book Detail modal (wide):
+                            #     cover image + author/genre/availability/rating meta card
+                            #     Borrow / Reserve / Borrow (Ready) / Borrowed action button
+                            #       (placed above description)
+                            #     Description + author bio (lazy-enriched)
+                            #     Reviews list
+                            #     ✕ close button in modal header (no bottom Close button)
+                            #
+                            # My Profile tab:
+                            #   Avatar editor — 80px avatar circle; click to upload image file;
+                            #     resized client-side via canvas (max 400×400, JPEG 0.88) before
+                            #     PUT /api/auth/avatar; camera icon overlay on hover
                             #   Membership info card — tier badge, borrow limit, monthly rate,
                             #     family group members (family tier only)
                             #   My Borrowed Books — active borrows with Return button → Return+Review modal

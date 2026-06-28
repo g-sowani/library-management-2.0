@@ -41,9 +41,10 @@ export function AuthProvider({ children }) {
 
   const login = (userData) => setUser(userData);
   const logout = () => api.post('/auth/logout').then(() => setUser(null));
+  const updateUser = (patch) => setUser((prev) => ({ ...prev, ...patch }));
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

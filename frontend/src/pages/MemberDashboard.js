@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
+import UserAvatar from "../components/UserAvatar";
 import TopBar from "../components/TopBar";
 import NavTabs from "../components/NavTabs";
 import Badge from "../components/Badge";
@@ -184,8 +185,83 @@ function MembershipBadge({ tier }) {
   return <span className={`membership-badge membership-badge-${tier}`}>{TIER_LABELS[tier]}</span>;
 }
 
+function SearchIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8"/>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18"/>
+      <line x1="6" y1="6" x2="18" y2="18"/>
+    </svg>
+  );
+}
+
+function ChevronLeft() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+  );
+}
+
+function ChevronRight() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 18 15 12 9 6"/>
+    </svg>
+  );
+}
+
+function BookStrip({ children }) {
+  const ref = useRef(null);
+  const scroll = (dir) => {
+    ref.current?.scrollBy({ left: dir * 420, behavior: 'smooth' });
+  };
+  return (
+    <div className="book-strip-wrapper">
+      <button className="strip-arrow" onClick={() => scroll(-1)} aria-label="Scroll left">
+        <ChevronLeft />
+      </button>
+      <div className="rec-strip" ref={ref}>
+        {children}
+      </div>
+      <button className="strip-arrow" onClick={() => scroll(1)} aria-label="Scroll right">
+        <ChevronRight />
+      </button>
+    </div>
+  );
+}
+
+function resizeImageToBase64(file, maxPx = 400) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (e) => {
+      img.src = e.target.result;
+      img.onerror = reject;
+      img.onload = () => {
+        const scale = Math.min(maxPx / img.width, maxPx / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.88));
+      };
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function MemberDashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const [tab, setTab] = useState("books");
   const [books, setBooks] = useState([]);
   const [borrows, setBorrows] = useState([]);
@@ -195,6 +271,7 @@ function MemberDashboard() {
   const [selectedGenre, setSelectedGenre] = useState("");
   const [availFilter, setAvailFilter] = useState("all");
   const [ratingFilter, setRatingFilter] = useState(0);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [error, setError] = useState("");
   const [recommendations, setRecommendations] = useState([]);
   const [collabRecs, setCollabRecs] = useState([]);
@@ -213,6 +290,10 @@ function MemberDashboard() {
   const [reviewHover, setReviewHover] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [reviewAnonymous, setReviewAnonymous] = useState(false);
+
+  // Avatar
+  const avatarInputRef = useRef(null);
+  const [avatarError, setAvatarError] = useState("");
 
   // Donation
   const EMPTY_DONATION = { title: "", author: "", isbn: "", genre: "", condition: "good", estimated_price: "" };
@@ -561,6 +642,24 @@ function MemberDashboard() {
     } catch {}
   };
 
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError("Image must be under 5 MB");
+      return;
+    }
+    setAvatarError("");
+    try {
+      const base64 = await resizeImageToBase64(file);
+      const res = await api.put("/auth/avatar", { avatar: base64 });
+      updateUser(res.data);
+    } catch {
+      setAvatarError("Failed to update profile image");
+    }
+  };
+
   const openDonateModal = () => {
     setDonationForm(EMPTY_DONATION);
     setDonationError("");
@@ -706,8 +805,9 @@ function MemberDashboard() {
       <TopBar
         title="Library"
         username={user.username}
+        avatar={user.avatar}
+        tier={tier}
         onLogout={logout}
-        badge={<MembershipBadge tier={tier} />}
       />
       <NavTabs tabs={TABS} active={tab} onChange={handleTabChange} badges={{ community: communityBadge }} />
       <div className="content">
@@ -715,42 +815,16 @@ function MemberDashboard() {
 
         {tab === "books" && (
           <>
-            {/* Filters + count */}
-            <div className="catalog-controls">
-              <div className="filter-bar">
-                <select
-                  className="filter-select"
-                  value={selectedGenre}
-                  onChange={(e) => setSelectedGenre(e.target.value)}
-                >
-                  <option value="">All genres</option>
-                  {availableGenres.map((g) => (
-                    <option key={g} value={g}>{g}</option>
-                  ))}
-                </select>
-                <select
-                  className="filter-select"
-                  value={availFilter}
-                  onChange={(e) => setAvailFilter(e.target.value)}
-                >
-                  <option value="all">All copies</option>
-                  <option value="available">Available now</option>
-                  <option value="unavailable">Unavailable</option>
-                </select>
-                <select
-                  className="filter-select"
-                  value={ratingFilter}
-                  onChange={(e) => setRatingFilter(Number(e.target.value))}
-                >
-                  <option value={0}>Any rating</option>
-                  <option value={4}>4+ stars</option>
-                  <option value={3}>3+ stars</option>
-                  <option value={2}>2+ stars</option>
-                </select>
-                {hasActiveFilters && (
-                  <button className="btn btn-sm btn-outline" onClick={clearFilters}>Clear</button>
-                )}
-              </div>
+            {/* Search trigger row */}
+            <div className="search-trigger-row">
+              <button
+                className={`search-icon-btn${hasActiveFilters ? ' has-filters' : ''}`}
+                onClick={() => setSearchOpen((o) => !o)}
+                aria-label={searchOpen ? 'Close search' : 'Open search'}
+              >
+                {searchOpen ? <XIcon /> : <SearchIcon />}
+                {hasActiveFilters && !searchOpen && <span className="search-active-dot" />}
+              </button>
               {books.length > 0 && (
                 <span className="book-count-label">
                   {filteredBooks.length === books.length
@@ -760,66 +834,97 @@ function MemberDashboard() {
               )}
             </div>
 
-            {/* Search */}
-            <div className="search-top-bar">
-              <SearchBar
-                value={search}
-                onChange={setSearch}
-                placeholder="Search by title, author, genre…"
-                className="search-bar-wide"
-              />
-            </div>
+            {/* Expandable search + filter panel */}
+            {searchOpen && (
+              <div className="search-panel">
+                <SearchBar
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search by title, author, genre…"
+                  className="search-bar-wide"
+                  autoFocus
+                />
+                <div className="search-panel-filters">
+                  <select
+                    className="filter-select"
+                    value={selectedGenre}
+                    onChange={(e) => setSelectedGenre(e.target.value)}
+                  >
+                    <option value="">All genres</option>
+                    {availableGenres.map((g) => (
+                      <option key={g} value={g}>{g}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="filter-select"
+                    value={availFilter}
+                    onChange={(e) => setAvailFilter(e.target.value)}
+                  >
+                    <option value="all">All copies</option>
+                    <option value="available">Available now</option>
+                    <option value="unavailable">Unavailable</option>
+                  </select>
+                  <select
+                    className="filter-select"
+                    value={ratingFilter}
+                    onChange={(e) => setRatingFilter(Number(e.target.value))}
+                  >
+                    <option value={0}>Any rating</option>
+                    <option value={4}>4+ stars</option>
+                    <option value={3}>3+ stars</option>
+                    <option value={2}>2+ stars</option>
+                  </select>
+                  {hasActiveFilters && (
+                    <button className="btn btn-sm btn-outline" onClick={clearFilters}>Clear</button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Results — only shown when actively searching/filtering */}
             {hasActiveFilters && filteredBooks.length === 0 && (
               <div className="empty">No books match your filters</div>
             )}
             {hasActiveFilters && filteredBooks.length > 0 && (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th>Author</th>
-                    <th>Genre</th>
-                    <th>Rating</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredBooks.map((b) => (
-                    <tr
+              <div className="books-grid">
+                {filteredBooks.map((b) => {
+                  const stars = b.avg_rating ? Math.round(b.avg_rating) : 0;
+                  return (
+                    <button
                       key={b.id}
-                      className="clickable-row"
+                      className="rec-card"
                       onClick={() => openBook(b.id)}
                     >
-                      <td>
-                        <span className="title-cell">
-                          {b.title}
-                          {trendingIds.has(b.id) && (
-                            <span className="trending-tag">Trending</span>
-                          )}
-                        </span>
-                      </td>
-                      <td>{b.author}</td>
-                      <td>{b.genre || <span className="muted">—</span>}</td>
-                      <td>
-                        {b.rating_count > 0 ? (
-                          <span className="book-rating-cell">
-                            <span className="star-display">
-                              {"★".repeat(Math.round(b.avg_rating))}
-                              {"☆".repeat(5 - Math.round(b.avg_rating))}
-                            </span>
-                            <span className="rating-count-small">
-                              {b.avg_rating} ({b.rating_count})
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="muted">—</span>
+                      {b.cover_url && (
+                        <img src={b.cover_url} alt="" className="rec-card-cover" />
+                      )}
+                      <div className="rec-card-title">
+                        {b.title}
+                        {trendingIds.has(b.id) && (
+                          <span className="trending-tag" style={{ marginLeft: 6 }}>Trending</span>
                         )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                      <div className="rec-card-author">{b.author}</div>
+                      <div className="rec-card-meta">
+                        {b.genre && <span className="rec-card-genre">{b.genre}</span>}
+                        {b.rating_count > 0 && (
+                          <span className="rec-card-rating">
+                            <span className="rec-stars">
+                              {"★".repeat(stars)}{"☆".repeat(5 - stars)}
+                            </span>
+                            <span className="rec-rating-val">{b.avg_rating}</span>
+                          </span>
+                        )}
+                      </div>
+                      <div className="rec-card-avail">
+                        {b.available_copies > 0
+                          ? `${b.available_copies} available`
+                          : <span className="muted">Unavailable</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             )}
 
             {/* Discovery — rendered below the catalog */}
@@ -840,7 +945,7 @@ function MemberDashboard() {
                       <div className="rec-heading trending-heading">
                         Trending This Week
                       </div>
-                      <div className="rec-strip">
+                      <BookStrip>
                         {trending.map((book) => {
                           const stars = book.avg_rating
                             ? Math.round(book.avg_rating)
@@ -849,7 +954,7 @@ function MemberDashboard() {
                           return (
                             <button
                               key={book.id}
-                              className="rec-card rec-card-trending"
+                              className="rec-card"
                               onClick={() => openBook(book.id)}
                             >
                               {book.cover_url && (
@@ -894,14 +999,14 @@ function MemberDashboard() {
                             </button>
                           );
                         })}
-                      </div>
+                      </BookStrip>
                     </div>
                   )}
 
                   {recommendations.length > 0 && (
                     <div className="rec-section">
                       <div className="rec-heading">Recommended for you</div>
-                      <div className="rec-strip">
+                      <BookStrip>
                         {recommendations.map((book) => {
                           const stars = book.avg_rating
                             ? Math.round(book.avg_rating)
@@ -954,7 +1059,7 @@ function MemberDashboard() {
                             </button>
                           );
                         })}
-                      </div>
+                      </BookStrip>
                     </div>
                   )}
 
@@ -963,7 +1068,7 @@ function MemberDashboard() {
                       <div className="rec-heading">
                         Readers like you also enjoyed
                       </div>
-                      <div className="rec-strip">
+                      <BookStrip>
                         {dedupedCollab.map((book) => {
                           const stars = book.avg_rating
                             ? Math.round(book.avg_rating)
@@ -1016,7 +1121,7 @@ function MemberDashboard() {
                             </button>
                           );
                         })}
-                      </div>
+                      </BookStrip>
                     </div>
                   )}
                 </div>
@@ -1029,7 +1134,7 @@ function MemberDashboard() {
                 {availableGenres.map((genre) => (
                   <div key={genre} className="genre-section">
                     <div className="genre-section-heading">{genre}</div>
-                    <div className="rec-strip">
+                    <BookStrip>
                       {booksByGenre[genre].map((book) => {
                         const stars = book.avg_rating ? Math.round(book.avg_rating) : 0;
                         return (
@@ -1054,7 +1159,7 @@ function MemberDashboard() {
                           </button>
                         );
                       })}
-                    </div>
+                    </BookStrip>
                   </div>
                 ))}
               </div>
@@ -1064,6 +1169,35 @@ function MemberDashboard() {
 
         {tab === "profile" && (
           <>
+            {/* Avatar editor */}
+            <div className="profile-avatar-section">
+              <div
+                className="profile-avatar-wrap"
+                onClick={() => avatarInputRef.current?.click()}
+                title="Change profile photo"
+              >
+                <UserAvatar avatar={user.avatar} username={user.username} size={80} />
+                <div className="profile-avatar-overlay">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                    <circle cx="12" cy="13" r="4"/>
+                  </svg>
+                </div>
+              </div>
+              <div className="profile-avatar-info">
+                <div className="profile-username">{user.username}</div>
+                <div className="profile-avatar-hint">Click to change photo</div>
+                {avatarError && <div className="error" style={{ marginTop: 4, marginBottom: 0 }}>{avatarError}</div>}
+              </div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleAvatarChange}
+              />
+            </div>
+
             {membershipInfo && (
               <div className="membership-card">
                 <div className="membership-card-tier">
@@ -1550,6 +1684,15 @@ function MemberDashboard() {
             </div>
           </div>
 
+          {actionError && (
+            <div className="error" style={{ marginTop: 16 }}>
+              {actionError}
+            </div>
+          )}
+          <div className="book-detail-action">
+            <BookActionButton book={selectedBook} />
+          </div>
+
           {/* Description + author bio (lazy-loaded on first view) */}
           {enrichmentLoading ? (
             <div className="enrichment-section">
@@ -1571,18 +1714,6 @@ function MemberDashboard() {
               )}
             </>
           )}
-
-          {actionError && (
-            <div className="error" style={{ marginTop: 16 }}>
-              {actionError}
-            </div>
-          )}
-          <div className="modal-actions">
-            <button className="btn btn-sm btn-outline" onClick={closeBook}>
-              Close
-            </button>
-            <BookActionButton book={selectedBook} />
-          </div>
 
           {/* Reviews list */}
           {bookReviews && bookReviews.reviews.length > 0 && (

@@ -39,6 +39,7 @@ def _migrate_db():
         'author_bio': 'TEXT',
         'cover_url': 'VARCHAR(500)',
     })
+    add_missing_cols('user', {'avatar': 'TEXT'})
     add_missing_cols('post_reaction', {'created_at': 'DATETIME'})
     add_missing_cols('comment_reaction', {'created_at': 'DATETIME'})
     db.session.commit()

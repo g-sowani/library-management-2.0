@@ -47,3 +47,22 @@ def me():
         session.pop('user_id', None)
         return jsonify({'error': 'Not logged in'}), 401
     return jsonify(user.to_dict())
+
+
+@auth_bp.route('/avatar', methods=['PUT'])
+def update_avatar():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        return jsonify({'error': 'Not logged in'}), 401
+    data = request.json or {}
+    avatar = data.get('avatar')
+    if avatar and not avatar.startswith('data:image/'):
+        return jsonify({'error': 'Invalid image format'}), 400
+    # Rough size guard: base64 of a 2 MB image is ~2.7 MB string
+    if avatar and len(avatar) > 3 * 1024 * 1024:
+        return jsonify({'error': 'Image too large (max ~2 MB)'}), 400
+    user.avatar = avatar  # None clears the avatar
+    db.session.commit()
+    return jsonify(user.to_dict())

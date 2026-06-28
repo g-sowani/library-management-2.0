@@ -538,3 +538,245 @@
     line-height: 1.55;
     margin: 0;
   }
+
+  /* Genre category strip */
+  .genre-strip {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 16px;
+    margin-bottom: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: #ddd transparent;
+  }
+
+  .genre-strip::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .genre-strip::-webkit-scrollbar-thumb {
+    background: #ddd;
+  }
+
+  .genre-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 10px 16px;
+    border: 1px solid #ddd;
+    background: #fff;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .genre-card:hover {
+    border-color: #999;
+  }
+
+  .genre-card.active {
+    border-color: #111;
+    background: #111;
+    color: #fff;
+  }
+
+  .genre-card-name {
+    font-size: 0.82rem;
+    font-weight: 500;
+  }
+
+  .genre-card-count {
+    font-size: 0.72rem;
+    color: #999;
+  }
+
+  .genre-card.active .genre-card-count {
+    color: #bbb;
+  }
+
+  /* Filter bar */
+  .filter-bar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .filter-select {
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    font-size: 0.875rem;
+    background: #fff;
+    color: #111;
+    cursor: pointer;
+  }
+
+  .filter-select:focus {
+    outline: none;
+    border-color: #111;
+  }
+
+  .book-count-label {
+    font-size: 0.8rem;
+    color: #999;
+  }
+
+  /* Recommendation strip */
+  .rec-section {
+    margin-bottom: 28px;
+  }
+
+  .rec-heading {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #888;
+    font-weight: 500;
+    margin-bottom: 12px;
+  }
+
+  .rec-strip {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: #ddd transparent;
+  }
+
+  .rec-strip::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .rec-strip::-webkit-scrollbar-thumb {
+    background: #ddd;
+  }
+
+  .rec-card {
+    flex-shrink: 0;
+    width: 190px;
+    padding: 14px 16px;
+    border: 1px solid #ddd;
+    background: #fff;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .rec-card:hover {
+    border-color: #999;
+    background: #fafafa;
+  }
+
+  .rec-card-reason {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #111;
+    font-weight: 600;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 6px;
+    margin-bottom: 2px;
+  }
+
+  .rec-card-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #111;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .rec-card-author {
+    font-size: 0.78rem;
+    color: #666;
+  }
+
+  .rec-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+  }
+
+  .rec-card-genre {
+    font-size: 0.7rem;
+    border: 1px solid #ddd;
+    padding: 1px 7px;
+    color: #555;
+    white-space: nowrap;
+  }
+
+  .rec-card-rating {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .rec-stars {
+    color: #f5a623;
+    font-size: 0.7rem;
+    letter-spacing: 0.5px;
+  }
+
+  .rec-rating-val {
+    font-size: 0.7rem;
+    color: #999;
+  }
+
+  .rec-card-avail {
+    font-size: 0.72rem;
+    color: #555;
+    margin-top: auto;
+  }
+
+  /* Collaborative card: reason tag uses a lighter weight to distinguish
+     the "social signal" from the personal content-based signal */
+  .rec-card-collab .rec-card-reason {
+    font-weight: 500;
+    color: #555;
+  }
+
+  /* Trending strip */
+  .trending-heading::before {
+    content: "↑ ";
+    font-weight: 700;
+  }
+
+  .rec-card-trending {
+    border-color: #111;
+  }
+
+  .rec-card-trending .rec-card-reason {
+    color: #111;
+    border-bottom-color: #ddd;
+  }
+
+  /* Inline trending tag in book table */
+  .title-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .trending-tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 2px 6px;
+    border: 1px solid #111;
+    color: #111;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }

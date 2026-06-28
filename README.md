@@ -1,6 +1,6 @@
 # Library Management System
 
-Full-stack library management app built with Flask and React. Members browse books, borrow/return/reserve them, rate and review, and get personalised recommendations. Admins manage the catalogue, monitor borrows, and configure fine policy.
+Full-stack library management app built with Flask and React. Members browse books, borrow/return/reserve them, rate and review, and get personalised recommendations. Admins manage the catalogue, monitor borrows, configure fine policy, and manage membership tiers.
 
 ---
 
@@ -63,14 +63,15 @@ Created automatically on first run — no setup needed.
 
 **Member**
 - Browse all books with search, genre, availability, and rating filters
-- Borrow and return books; view active borrows and due dates
+- Browse all books with search, genre, availability, and rating filters
+- Borrow and return books; borrow limits enforced by membership tier
 - Reserve books when all copies are out; see your queue position
 - Rate (1–5 stars) and optionally review books at return time; post anonymously
 - Book detail modal: cover image, description, author bio, average rating, and all reviews
 - Trending This Week strip — top 8 books by borrow count in the last 7 days
 - Personalised recommendations — content-based (genre/author preference profile)
 - Collaborative recommendations — users with similar reading history
-- View and track unpaid fines
+- **My Profile tab** — membership info card, active borrows, reservations, and fines in one place
 
 **Admin**
 - Add / edit / delete books; ISBN uniqueness enforced
@@ -80,6 +81,17 @@ Created automatically on first run — no setup needed.
 - Manage member records and full borrow history per member
 - Configure fine-per-day rate and loan duration at runtime
 - Refresh book metadata (description, author bio, cover) from Open Library
+- Memberships tab: set per-tier monthly pricing (Silver / Gold / Family) and assign or change any member's tier
+
+**Membership Tiers**
+
+| Tier | Borrow limit | Notes |
+|------|-------------|-------|
+| Silver | 1 book at a time | Standard access |
+| Gold | 3 books at a time | Community section (coming soon) |
+| Family | 1 book per person, up to 4 members | Shared plan at a group rate |
+
+Rates are admin-configurable at runtime (defaults: Silver $9.99 · Gold $19.99 · Family $29.99/month). Existing users are randomly assigned a tier on first startup.
 
 **Book Metadata (Open Library)**
 - Description and author bio are scraped from Open Library when a book is added

@@ -5,6 +5,7 @@ from models.setting import Setting
 from models.book_log import BookLog
 from models.reservation import Reservation
 from models.review import Review
+from models.membership import Membership
 
 
 def seed_data():
@@ -12,8 +13,8 @@ def seed_data():
     from extensions import db
 
     if User.query.first():
-        # Ensure default settings exist even on an already-seeded DB
         _seed_settings(db)
+        _seed_memberships(db)
         return
 
     admin = User(username='admin', password_hash=generate_password_hash('admin123'), role='admin')
@@ -30,11 +31,48 @@ def seed_data():
     db.session.add_all(books)
     _seed_settings(db)
     db.session.commit()
+    _seed_memberships(db)
 
 
 def _seed_settings(db):
-    defaults = {'fine_per_day': '1.00', 'borrow_days': '14'}
+    defaults = {
+        'fine_per_day': '1.00',
+        'borrow_days': '14',
+        'membership_silver_rate': '9.99',
+        'membership_gold_rate': '19.99',
+        'membership_family_rate': '29.99',
+    }
     for key, value in defaults.items():
         if not db.session.get(Setting, key):
             db.session.add(Setting(key=key, value=value))
+    db.session.commit()
+
+
+def _seed_memberships(db):
+    import random
+    from sqlalchemy import func
+
+    members = User.query.filter_by(role='member').all()
+    unassigned = [m for m in members if not Membership.query.filter_by(user_id=m.id).first()]
+    if not unassigned:
+        return
+
+    random.shuffle(unassigned)
+    tiers = ['silver', 'gold', 'family']
+
+    max_group = db.session.query(func.max(Membership.family_group_id)).scalar() or 0
+    family_group_id = max_group + 1
+    family_count = 0
+
+    for user in unassigned:
+        tier = random.choice(tiers)
+        fgid = None
+        if tier == 'family':
+            fgid = family_group_id
+            family_count += 1
+            if family_count >= 4:
+                family_group_id += 1
+                family_count = 0
+        db.session.add(Membership(user_id=user.id, tier=tier, family_group_id=fgid))
+
     db.session.commit()

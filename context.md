@@ -51,6 +51,7 @@ backend/
   utils.py            # lock_book() — dialect-aware SELECT FOR UPDATE SKIP LOCKED helper
   models/
     user.py           # User (id, username, password_hash, role)
+                      #   has a joined-load `membership` relationship → Membership
     book.py           # Book (id, title, author, isbn, genre, total/available_copies,
                       #        description, author_bio, cover_url)
                       #   description/author_bio: NULL = never scraped, '' = tried/no data, text = data
@@ -59,9 +60,17 @@ backend/
     book_log.py       # BookLog (audit log per book — action, details, admin, timestamp)
     setting.py        # Setting (key/value) + get_setting() helper
     review.py         # Review (book↔user↔borrow, rating 1–5, review_text, is_anonymous, created_at)
-    __init__.py       # re-exports all models + seed_data()
+    membership.py     # Membership (user_id unique FK, tier: silver|gold|family,
+                      #   family_group_id nullable int — links family plan members,
+                      #   created_at)
+                      #   TIER_LIMITS = {silver:1, gold:3, family:1} (active concurrent borrows)
+                      #   borrow_limit() helper reads TIER_LIMITS; to_dict() includes borrow_limit
+    __init__.py       # re-exports all models + seed_data() + _seed_memberships()
+                      #   _seed_memberships() — randomly assigns tiers to any unassigned members
+                      #     on every startup; groups family members by family_group_id (max 4)
   routes/
     auth.py           # /api/auth/  — register, login, logout, me
+                      #   /me now includes membership dict if user has one
     books.py          # /api/books/ — CRUD + PUT edit + GET logs + GET reviews
                       #   + GET trending + GET recommendations + GET collaborative-recommendations
                       #   + GET enrichment (lazy scrape) + POST scrape (admin re-scrape)
@@ -70,14 +79,18 @@ backend/
                       #   _scrape_book_data() — Open Library scraper (description, bio, cover)
                       #   _scrape_and_store() — background thread helper (called on add_book)
     borrows.py        # /api/borrow/, /api/return/, /api/my-borrows, /api/my-fines
+                      #   borrow enforces per-tier active-borrow limit (Silver 1, Gold 3, Family 1)
                       #   return accepts optional JSON body with rating/review
     reservations.py   # /api/reserve/, /api/cancel-reservation/, /api/my-reservations
-    admin.py          # /api/admin/ — borrows, fines, policy GET/PUT, members GET
+    admin.py          # /api/admin/ — borrows, fines, policy GET/PUT, members GET/POST,
+                      #   memberships/pricing GET/PUT, members/<id>/membership PUT
+                      #   members list now includes membership_tier and family_group_id
+    membership.py     # /api/membership — GET current user's tier, pricing, family members list
     __init__.py       # register_blueprints()
 ```
 
 ### DB migrations
-`app.py` runs `_migrate_db()` on every startup. It uses `ALTER TABLE` to add columns that exist in models but not yet in the SQLite file. New tables are created automatically by `db.create_all()`.
+`app.py` runs `_migrate_db()` on every startup. It uses `ALTER TABLE` to add columns that exist in models but not yet in the SQLite file. New tables (e.g. `membership`) are created automatically by `db.create_all()`. `_seed_memberships()` runs on every startup and silently no-ops when all members already have a tier.
 
 ### Fine calculation
 `Borrow.calculate_fine()` reads `fine_per_day` live from the `setting` table. `borrow_days` (loan duration) is also read from `setting` at borrow time. Both are configurable by the admin at runtime.
@@ -95,36 +108,47 @@ frontend/src/
                             # Axios interceptor: 401 clears user; 403 re-fetches /auth/me
                             # to re-sync React state with the real Flask session
   components/
-    TopBar.js               # Header with title, username, sign-out
+    TopBar.js               # Header with title, username, optional badge slot, sign-out
+                            #   accepts a `badge` prop rendered between username and sign-out
     NavTabs.js              # Tab bar driven by a tabs config array
     Badge.js                # Status chip (active / overdue / returned)
     Modal.js                # Overlay modal; wide prop for 640px variant
     SearchBar.js            # Controlled search input
   pages/
     Login.js                # Sign-in / register form (role selector on register)
-    MemberDashboard.js      # Books · My Books · Fines tabs
+    MemberDashboard.js      # Available Books · My Profile tabs
+                            #   TopBar shows membership tier badge (Gold amber, Silver grey, Family blue)
+                            #   fetches /api/membership on mount alongside books/borrows
                             #
-                            # Books tab (top → bottom):
-                            #   1. Section header + live book count
-                            #   2. Trending This Week strip — horizontal scrollable cards,
+                            # Available Books tab (top → bottom):
+                            #   1. Filter bar — genre + availability + min-rating dropdowns + Clear
+                            #   2. Search bar
+                            #   3. Filtered results table (shown only when filters active)
+                            #   4. Trending This Week strip — horizontal scrollable cards,
                             #      each showing borrow count this week; cards have dark border
-                            #   3. Recommended for you strip — content-based recs
-                            #   4. Readers like you also enjoyed strip — collab-filtered recs
+                            #   5. Recommended for you strip — content-based recs
+                            #   6. Readers like you also enjoyed strip — collab-filtered recs
                             #      (deduped against content-based strip client-side)
-                            #   5. Filter bar — search input + availability dropdown
-                            #      + min-rating dropdown + Clear button
-                            #   6. Genre cards — scrollable strip; click to filter by genre
-                            #   7. Book table — Title / Author / Genre / Rating columns
-                            #      Trending books show an inline "Trending" badge in the title cell
-                            #      Click row → Book Detail modal (wide):
+                            #   7. All books grouped by genre — scrollable card strips per genre
+                            #      Trending books show an inline "Trending" badge in the card title
+                            #      Click any card/row → Book Detail modal (wide):
                             #        copies, avg rating + count, reviews list,
                             #        Borrow / Reserve / Borrow (Ready) / Borrowed action button
                             #
-                            # My Books tab: active borrows (Return button → Return+Review modal)
-                            #   + My Reservations section
+                            # My Profile tab (single tab combining borrows + fines):
+                            #   Membership info card — tier badge, borrow limit, monthly rate,
+                            #     family group members (family tier only)
+                            #   My Borrowed Books — active borrows with Return button → Return+Review modal
+                            #   My Reservations — queue position or ready status, cancel button
+                            #   My Fines — fine amount and paid/unpaid status
                             # Return modal: optional 5-star picker, review text, anonymous toggle
-    AdminDashboard.js       # Books · Borrowed · Fines · Fine Policy tabs
-                            # + Edit book modal + Inventory Logs modal
+    AdminDashboard.js       # Books · Borrowed · Fines · Members · Fine Policy · Memberships tabs
+                            # + Edit book modal + Inventory Logs modal + Member Records modal
+                            #
+                            # Memberships tab:
+                            #   Pricing cards — Silver / Gold / Family monthly rates (editable form)
+                            #   Member Tiers table — all members with current tier badge,
+                            #     family group, and inline tier-change dropdown
 ```
 
 ### Auth flow
@@ -179,6 +203,16 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 | GET | `/api/admin/fines` | admin | All unpaid fines |
 | GET | `/api/admin/policy` | admin | Current fine policy |
 | PUT | `/api/admin/policy` | admin | Update `fine_per_day` and `borrow_days` |
+| GET | `/api/admin/members` | admin | All members; each entry includes `membership_tier` and `family_group_id` |
+| GET | `/api/admin/members/:id/borrows` | admin | Full borrow history for one member |
+| GET | `/api/admin/memberships/pricing` | admin | Current tier rates (`silver_rate`, `gold_rate`, `family_rate`) |
+| PUT | `/api/admin/memberships/pricing` | admin | Update tier rates |
+| PUT | `/api/admin/members/:id/membership` | admin | Set tier for a member (`{tier, family_group_id?}`); `tier: null` removes membership |
+
+### Membership
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/membership` | member | Current user's tier, borrow limit, monthly rate, family group members |
 
 ---
 
@@ -287,6 +321,26 @@ WHERE id = ? AND available_copies > 0
 
 ---
 
+## Membership System
+
+Three tiers control how many books a member can have active at once.
+
+| Tier | Active borrow limit | Notes |
+|------|-------------------|-------|
+| `silver` | 1 | Standard access |
+| `gold` | 3 | Community section (planned) |
+| `family` | 1 per person | Up to 4 members share one plan; each has their own account |
+
+**Borrow limit enforcement** is in `POST /api/borrow/:bookId`: before decrementing `available_copies` the endpoint counts `Borrow` records with `return_date = NULL` for the current user and compares against `Membership.borrow_limit()`. A 400 error is returned with a human-readable message (e.g. *"Silver membership allows 1 active borrow at a time"*). Users with no `Membership` record default to a limit of 1.
+
+**Family plan grouping**: all `Membership` rows with the same non-null `family_group_id` integer belong to one family plan. Maximum 4 members per group. When an admin assigns `tier='family'` via the API, the backend auto-places the member in an existing group with room or creates a new group.
+
+**Pricing** is stored in the `setting` table under keys `membership_silver_rate`, `membership_gold_rate`, `membership_family_rate`. Defaults: $9.99 / $19.99 / $29.99 per month. The admin can change these at runtime via the Memberships tab without restarting the server.
+
+**Seeding**: `_seed_memberships()` in `models/__init__.py` runs on every startup. It finds any member `User` without a `Membership` row and randomly assigns them `silver`, `gold`, or `family`. Family members are grouped sequentially (4 per group). This is idempotent — it no-ops when all members already have a tier.
+
+---
+
 ## Key Design Decisions
 
 - **Session-based auth** over JWT — simpler for a monolith; Flask handles signing.
@@ -302,3 +356,6 @@ WHERE id = ? AND available_copies > 0
 - **Recommendations are read-only and parallel** — all three discovery endpoints (`/trending`, `/recommendations`, `/collaborative-recommendations`) are pure reads with no side effects; they are fetched in parallel on mount and failures are silently ignored so they never degrade the core browsing experience.
 - **Implicit rating weight (0.6)** — unrated borrows contribute a weight below a 3-star rating (0.6 < 0.6̄) so that books the user read but didn't bother to review pull less signal than books they actively rated. This prevents passive reads from dominating the preference profile.
 - **Collab dedup is client-side** — the collaborative strip filters out IDs already shown in the content-based strip in React, keeping both endpoints independent and cacheable without needing server-side coordination.
+- **Membership limit is active-borrow count, not weekly quota** — "per week" language in product specs maps cleanly to concurrent active borrows: Silver = 1, Gold = 3, Family = 1 per person. This avoids time-window queries and means the limit resets naturally when a book is returned.
+- **Family group via integer ID, no separate table** — `family_group_id` on `Membership` is sufficient; a separate `FamilyGroup` table would add no behaviour. The backend auto-assigns groups when an admin sets tier to `family`.
+- **Membership pricing in `setting` table** — reuses the existing key/value store (same pattern as `fine_per_day`) so pricing changes take effect at request time without a server restart.

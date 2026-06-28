@@ -9,8 +9,7 @@ import SearchBar from "../components/SearchBar";
 
 const TABS = [
   { id: "books", label: "Available Books" },
-  { id: "borrowed", label: "My Books" },
-  { id: "fines", label: "Fines" },
+  { id: "profile", label: "My Profile" },
 ];
 
 function StarPicker({ value, hover, onRate, onHover, onLeave }) {
@@ -42,6 +41,13 @@ function StarDisplay({ rating }) {
   );
 }
 
+const TIER_LABELS = { silver: 'Silver', gold: 'Gold', family: 'Family' };
+
+function MembershipBadge({ tier }) {
+  if (!tier) return null;
+  return <span className={`membership-badge membership-badge-${tier}`}>{TIER_LABELS[tier]}</span>;
+}
+
 function MemberDashboard() {
   const { user, logout } = useAuth();
   const [tab, setTab] = useState("books");
@@ -57,6 +63,7 @@ function MemberDashboard() {
   const [recommendations, setRecommendations] = useState([]);
   const [collabRecs, setCollabRecs] = useState([]);
   const [trending, setTrending] = useState([]);
+  const [membershipInfo, setMembershipInfo] = useState(null);
 
   // Book detail modal
   const [selectedBookId, setSelectedBookId] = useState(null);
@@ -80,6 +87,7 @@ function MemberDashboard() {
       api.get("/my-borrows").then((r) => setBorrows(r.data)),
       api.get("/my-fines").then((r) => setFines(r.data)),
       api.get("/my-reservations").then((r) => setReservations(r.data)),
+      api.get("/membership").then((r) => setMembershipInfo(r.data)).catch(() => {}),
       api
         .get("/recommendations")
         .then((r) => setRecommendations(r.data))
@@ -239,6 +247,16 @@ function MemberDashboard() {
     [genreCounts]
   );
 
+  const booksByGenre = useMemo(() => {
+    const grouped = {};
+    books.forEach((b) => {
+      const g = b.genre || "Other";
+      if (!grouped[g]) grouped[g] = [];
+      grouped[g].push(b);
+    });
+    return grouped;
+  }, [books]);
+
   const filteredBooks = useMemo(
     () =>
       books.filter((b) => {
@@ -317,26 +335,58 @@ function MemberDashboard() {
     );
   }
 
+  const tier = membershipInfo?.membership?.tier || null;
+
   return (
     <div className="layout">
-      <TopBar title="Library" username={user.username} onLogout={logout} />
+      <TopBar
+        title="Library"
+        username={user.username}
+        onLogout={logout}
+        badge={<MembershipBadge tier={tier} />}
+      />
       <NavTabs tabs={TABS} active={tab} onChange={setTab} />
       <div className="content">
         {error && <div className="error">{error}</div>}
 
         {tab === "books" && (
           <>
-            <div className="search-top-bar">
-              <SearchBar
-                value={search}
-                onChange={setSearch}
-                placeholder="Search by title, author, genre…"
-                className="search-bar-wide"
-              />
-            </div>
-
-            <div className="section-header">
-              <h3>Available Books</h3>
+            {/* Filters + count */}
+            <div className="catalog-controls">
+              <div className="filter-bar">
+                <select
+                  className="filter-select"
+                  value={selectedGenre}
+                  onChange={(e) => setSelectedGenre(e.target.value)}
+                >
+                  <option value="">All genres</option>
+                  {availableGenres.map((g) => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+                <select
+                  className="filter-select"
+                  value={availFilter}
+                  onChange={(e) => setAvailFilter(e.target.value)}
+                >
+                  <option value="all">All copies</option>
+                  <option value="available">Available now</option>
+                  <option value="unavailable">Unavailable</option>
+                </select>
+                <select
+                  className="filter-select"
+                  value={ratingFilter}
+                  onChange={(e) => setRatingFilter(Number(e.target.value))}
+                >
+                  <option value={0}>Any rating</option>
+                  <option value={4}>4+ stars</option>
+                  <option value={3}>3+ stars</option>
+                  <option value={2}>2+ stars</option>
+                </select>
+                {hasActiveFilters && (
+                  <button className="btn btn-sm btn-outline" onClick={clearFilters}>Clear</button>
+                )}
+              </div>
               {books.length > 0 && (
                 <span className="book-count-label">
                   {filteredBooks.length === books.length
@@ -346,73 +396,21 @@ function MemberDashboard() {
               )}
             </div>
 
-            {/* Filters */}
-            <div className="filter-bar">
-              <select
-                className="filter-select"
-                value={availFilter}
-                onChange={(e) => setAvailFilter(e.target.value)}
-              >
-                <option value="all">All copies</option>
-                <option value="available">Available now</option>
-                <option value="unavailable">Unavailable</option>
-              </select>
-              <select
-                className="filter-select"
-                value={ratingFilter}
-                onChange={(e) => setRatingFilter(Number(e.target.value))}
-              >
-                <option value={0}>Any rating</option>
-                <option value={4}>4+ stars</option>
-                <option value={3}>3+ stars</option>
-                <option value={2}>2+ stars</option>
-              </select>
-              {hasActiveFilters && (
-                <button
-                  className="btn btn-sm btn-outline"
-                  onClick={clearFilters}
-                >
-                  Clear
-                </button>
-              )}
+            {/* Search */}
+            <div className="search-top-bar">
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                placeholder="Search by title, author, genre…"
+                className="search-bar-wide"
+              />
             </div>
 
-            {/* Genre category cards */}
-            {availableGenres.length > 0 && (
-              <div className="genre-strip">
-                <button
-                  className={`genre-card${!selectedGenre ? " active" : ""}`}
-                  onClick={() => setSelectedGenre("")}
-                >
-                  <span className="genre-card-name">All</span>
-                  <span className="genre-card-count">{books.length}</span>
-                </button>
-                {availableGenres.map((genre) => (
-                  <button
-                    key={genre}
-                    className={`genre-card${
-                      selectedGenre === genre ? " active" : ""
-                    }`}
-                    onClick={() =>
-                      setSelectedGenre(selectedGenre === genre ? "" : genre)
-                    }
-                  >
-                    <span className="genre-card-name">{genre}</span>
-                    <span className="genre-card-count">
-                      {genreCounts[genre]}
-                    </span>
-                  </button>
-                ))}
-              </div>
+            {/* Results — only shown when actively searching/filtering */}
+            {hasActiveFilters && filteredBooks.length === 0 && (
+              <div className="empty">No books match your filters</div>
             )}
-
-            {filteredBooks.length === 0 ? (
-              <div className="empty">
-                {hasActiveFilters
-                  ? "No books match your filters"
-                  : "No books available"}
-              </div>
-            ) : (
+            {hasActiveFilters && filteredBooks.length > 0 && (
               <table>
                 <thead>
                   <tr>
@@ -459,192 +457,288 @@ function MemberDashboard() {
                 </tbody>
               </table>
             )}
-            
-            {/* Trending This Week */}
-            {trending.length > 0 && (
-              <div className="rec-section">
-                <div className="rec-heading trending-heading">
-                  Trending This Week
-                </div>
-                <div className="rec-strip">
-                  {trending.map((book) => {
-                    const stars = book.avg_rating
-                      ? Math.round(book.avg_rating)
-                      : 0;
-                    const n = book.borrow_count_week;
-                    return (
-                      <button
-                        key={book.id}
-                        className="rec-card rec-card-trending"
-                        onClick={() => openBook(book.id)}
-                      >
-                        {book.cover_url && (
-                          <img
-                            src={book.cover_url}
-                            alt=""
-                            className="rec-card-cover"
-                          />
-                        )}
-                        <div className="rec-card-reason">
-                          {n} borrow{n !== 1 ? "s" : ""} this week
-                        </div>
-                        <div className="rec-card-title">{book.title}</div>
-                        <div className="rec-card-author">{book.author}</div>
-                        <div className="rec-card-meta">
-                          {book.genre && (
-                            <span className="rec-card-genre">{book.genre}</span>
-                          )}
-                          {book.avg_rating && (
-                            <span className="rec-card-rating">
-                              <span className="rec-stars">
-                                {"★".repeat(stars)}
-                                {"☆".repeat(5 - stars)}
-                              </span>
-                              <span className="rec-rating-val">
-                                {book.avg_rating}
-                              </span>
-                            </span>
-                          )}
-                        </div>
-                        <div className="rec-card-avail">
-                          {book.available_copies > 0 ? (
-                            `${book.available_copies} available`
-                          ) : (
-                            <span className="muted">Unavailable</span>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
-            {/* Recommendations */}
-            {recommendations.length > 0 && (
-              <div className="rec-section">
-                <div className="rec-heading">Recommended for you</div>
-                <div className="rec-strip">
-                  {recommendations.map((book) => {
-                    const stars = book.avg_rating
-                      ? Math.round(book.avg_rating)
-                      : 0;
-                    return (
-                      <button
-                        key={book.id}
-                        className="rec-card"
-                        onClick={() => openBook(book.id)}
-                      >
-                        {book.cover_url && (
-                          <img
-                            src={book.cover_url}
-                            alt=""
-                            className="rec-card-cover"
-                          />
-                        )}
-                        <div className="rec-card-reason">{book.reason}</div>
-                        <div className="rec-card-title">{book.title}</div>
-                        <div className="rec-card-author">{book.author}</div>
-                        <div className="rec-card-meta">
-                          {book.genre && (
-                            <span className="rec-card-genre">{book.genre}</span>
-                          )}
-                          {book.avg_rating && (
-                            <span className="rec-card-rating">
-                              <span className="rec-stars">
-                                {"★".repeat(stars)}
-                                {"☆".repeat(5 - stars)}
-                              </span>
-                              <span className="rec-rating-val">
-                                {book.avg_rating}
-                              </span>
-                            </span>
-                          )}
-                        </div>
-                        <div className="rec-card-avail">
-                          {book.available_copies > 0 ? (
-                            `${book.available_copies} available`
-                          ) : (
-                            <span className="muted">Unavailable</span>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Collaborative recommendations */}
+            {/* Discovery — rendered below the catalog */}
             {(() => {
               const contentIds = new Set(recommendations.map((r) => r.id));
               const dedupedCollab = collabRecs.filter(
                 (r) => !contentIds.has(r.id)
               );
-              if (!dedupedCollab.length) return null;
+              const hasDiscovery =
+                trending.length > 0 ||
+                recommendations.length > 0 ||
+                dedupedCollab.length > 0;
+              if (!hasDiscovery) return null;
               return (
-                <div className="rec-section">
-                  <div className="rec-heading">
-                    Readers like you also enjoyed
-                  </div>
-                  <div className="rec-strip">
-                    {dedupedCollab.map((book) => {
-                      const stars = book.avg_rating
-                        ? Math.round(book.avg_rating)
-                        : 0;
-                      return (
-                        <button
-                          key={book.id}
-                          className="rec-card rec-card-collab"
-                          onClick={() => openBook(book.id)}
-                        >
-                          {book.cover_url && (
-                            <img
-                              src={book.cover_url}
-                              alt=""
-                              className="rec-card-cover"
-                            />
-                          )}
-                          <div className="rec-card-reason">{book.reason}</div>
-                          <div className="rec-card-title">{book.title}</div>
-                          <div className="rec-card-author">{book.author}</div>
-                          <div className="rec-card-meta">
-                            {book.genre && (
-                              <span className="rec-card-genre">
-                                {book.genre}
-                              </span>
-                            )}
-                            {book.avg_rating && (
-                              <span className="rec-card-rating">
-                                <span className="rec-stars">
-                                  {"★".repeat(stars)}
-                                  {"☆".repeat(5 - stars)}
-                                </span>
-                                <span className="rec-rating-val">
-                                  {book.avg_rating}
-                                </span>
-                              </span>
-                            )}
-                          </div>
-                          <div className="rec-card-avail">
-                            {book.available_copies > 0 ? (
-                              `${book.available_copies} available`
-                            ) : (
-                              <span className="muted">Unavailable</span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                <div className="discovery-section">
+                  {trending.length > 0 && (
+                    <div className="rec-section">
+                      <div className="rec-heading trending-heading">
+                        Trending This Week
+                      </div>
+                      <div className="rec-strip">
+                        {trending.map((book) => {
+                          const stars = book.avg_rating
+                            ? Math.round(book.avg_rating)
+                            : 0;
+                          const n = book.borrow_count_week;
+                          return (
+                            <button
+                              key={book.id}
+                              className="rec-card rec-card-trending"
+                              onClick={() => openBook(book.id)}
+                            >
+                              {book.cover_url && (
+                                <img
+                                  src={book.cover_url}
+                                  alt=""
+                                  className="rec-card-cover"
+                                />
+                              )}
+                              <div className="rec-card-reason">
+                                {n} borrow{n !== 1 ? "s" : ""} this week
+                              </div>
+                              <div className="rec-card-title">{book.title}</div>
+                              <div className="rec-card-author">
+                                {book.author}
+                              </div>
+                              <div className="rec-card-meta">
+                                {book.genre && (
+                                  <span className="rec-card-genre">
+                                    {book.genre}
+                                  </span>
+                                )}
+                                {book.avg_rating && (
+                                  <span className="rec-card-rating">
+                                    <span className="rec-stars">
+                                      {"★".repeat(stars)}
+                                      {"☆".repeat(5 - stars)}
+                                    </span>
+                                    <span className="rec-rating-val">
+                                      {book.avg_rating}
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="rec-card-avail">
+                                {book.available_copies > 0 ? (
+                                  `${book.available_copies} available`
+                                ) : (
+                                  <span className="muted">Unavailable</span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {recommendations.length > 0 && (
+                    <div className="rec-section">
+                      <div className="rec-heading">Recommended for you</div>
+                      <div className="rec-strip">
+                        {recommendations.map((book) => {
+                          const stars = book.avg_rating
+                            ? Math.round(book.avg_rating)
+                            : 0;
+                          return (
+                            <button
+                              key={book.id}
+                              className="rec-card"
+                              onClick={() => openBook(book.id)}
+                            >
+                              {book.cover_url && (
+                                <img
+                                  src={book.cover_url}
+                                  alt=""
+                                  className="rec-card-cover"
+                                />
+                              )}
+                              <div className="rec-card-reason">
+                                {book.reason}
+                              </div>
+                              <div className="rec-card-title">{book.title}</div>
+                              <div className="rec-card-author">
+                                {book.author}
+                              </div>
+                              <div className="rec-card-meta">
+                                {book.genre && (
+                                  <span className="rec-card-genre">
+                                    {book.genre}
+                                  </span>
+                                )}
+                                {book.avg_rating && (
+                                  <span className="rec-card-rating">
+                                    <span className="rec-stars">
+                                      {"★".repeat(stars)}
+                                      {"☆".repeat(5 - stars)}
+                                    </span>
+                                    <span className="rec-rating-val">
+                                      {book.avg_rating}
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="rec-card-avail">
+                                {book.available_copies > 0 ? (
+                                  `${book.available_copies} available`
+                                ) : (
+                                  <span className="muted">Unavailable</span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {dedupedCollab.length > 0 && (
+                    <div className="rec-section">
+                      <div className="rec-heading">
+                        Readers like you also enjoyed
+                      </div>
+                      <div className="rec-strip">
+                        {dedupedCollab.map((book) => {
+                          const stars = book.avg_rating
+                            ? Math.round(book.avg_rating)
+                            : 0;
+                          return (
+                            <button
+                              key={book.id}
+                              className="rec-card rec-card-collab"
+                              onClick={() => openBook(book.id)}
+                            >
+                              {book.cover_url && (
+                                <img
+                                  src={book.cover_url}
+                                  alt=""
+                                  className="rec-card-cover"
+                                />
+                              )}
+                              <div className="rec-card-reason">
+                                {book.reason}
+                              </div>
+                              <div className="rec-card-title">{book.title}</div>
+                              <div className="rec-card-author">
+                                {book.author}
+                              </div>
+                              <div className="rec-card-meta">
+                                {book.genre && (
+                                  <span className="rec-card-genre">
+                                    {book.genre}
+                                  </span>
+                                )}
+                                {book.avg_rating && (
+                                  <span className="rec-card-rating">
+                                    <span className="rec-stars">
+                                      {"★".repeat(stars)}
+                                      {"☆".repeat(5 - stars)}
+                                    </span>
+                                    <span className="rec-rating-val">
+                                      {book.avg_rating}
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="rec-card-avail">
+                                {book.available_copies > 0 ? (
+                                  `${book.available_copies} available`
+                                ) : (
+                                  <span className="muted">Unavailable</span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}
+
+            {/* All books grouped by genre */}
+            {availableGenres.length > 0 && (
+              <div className="all-books-section">
+                {availableGenres.map((genre) => (
+                  <div key={genre} className="genre-section">
+                    <div className="genre-section-heading">{genre}</div>
+                    <div className="rec-strip">
+                      {booksByGenre[genre].map((book) => {
+                        const stars = book.avg_rating ? Math.round(book.avg_rating) : 0;
+                        return (
+                          <button key={book.id} className="rec-card" onClick={() => openBook(book.id)}>
+                            {book.cover_url && <img src={book.cover_url} alt="" className="rec-card-cover" />}
+                            <div className="rec-card-title">
+                              {book.title}
+                              {trendingIds.has(book.id) && <span className="trending-tag" style={{ marginLeft: 6 }}>Trending</span>}
+                            </div>
+                            <div className="rec-card-author">{book.author}</div>
+                            {book.rating_count > 0 && (
+                              <div className="rec-card-meta">
+                                <span className="rec-card-rating">
+                                  <span className="rec-stars">{"★".repeat(stars)}{"☆".repeat(5 - stars)}</span>
+                                  <span className="rec-rating-val">{book.avg_rating}</span>
+                                </span>
+                              </div>
+                            )}
+                            <div className="rec-card-avail">
+                              {book.available_copies > 0 ? `${book.available_copies} available` : <span className="muted">Unavailable</span>}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 
-        {tab === "borrowed" && (
+        {tab === "profile" && (
           <>
+            {membershipInfo && (
+              <div className="membership-card">
+                <div className="membership-card-tier">
+                  <MembershipBadge tier={membershipInfo.membership?.tier} />
+                  {!membershipInfo.membership && <span className="muted" style={{ fontSize: '0.85rem' }}>No membership</span>}
+                </div>
+                <div className="membership-card-stats">
+                  {membershipInfo.membership && (
+                    <>
+                      <div className="membership-stat">
+                        <span className="membership-stat-label">Borrow limit</span>
+                        <span className="membership-stat-value">
+                          {membershipInfo.membership.borrow_limit} book{membershipInfo.membership.borrow_limit > 1 ? 's' : ''} at a time
+                        </span>
+                      </div>
+                      <div className="membership-stat">
+                        <span className="membership-stat-label">Monthly rate</span>
+                        <span className="membership-stat-value">
+                          ${membershipInfo.membership.tier === 'silver'
+                            ? membershipInfo.pricing.silver_rate.toFixed(2)
+                            : membershipInfo.membership.tier === 'gold'
+                              ? membershipInfo.pricing.gold_rate.toFixed(2)
+                              : membershipInfo.pricing.family_rate.toFixed(2)}
+                        </span>
+                      </div>
+                      {membershipInfo.membership.tier === 'family' && membershipInfo.family_members.length > 0 && (
+                        <div className="membership-stat">
+                          <span className="membership-stat-label">Family group</span>
+                          <span className="membership-stat-value" style={{ fontSize: '0.85rem' }}>
+                            {membershipInfo.family_members.join(', ')}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="section-header">
               <h3>My Borrowed Books</h3>
             </div>
@@ -726,12 +820,8 @@ function MemberDashboard() {
                 </tbody>
               </table>
             )}
-          </>
-        )}
 
-        {tab === "fines" && (
-          <>
-            <div className="section-header">
+            <div className="section-header" style={{ marginTop: 32 }}>
               <h3>My Fines</h3>
             </div>
             {fines.length === 0 ? (

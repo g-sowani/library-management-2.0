@@ -14,6 +14,7 @@ const TABS = [
   { id: 'fines', label: 'Pending Fines' },
   { id: 'members', label: 'Members' },
   { id: 'policy', label: 'Fine Policy' },
+  { id: 'memberships', label: 'Memberships' },
 ];
 
 const EMPTY_BOOK_FORM = { title: '', author: '', isbn: '', total_copies: 1, genre: '' };
@@ -56,6 +57,13 @@ function AdminDashboard() {
   const [policyError, setPolicyError] = useState('');
   const [policySaved, setPolicySaved] = useState(false);
 
+  // Memberships
+  const [membershipPricing, setMembershipPricing] = useState(null);
+  const [membershipPricingForm, setMembershipPricingForm] = useState({ silver_rate: '', gold_rate: '', family_rate: '' });
+  const [membershipPricingError, setMembershipPricingError] = useState('');
+  const [membershipPricingSaved, setMembershipPricingSaved] = useState(false);
+  const [membershipsLoaded, setMembershipsLoaded] = useState(false);
+
   const load = useCallback(() => {
     setLoadError('');
     Promise.all([
@@ -75,10 +83,23 @@ function AdminDashboard() {
     api.get('/admin/members').then(r => { setMembers(r.data); setMembersLoaded(true); });
   }, []);
 
+  const loadMembershipPricing = useCallback(() => {
+    api.get('/admin/memberships/pricing').then(r => {
+      setMembershipPricing(r.data);
+      setMembershipPricingForm({ silver_rate: r.data.silver_rate, gold_rate: r.data.gold_rate, family_rate: r.data.family_rate });
+    });
+  }, []);
+
   const handleTabChange = (t) => {
     setTab(t);
     setPolicySaved(false);
+    setMembershipPricingSaved(false);
     if (t === 'members' && !membersLoaded) loadMembers();
+    if (t === 'memberships' && !membershipsLoaded) {
+      loadMembershipPricing();
+      if (!membersLoaded) loadMembers();
+      setMembershipsLoaded(true);
+    }
   };
 
   const openMember = async (member) => {
@@ -178,6 +199,30 @@ function AdminDashboard() {
     } catch (err) {
       const errs = err.response?.data?.errors;
       setPolicyError(errs ? Object.values(errs).join(', ') : 'Failed to save policy');
+    }
+  };
+
+  // ── Membership ────────────────────────────────────────────────
+  const saveMembershipPricing = async (e) => {
+    e.preventDefault();
+    setMembershipPricingError('');
+    setMembershipPricingSaved(false);
+    try {
+      const res = await api.put('/admin/memberships/pricing', membershipPricingForm);
+      setMembershipPricing(res.data);
+      setMembershipPricingSaved(true);
+    } catch (err) {
+      const errs = err.response?.data?.errors;
+      setMembershipPricingError(errs ? Object.values(errs).join(', ') : 'Failed to save pricing');
+    }
+  };
+
+  const changeMemberTier = async (memberId, tier) => {
+    try {
+      await api.put(`/admin/members/${memberId}/membership`, { tier: tier || null });
+      loadMembers();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to update tier');
     }
   };
 
@@ -411,6 +456,104 @@ function AdminDashboard() {
               </div>
               <button type="submit" className="btn btn-sm">Save Policy</button>
             </form>
+          </>
+        )}
+
+        {/* ── Memberships ── */}
+        {tab === 'memberships' && (
+          <>
+            <div className="section-header"><h3>Membership Pricing</h3></div>
+            {membershipPricing && (
+              <form className="membership-pricing-form" onSubmit={saveMembershipPricing}>
+                {membershipPricingError && <div className="error">{membershipPricingError}</div>}
+                {membershipPricingSaved && <div className="success">Pricing saved successfully</div>}
+                <div className="tier-pricing-grid">
+                  <div className="tier-pricing-card">
+                    <div className="tier-pricing-name">Silver</div>
+                    <div className="tier-pricing-desc">1 book at a time · Standard access</div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label>Monthly Rate ($)</label>
+                      <input
+                        type="number" min="0" step="0.01" required
+                        value={membershipPricingForm.silver_rate}
+                        onChange={e => setMembershipPricingForm({ ...membershipPricingForm, silver_rate: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="tier-pricing-card tier-pricing-card-gold">
+                    <div className="tier-pricing-name">Gold</div>
+                    <div className="tier-pricing-desc">3 books at a time · Community access</div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label>Monthly Rate ($)</label>
+                      <input
+                        type="number" min="0" step="0.01" required
+                        value={membershipPricingForm.gold_rate}
+                        onChange={e => setMembershipPricingForm({ ...membershipPricingForm, gold_rate: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="tier-pricing-card">
+                    <div className="tier-pricing-name">Family</div>
+                    <div className="tier-pricing-desc">Up to 4 members · 1 book each · Shared plan</div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label>Monthly Rate ($)</label>
+                      <input
+                        type="number" min="0" step="0.01" required
+                        value={membershipPricingForm.family_rate}
+                        onChange={e => setMembershipPricingForm({ ...membershipPricingForm, family_rate: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <p className="field-hint" style={{ marginBottom: 12 }}>Gold rate must be higher than Silver; Family rate is for the whole group</p>
+                <button type="submit" className="btn btn-sm">Save Pricing</button>
+              </form>
+            )}
+
+            <div className="section-header" style={{ marginTop: 40 }}>
+              <h3>Member Tiers</h3>
+            </div>
+            {!membersLoaded ? (
+              <div className="empty">Loading…</div>
+            ) : members.length === 0 ? (
+              <div className="empty">No members registered</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Tier</th>
+                    <th>Family Group</th>
+                    <th>Change Tier</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {members.map(m => (
+                    <tr key={m.id}>
+                      <td>{m.username}</td>
+                      <td>
+                        {m.membership_tier
+                          ? <span className={`membership-badge membership-badge-${m.membership_tier}`}>{m.membership_tier.charAt(0).toUpperCase() + m.membership_tier.slice(1)}</span>
+                          : <span className="muted">None</span>}
+                      </td>
+                      <td>{m.family_group_id != null ? `Group ${m.family_group_id}` : <span className="muted">—</span>}</td>
+                      <td>
+                        <select
+                          className="filter-select"
+                          value={m.membership_tier || ''}
+                          onChange={e => changeMemberTier(m.id, e.target.value)}
+                        >
+                          <option value="">None</option>
+                          <option value="silver">Silver</option>
+                          <option value="gold">Gold</option>
+                          <option value="family">Family</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </>
         )}
       </div>

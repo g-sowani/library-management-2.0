@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import update as sa_update
 from extensions import db
 from models import Book, Borrow
+from models.membership import Membership
 from models.setting import get_setting
 from decorators import login_required
 from utils import lock_book
@@ -27,6 +28,15 @@ def borrow_book(book_id):
 
     if Borrow.query.filter_by(user_id=session['user_id'], book_id=book_id, return_date=None).first():
         return jsonify({'error': 'You already borrowed this book'}), 400
+
+    membership = Membership.query.filter_by(user_id=session['user_id']).first()
+    borrow_limit = membership.borrow_limit() if membership else 1
+    active_count = Borrow.query.filter_by(user_id=session['user_id'], return_date=None).count()
+    if active_count >= borrow_limit:
+        tier = membership.tier.capitalize() if membership else 'Standard'
+        return jsonify({
+            'error': f'{tier} membership allows {borrow_limit} active borrow{"s" if borrow_limit > 1 else ""} at a time'
+        }), 400
 
     user_reservation = Reservation.query.filter_by(
         user_id=session['user_id'], book_id=book_id

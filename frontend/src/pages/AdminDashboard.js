@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import TopBar from '../components/TopBar';
@@ -25,6 +25,7 @@ function AdminDashboard() {
   const [borrows, setBorrows] = useState([]);
   const [fines, setFines] = useState([]);
   const [search, setSearch] = useState('');
+  const [selectedGenre, setSelectedGenre] = useState('');
   const [loadError, setLoadError] = useState('');
 
   // Add book
@@ -115,6 +116,14 @@ function AdminDashboard() {
     }
   };
 
+  const refreshMeta = async (id) => {
+    try {
+      await api.post(`/books/${id}/scrape`);
+    } catch (err) {
+      alert('Failed to start metadata refresh');
+    }
+  };
+
   // ── Edit book ─────────────────────────────────────────────────
   const openEdit = (book) => {
     setEditingBook(book);
@@ -173,12 +182,25 @@ function AdminDashboard() {
   };
 
   // ── Helpers ───────────────────────────────────────────────────
-  const filteredBooks = books.filter(b => {
+  const genreCounts = useMemo(() => {
+    const counts = {};
+    books.forEach(b => {
+      const g = b.genre || 'Other';
+      counts[g] = (counts[g] || 0) + 1;
+    });
+    return counts;
+  }, [books]);
+
+  const availableGenres = useMemo(() => Object.keys(genreCounts).sort(), [genreCounts]);
+
+  const filteredBooks = useMemo(() => books.filter(b => {
     const q = search.toLowerCase();
-    return b.title.toLowerCase().includes(q)
+    const matchSearch = b.title.toLowerCase().includes(q)
       || b.author.toLowerCase().includes(q)
       || (b.genre || '').toLowerCase().includes(q);
-  });
+    const matchGenre = !selectedGenre || (b.genre || 'Other') === selectedGenre;
+    return matchSearch && matchGenre;
+  }), [books, search, selectedGenre]);
 
   const isDiscarding = editingBook && Number(editForm.total_copies) < editingBook.total_copies;
   const borrowed = editingBook ? editingBook.total_copies - editingBook.available_copies : 0;
@@ -205,13 +227,37 @@ function AdminDashboard() {
           <>
             <div className="section-header">
               <h3>All Books</h3>
-              <div className="section-header-actions">
-                <SearchBar value={search} onChange={setSearch} placeholder="Search by title, author or genre…" />
-                <button className="btn btn-sm" onClick={() => setShowAdd(true)}>Add Book</button>
-              </div>
+              <button className="btn btn-sm" onClick={() => setShowAdd(true)}>Add Book</button>
             </div>
+
+            <div className="search-top-bar">
+              <SearchBar value={search} onChange={setSearch} placeholder="Search by title, author or genre…" className="search-bar-wide" />
+            </div>
+
+            {availableGenres.length > 0 && (
+              <div className="genre-strip">
+                <button
+                  className={`genre-card${!selectedGenre ? ' active' : ''}`}
+                  onClick={() => setSelectedGenre('')}
+                >
+                  <span className="genre-card-name">All</span>
+                  <span className="genre-card-count">{books.length}</span>
+                </button>
+                {availableGenres.map(genre => (
+                  <button
+                    key={genre}
+                    className={`genre-card${selectedGenre === genre ? ' active' : ''}`}
+                    onClick={() => setSelectedGenre(selectedGenre === genre ? '' : genre)}
+                  >
+                    <span className="genre-card-name">{genre}</span>
+                    <span className="genre-card-count">{genreCounts[genre]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             {filteredBooks.length === 0 && (
-              <div className="empty">{search ? 'No books match your search' : 'No books yet'}</div>
+              <div className="empty">{search || selectedGenre ? 'No books match your filters' : 'No books yet'}</div>
             )}
             {filteredBooks.length > 0 && (
               <table>
@@ -230,6 +276,7 @@ function AdminDashboard() {
                         <div className="btn-row">
                           <button className="btn btn-sm" onClick={() => openEdit(b)}>Edit</button>
                           <button className="btn btn-sm btn-outline" onClick={() => openLogs(b)}>Logs</button>
+                          <button className="btn btn-sm btn-outline" onClick={() => refreshMeta(b.id)} title="Re-fetch description, author bio, and cover from Open Library">Refresh</button>
                           <button className="btn btn-sm btn-outline" onClick={() => deleteBook(b.id)}>Delete</button>
                         </div>
                       </td>

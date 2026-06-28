@@ -24,9 +24,16 @@ def create_app():
 def _migrate_db():
     from sqlalchemy import inspect, text
     cols = [c['name'] for c in inspect(db.engine).get_columns('book')]
-    if 'genre' not in cols:
-        db.session.execute(text('ALTER TABLE book ADD COLUMN genre VARCHAR(100)'))
-        db.session.commit()
+    new_cols = {
+        'genre': 'VARCHAR(100)',
+        'description': 'TEXT',
+        'author_bio': 'TEXT',
+        'cover_url': 'VARCHAR(500)',
+    }
+    for col, col_type in new_cols.items():
+        if col not in cols:
+            db.session.execute(text(f'ALTER TABLE book ADD COLUMN {col} {col_type}'))
+    db.session.commit()
 
 
 app = create_app()

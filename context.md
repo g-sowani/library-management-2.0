@@ -12,6 +12,7 @@ A full-stack library management app. Admins manage the book catalogue, monitor b
 | Backend | Python 3 · Flask 3 · SQLAlchemy · SQLite |
 | Frontend | React 18 (Create React App) · Axios |
 | Auth | Flask session cookies (signed, `withCredentials`) |
+| Metadata | Open Library API (urllib, no extra dependency) |
 
 ---
 
@@ -19,15 +20,19 @@ A full-stack library management app. Admins manage the book catalogue, monitor b
 
 **Backend** (from `backend/`):
 ```bash
-.venv/bin/python app.py     # starts on http://localhost:5027
+python3 -m venv .venv          # first time only
+source .venv/bin/activate
+pip install -r requirements.txt
+python app.py                  # starts on http://localhost:5027
 ```
 
 **Frontend** (from `frontend/`):
 ```bash
-npm start                   # starts on http://localhost:3000
+npm install    # first time only
+npm start      # starts on http://localhost:3000
 ```
 
-The CRA dev server proxies all `/api/*` requests to `http://localhost:5027` (configured in `frontend/package.json`).
+Start the backend first. The CRA dev server proxies all `/api/*` requests to `http://127.0.0.1:5027` (configured in `frontend/package.json` — note: uses `127.0.0.1`, not `localhost`, to avoid Node.js IPv6 resolution issues).
 
 **Seed accounts** (created automatically on first run):
 - `admin / admin123` — role: admin
@@ -46,7 +51,9 @@ backend/
   utils.py            # lock_book() — dialect-aware SELECT FOR UPDATE SKIP LOCKED helper
   models/
     user.py           # User (id, username, password_hash, role)
-    book.py           # Book (id, title, author, isbn, genre, total/available_copies)
+    book.py           # Book (id, title, author, isbn, genre, total/available_copies,
+                      #        description, author_bio, cover_url)
+                      #   description/author_bio: NULL = never scraped, '' = tried/no data, text = data
     borrow.py         # Borrow (user↔book, borrow/due/return dates, fine, fine_paid)
     reservation.py    # Reservation (user↔book, created_at, status: pending|ready)
     book_log.py       # BookLog (audit log per book — action, details, admin, timestamp)
@@ -57,11 +64,15 @@ backend/
     auth.py           # /api/auth/  — register, login, logout, me
     books.py          # /api/books/ — CRUD + PUT edit + GET logs + GET reviews
                       #   + GET trending + GET recommendations + GET collaborative-recommendations
-                      #   book list includes reservation_count, avg_rating, rating_count per book
+                      #   + GET enrichment (lazy scrape) + POST scrape (admin re-scrape)
+                      #   book list includes reservation_count, avg_rating, rating_count,
+                      #   description, author_bio, cover_url per book
+                      #   _scrape_book_data() — Open Library scraper (description, bio, cover)
+                      #   _scrape_and_store() — background thread helper (called on add_book)
     borrows.py        # /api/borrow/, /api/return/, /api/my-borrows, /api/my-fines
                       #   return accepts optional JSON body with rating/review
     reservations.py   # /api/reserve/, /api/cancel-reservation/, /api/my-reservations
-    admin.py          # /api/admin/ — borrows, fines, policy GET/PUT
+    admin.py          # /api/admin/ — borrows, fines, policy GET/PUT, members GET
     __init__.py       # register_blueprints()
 ```
 

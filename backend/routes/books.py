@@ -1,9 +1,162 @@
-from flask import Blueprint, request, jsonify, session
+import re
+import threading
+import urllib.request
+import urllib.parse
+import json as _json
+
+from flask import Blueprint, request, jsonify, session, current_app
 from extensions import db
 from models import Book, Borrow, BookLog, User
 from decorators import login_required, admin_required
 
 books_bp = Blueprint('books', __name__, url_prefix='/api')
+
+
+def _clean_markdown(text):
+    """Strip Open Library markdown artifacts so plain text renders cleanly."""
+    # Remove reference-style link definitions: [1]: http://...
+    text = re.sub(r'^\s*\[\d+\]:.*$', '', text, flags=re.MULTILINE)
+    # Convert inline links [label](url) → label
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    # Convert reference links [label][ref] → label
+    text = re.sub(r'\[([^\]]+)\]\[[^\]]*\]', r'\1', text)
+    # Strip bold/italic markers
+    text = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', text)
+    # Remove lines that are only dashes, backslashes, or whitespace
+    text = re.sub(r'^\s*[\\/-]+\s*$', '', text, flags=re.MULTILINE)
+    # Remove "Also contained in:" and "... PDF" trailing lines
+    text = re.sub(r'\n*Also contained in:.*', '', text, flags=re.DOTALL)
+    text = re.sub(r'\n.*?PDF\s*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    # Collapse excess blank lines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
+def _scrape_book_data(isbn, title, author):
+    """Fetch description, author bio, and cover URL from Open Library."""
+    work_key = None
+    author_key = None
+    description = ''
+    author_bio = ''
+    cover_url = None
+
+    # Step 1: ISBN-based lookup
+    if isbn:
+        try:
+            url = f"https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=data"
+            req = urllib.request.Request(url, headers={'User-Agent': 'LibraryApp/1.0'})
+            with urllib.request.urlopen(req, timeout=7) as resp:
+                data = _json.loads(resp.read())
+            entry = data.get(f"ISBN:{isbn}", {})
+            works = entry.get('works', [])
+            if works:
+                work_key = works[0].get('key', '')
+            authors = entry.get('authors', [])
+            if authors:
+                author_key = authors[0].get('key', '')
+        except Exception:
+            pass
+
+    # Step 2: Fallback — search by title + author
+    if not work_key:
+        try:
+            q = urllib.parse.urlencode({'title': title, 'author': author, 'limit': 1})
+            url = f"https://openlibrary.org/search.json?{q}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'LibraryApp/1.0'})
+            with urllib.request.urlopen(req, timeout=7) as resp:
+                data = _json.loads(resp.read())
+            docs = data.get('docs', [])
+            if docs:
+                doc = docs[0]
+                work_key = doc.get('key', '')
+                if not author_key:
+                    akeys = doc.get('author_key', [])
+                    if akeys:
+                        author_key = f'/authors/{akeys[0]}'
+                cover_i = doc.get('cover_i')
+                if cover_i:
+                    cover_url = f"https://covers.openlibrary.org/b/id/{cover_i}-M.jpg"
+        except Exception:
+            pass
+
+    # Step 3: Description + cover from work record
+    if work_key:
+        try:
+            url = f"https://openlibrary.org{work_key}.json"
+            req = urllib.request.Request(url, headers={'User-Agent': 'LibraryApp/1.0'})
+            with urllib.request.urlopen(req, timeout=7) as resp:
+                work_data = _json.loads(resp.read())
+            desc = work_data.get('description', '')
+            if isinstance(desc, dict):
+                desc = desc.get('value', '')
+            description = str(desc).strip()
+            if not author_key:
+                wauthors = work_data.get('authors', [])
+                if wauthors:
+                    author_key = wauthors[0].get('author', {}).get('key', '')
+            if not cover_url:
+                covers = work_data.get('covers', [])
+                if covers and covers[0] > 0:
+                    cover_url = f"https://covers.openlibrary.org/b/id/{covers[0]}-M.jpg"
+        except Exception:
+            pass
+
+    # Step 4: Author bio
+    if author_key:
+        try:
+            url = f"https://openlibrary.org{author_key}.json"
+            req = urllib.request.Request(url, headers={'User-Agent': 'LibraryApp/1.0'})
+            with urllib.request.urlopen(req, timeout=7) as resp:
+                author_data = _json.loads(resp.read())
+            bio = author_data.get('bio', '')
+            if isinstance(bio, dict):
+                bio = bio.get('value', '')
+            author_bio = str(bio).strip()
+        except Exception:
+            pass
+
+    # Step 5: ISBN cover as last resort
+    if not cover_url and isbn:
+        candidate = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg?default=false"
+        try:
+            req = urllib.request.Request(candidate, method='HEAD', headers={'User-Agent': 'LibraryApp/1.0'})
+            with urllib.request.urlopen(req, timeout=5):
+                cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg"
+        except Exception:
+            pass
+
+    return {
+        'description': _clean_markdown(description),
+        'author_bio': _clean_markdown(author_bio),
+        'cover_url': cover_url,
+    }
+
+
+def _scrape_and_store(app, book_id, isbn, title, author):
+    """Background thread: scrape Open Library and persist to DB."""
+    with app.app_context():
+        data = _scrape_book_data(isbn, title, author)
+        try:
+            book = db.session.get(Book, book_id)
+            if book:
+                # Store '' (not None) so NULL stays as the "never tried" sentinel.
+                # Frontend checks None → lazy fetch; '' → tried, no data; text → show.
+                book.description = data['description']   # '' if nothing found
+                book.author_bio = data['author_bio']     # '' if nothing found
+                book.cover_url = data['cover_url']
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+
+def _spawn_scrape(book):
+    app = current_app._get_current_object()
+    t = threading.Thread(
+        target=_scrape_and_store,
+        args=(app, book.id, book.isbn, book.title, book.author),
+        daemon=True,
+    )
+    t.start()
 
 
 @books_bp.route('/books')
@@ -64,6 +217,52 @@ def book_reviews(book_id):
     })
 
 
+@books_bp.route('/books/<int:book_id>/enrichment')
+@login_required
+def book_enrichment(book_id):
+    """Return stored description/bio/cover; scrape synchronously on first view if never tried."""
+    book = db.session.get(Book, book_id)
+    if not book:
+        return jsonify({'error': 'Book not found'}), 404
+
+    # Already attempted (description is '' or has text) — serve from DB immediately.
+    if book.description is not None:
+        return jsonify({
+            'description': book.description,
+            'author_bio': book.author_bio or '',
+            'cover_url': book.cover_url or '',
+        })
+
+    # description IS NULL → first time this book has been viewed. Scrape now.
+    data = _scrape_book_data(book.isbn, book.title, book.author)
+    try:
+        book.description = data['description']
+        book.author_bio = data['author_bio']
+        book.cover_url = data['cover_url']
+        db.session.commit()
+        # Refresh so the returned object reflects the new values
+        db.session.refresh(book)
+    except Exception:
+        db.session.rollback()
+
+    return jsonify({
+        'description': book.description or '',
+        'author_bio': book.author_bio or '',
+        'cover_url': book.cover_url or '',
+    })
+
+
+@books_bp.route('/books/<int:book_id>/scrape', methods=['POST'])
+@admin_required
+def scrape_book(book_id):
+    """Re-scrape Open Library data for an existing book."""
+    book = db.session.get(Book, book_id)
+    if not book:
+        return jsonify({'error': 'Book not found'}), 404
+    _spawn_scrape(book)
+    return jsonify({'message': 'Scrape started'})
+
+
 @books_bp.route('/books', methods=['POST'])
 @admin_required
 def add_book():
@@ -86,6 +285,7 @@ def add_book():
         admin_username=admin.username,
     ))
     db.session.commit()
+    _spawn_scrape(book)
     return jsonify(book.to_dict()), 201
 
 

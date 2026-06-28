@@ -51,6 +51,13 @@ function AdminDashboard() {
   const [memberBorrows, setMemberBorrows] = useState([]);
   const [memberBorrowsLoading, setMemberBorrowsLoading] = useState(false);
 
+  // Toast
+  const [toastMsg, setToastMsg] = useState('');
+  const showToast = (msg) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(''), 2500);
+  };
+
   // Fine policy
   const [policy, setPolicy] = useState(null);
   const [policyForm, setPolicyForm] = useState({ fine_per_day: '', borrow_days: '' });
@@ -207,6 +214,7 @@ function AdminDashboard() {
   const refreshMeta = async (id) => {
     try {
       await api.post(`/books/${id}/scrape`);
+      showToast('Metadata refresh started');
     } catch (err) {
       alert('Failed to start metadata refresh');
     }
@@ -381,7 +389,16 @@ function AdminDashboard() {
           <>
             <div className="section-header">
               <h3>All Books</h3>
-              <button className="btn btn-sm" onClick={() => setShowAdd(true)}>Add Book</button>
+              <div className="btn-row">
+                <button className="btn btn-sm btn-outline btn-icon" onClick={load} title="Refresh all books data">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="23 4 23 10 17 10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                  </svg>
+                  Refresh All
+                </button>
+                <button className="btn btn-sm" onClick={() => setShowAdd(true)}>Add Book</button>
+              </div>
             </div>
 
             <div className="search-top-bar">
@@ -428,10 +445,22 @@ function AdminDashboard() {
                       <td>{b.available_copies} / {b.total_copies}</td>
                       <td>
                         <div className="btn-row">
-                          <button className="btn btn-sm" onClick={() => openEdit(b)}>Edit</button>
+                          <div className="btn-group">
+                            <button className="btn btn-sm" onClick={() => openEdit(b)}>Edit</button>
+                            <button className="btn btn-sm btn-group-danger btn-icon" onClick={() => deleteBook(b.id)} title="Delete book">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                              </svg>
+                            </button>
+                          </div>
                           <button className="btn btn-sm btn-outline" onClick={() => openLogs(b)}>Logs</button>
-                          <button className="btn btn-sm btn-outline" onClick={() => refreshMeta(b.id)} title="Re-fetch description, author bio, and cover from Open Library">Refresh</button>
-                          <button className="btn btn-sm btn-outline" onClick={() => deleteBook(b.id)}>Delete</button>
+                          <button className="btn btn-sm btn-outline btn-icon" onClick={() => refreshMeta(b.id)} title="Re-fetch description, author bio, and cover from Open Library">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="23 4 23 10 17 10"/>
+                              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                            </svg>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -527,43 +556,7 @@ function AdminDashboard() {
         {/* ── Members ── */}
         {tab === 'members' && (
           <>
-            <div className="section-header"><h3>All Members</h3></div>
-            {!membersLoaded ? (
-              <div className="empty">Loading…</div>
-            ) : members.length === 0 ? (
-              <div className="empty">No members registered</div>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Username</th>
-                    <th>Currently Borrowed</th>
-                    <th>Total Borrows</th>
-                    <th>Fines Pending</th>
-                    <th>Fines Paid</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.map(m => (
-                    <tr key={m.id}>
-                      <td>{m.username}</td>
-                      <td>{m.currently_borrowed}</td>
-                      <td>{m.total_borrows}</td>
-                      <td className={m.fines_pending > 0 ? 'fine-amount' : ''}>
-                        {m.fines_pending > 0 ? `$${m.fines_pending.toFixed(2)}` : <span className="muted">—</span>}
-                      </td>
-                      <td>{m.fines_paid > 0 ? `$${m.fines_paid.toFixed(2)}` : <span className="muted">—</span>}</td>
-                      <td>
-                        <button className="btn btn-sm btn-outline" onClick={() => openMember(m)}>View Records</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            <div className="section-header" style={{ marginTop: 40 }}><h3>Membership Pricing</h3></div>
+            <div className="section-header"><h3>Membership Pricing</h3></div>
             {membershipPricing && (
               <form className="membership-pricing-form" onSubmit={saveMembershipPricing}>
                 {membershipPricingError && <div className="error">{membershipPricingError}</div>}
@@ -611,9 +604,7 @@ function AdminDashboard() {
               </form>
             )}
 
-            <div className="section-header" style={{ marginTop: 40 }}>
-              <h3>Member Tiers</h3>
-            </div>
+            <div className="section-header" style={{ marginTop: 40 }}><h3>Member Records</h3></div>
             {!membersLoaded ? (
               <div className="empty">Loading…</div>
             ) : members.length === 0 ? (
@@ -625,7 +616,12 @@ function AdminDashboard() {
                     <th>Username</th>
                     <th>Tier</th>
                     <th>Family Group</th>
+                    <th>Currently Borrowed</th>
+                    <th>Total Borrows</th>
+                    <th>Fines Pending</th>
+                    <th>Fines Paid</th>
                     <th>Change Tier</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -638,6 +634,12 @@ function AdminDashboard() {
                           : <span className="muted">None</span>}
                       </td>
                       <td>{m.family_group_id != null ? `Group ${m.family_group_id}` : <span className="muted">—</span>}</td>
+                      <td>{m.currently_borrowed}</td>
+                      <td>{m.total_borrows}</td>
+                      <td className={m.fines_pending > 0 ? 'fine-amount' : ''}>
+                        {m.fines_pending > 0 ? `$${m.fines_pending.toFixed(2)}` : <span className="muted">—</span>}
+                      </td>
+                      <td>{m.fines_paid > 0 ? `$${m.fines_paid.toFixed(2)}` : <span className="muted">—</span>}</td>
                       <td>
                         <select
                           className="filter-select"
@@ -649,6 +651,9 @@ function AdminDashboard() {
                           <option value="gold">Gold</option>
                           <option value="family">Family</option>
                         </select>
+                      </td>
+                      <td>
+                        <button className="btn btn-sm btn-outline" onClick={() => openMember(m)}>View Records</button>
                       </td>
                     </tr>
                   ))}
@@ -1092,6 +1097,9 @@ function AdminDashboard() {
           )}
         </Modal>
       )}
+
+      {/* ── Toast ── */}
+      {toastMsg && <div className="toast">{toastMsg}</div>}
 
       {/* ── Book Logs Modal ── */}
       {logsBook && (

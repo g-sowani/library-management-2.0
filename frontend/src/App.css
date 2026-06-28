@@ -54,21 +54,21 @@
   --border-input:  #3a3a3a;
   --border-faint:  #1e1e1e;
 
-  --text:          #e8e8e8;
-  --text-2:        #ccc;
-  --text-3:        #aaa;
-  --text-4:        #999;
-  --text-5:        #777;
-  --text-6:        #666;
-  --text-7:        #555;
-  --text-muted:    #444;
+  --text:          #c8c8c8;
+  --text-2:        #b0b0b0;
+  --text-3:        #909090;
+  --text-4:        #808080;
+  --text-5:        #646464;
+  --text-6:        #585858;
+  --text-7:        #484848;
+  --text-muted:    #383838;
 
-  --btn-bg:              #e0e0e0;
+  --btn-bg:              #c8c8c8;
   --btn-color:           #111;
-  --btn-border:          #e0e0e0;
-  --btn-hover:           #c8c8c8;
+  --btn-border:          #c8c8c8;
+  --btn-hover:           #b4b4b4;
   --btn-outline-bg:      transparent;
-  --btn-outline-color:   #e0e0e0;
+  --btn-outline-color:   #c8c8c8;
   --btn-outline-hover:   #262626;
 
   --overlay:       rgba(0, 0, 0, 0.6);
@@ -1418,9 +1418,9 @@ td {
 }
 
 [data-theme="dark"] .membership-badge-silver {
-  background: #2a2a2a;
-  color: #aaa;
-  border-color: #666;
+  background: #222;
+  color: #888;
+  border-color: #555;
 }
 
 .membership-badge-gold {
@@ -1430,8 +1430,9 @@ td {
 }
 
 [data-theme="dark"] .membership-badge-gold {
-  background: #2a2200;
-  color: #c8922a;
+  background: #1e1800;
+  color: #a87020;
+  border-color: #6a4a10;
 }
 
 .membership-badge-family {
@@ -1441,8 +1442,9 @@ td {
 }
 
 [data-theme="dark"] .membership-badge-family {
-  background: #0d1e35;
-  color: #4a90d9;
+  background: #0a1828;
+  color: #3a78c0;
+  border-color: #1e3a5a;
 }
 
 /* ── Membership info card ───────────────────────────────────────────────────── */
@@ -1611,8 +1613,9 @@ td {
 }
 
 [data-theme="dark"] .community-mod-tag {
-  background: #2a2200;
-  color: #c8922a;
+  background: #1e1800;
+  color: #a87020;
+  border-color: #6a4a10;
 }
 
 .community-admin-note {
@@ -1883,6 +1886,59 @@ td {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* ── Toast ──────────────────────────────────────────────────────────────────── */
+
+.toast {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  background: var(--text);
+  color: var(--bg);
+  padding: 10px 18px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  z-index: 500;
+  pointer-events: none;
+  animation: toast-in 0.18s ease;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Button group (connected pair) ──────────────────────────────────────────── */
+
+.btn-group {
+  display: inline-flex;
+  gap: 0;
+}
+
+.btn-group > .btn:not(:first-child) {
+  margin-left: -1px;
+}
+
+.btn-group > .btn:hover {
+  position: relative;
+  z-index: 1;
+}
+
+.btn-group-danger:hover {
+  background: #b00 !important;
+  border-color: #b00 !important;
+  color: #fff !important;
+}
+
+/* ── Icon-only button ────────────────────────────────────────────────────────── */
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 8px;
 }
 
 /* ── Nav tab notification badge ─────────────────────────────────────────────── */

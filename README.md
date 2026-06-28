@@ -1,6 +1,6 @@
 # Library Management System
 
-Full-stack library management app built with Flask and React. Members browse books, borrow/return/reserve them, rate and review, get personalised recommendations, and donate books to the library. Admins manage the catalogue, monitor borrows, configure fine policy, manage membership tiers, and review incoming book donations.
+Full-stack library management app built with Flask and React. Members browse books, borrow/return/reserve them, rate and review, get personalised recommendations, donate books to the library, and participate in Gold-tier community spaces. Admins manage the catalogue, monitor borrows, configure fine policy, manage membership tiers, review donations, and approve community requests.
 
 ---
 
@@ -72,16 +72,16 @@ Created automatically on first run — no setup needed.
 - Collaborative recommendations — users with similar reading history
 - **My Profile tab** — membership info card, active borrows, reservations, fines, and donation history in one place
 - **Donate a Book** — submit a physical book for the library; earn 1/4 of its estimated value as library credit upon admin approval
+- **Community tab** *(Gold members only)* — create and join member communities, make posts, comment with unlimited reply threading, and react with SVG reaction icons (like / love / haha / wow / sad / angry); red badge on the tab title shows new activity since your last visit
 
 **Admin**
 - Add / edit / delete books; ISBN uniqueness enforced
 - Inventory change log per book with reason tracking
 - Monitor all active borrows and overdue items
-- View all unpaid fines
-- Manage member records and full borrow history per member
-- Configure fine-per-day rate and loan duration at runtime
+- **Fines tab** — pending fines table + fine policy (fine-per-day rate and loan duration) in one place
+- **Members tab** — member list with borrow history, membership pricing cards, and per-member tier management in one place
 - Refresh book metadata (description, author bio, cover) from Open Library
-- Memberships tab: set per-tier monthly pricing (Silver / Gold / Family) and assign or change any member's tier
+- **Communities tab** — review pending community requests; approve (auto-joins creator as moderator) or reject; filter by status (Pending / Approved / Rejected / All)
 - **Donations tab** — review pending donations; approve (adds book to catalogue and credits member) or reject with an optional reason; filter by status (Pending / Approved / Rejected / All)
 
 **Membership Tiers**
@@ -89,7 +89,7 @@ Created automatically on first run — no setup needed.
 | Tier | Borrow limit | Notes |
 |------|-------------|-------|
 | Silver | 1 book at a time | Standard access |
-| Gold | 3 books at a time | Community section (coming soon) |
+| Gold | 3 books at a time | Full community section access |
 | Family | 1 book per person, up to 4 members | Shared plan at a group rate |
 
 Rates are admin-configurable at runtime (defaults: Silver $9.99 · Gold $19.99 · Family $29.99/month). Existing users are randomly assigned a tier on first startup.

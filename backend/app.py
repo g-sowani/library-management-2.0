@@ -23,16 +23,24 @@ def create_app():
 
 def _migrate_db():
     from sqlalchemy import inspect, text
-    cols = [c['name'] for c in inspect(db.engine).get_columns('book')]
-    new_cols = {
+
+    def add_missing_cols(table, additions):
+        try:
+            existing = [c['name'] for c in inspect(db.engine).get_columns(table)]
+        except Exception:
+            return  # table doesn't exist yet — db.create_all() will handle it
+        for col, col_type in additions.items():
+            if col not in existing:
+                db.session.execute(text(f'ALTER TABLE {table} ADD COLUMN {col} {col_type}'))
+
+    add_missing_cols('book', {
         'genre': 'VARCHAR(100)',
         'description': 'TEXT',
         'author_bio': 'TEXT',
         'cover_url': 'VARCHAR(500)',
-    }
-    for col, col_type in new_cols.items():
-        if col not in cols:
-            db.session.execute(text(f'ALTER TABLE book ADD COLUMN {col} {col_type}'))
+    })
+    add_missing_cols('post_reaction', {'created_at': 'DATETIME'})
+    add_missing_cols('comment_reaction', {'created_at': 'DATETIME'})
     db.session.commit()
 
 

@@ -11,10 +11,9 @@ import { GENRES } from '../constants';
 const TABS = [
   { id: 'books', label: 'Books' },
   { id: 'borrows', label: 'Borrowed Books' },
-  { id: 'fines', label: 'Pending Fines' },
+  { id: 'fines', label: 'Fines' },
   { id: 'members', label: 'Members' },
-  { id: 'policy', label: 'Fine Policy' },
-  { id: 'memberships', label: 'Memberships' },
+  { id: 'communities', label: 'Communities' },
   { id: 'donations', label: 'Donations' },
 ];
 
@@ -69,6 +68,17 @@ function AdminDashboard() {
   const [donations, setDonations] = useState([]);
   const [donationsLoaded, setDonationsLoaded] = useState(false);
   const [donationStatusFilter, setDonationStatusFilter] = useState('pending');
+
+  // Communities
+  const [adminCommunities, setAdminCommunities] = useState([]);
+  const [adminCommunitiesLoaded, setAdminCommunitiesLoaded] = useState(false);
+  const [adminCommunitiesFilter, setAdminCommunitiesFilter] = useState('pending');
+  const [approvingCommunity, setApprovingCommunity] = useState(null);
+  const [communityApproveNotes, setCommunityApproveNotes] = useState('');
+  const [communityApproveError, setCommunityApproveError] = useState('');
+  const [rejectingCommunity, setRejectingCommunity] = useState(null);
+  const [communityRejectNotes, setCommunityRejectNotes] = useState('');
+  const [communityRejectError, setCommunityRejectError] = useState('');
   const [approvingDonation, setApprovingDonation] = useState(null); // donation object
   const [approveCredit, setApproveCredit] = useState('');
   const [approveNotes, setApproveNotes] = useState('');
@@ -108,17 +118,55 @@ function AdminDashboard() {
     api.get(`/admin/donations${qs}`).then(r => { setDonations(r.data); setDonationsLoaded(true); });
   }, []);
 
+  const loadAdminCommunities = useCallback((status) => {
+    const qs = status ? `?status=${status}` : '';
+    api.get(`/admin/communities${qs}`).then(r => {
+      setAdminCommunities(r.data);
+      setAdminCommunitiesLoaded(true);
+    });
+  }, []);
+
   const handleTabChange = (t) => {
     setTab(t);
     setPolicySaved(false);
     setMembershipPricingSaved(false);
-    if (t === 'members' && !membersLoaded) loadMembers();
-    if (t === 'memberships' && !membershipsLoaded) {
-      loadMembershipPricing();
+    if (t === 'members') {
       if (!membersLoaded) loadMembers();
-      setMembershipsLoaded(true);
+      if (!membershipsLoaded) {
+        loadMembershipPricing();
+        setMembershipsLoaded(true);
+      }
     }
     if (t === 'donations') loadDonations(donationStatusFilter);
+    if (t === 'communities') loadAdminCommunities(adminCommunitiesFilter);
+  };
+
+  const submitApproveCommunity = async (e) => {
+    e.preventDefault();
+    setCommunityApproveError('');
+    try {
+      await api.put(`/admin/communities/${approvingCommunity.id}/approve`, {
+        admin_notes: communityApproveNotes,
+      });
+      setApprovingCommunity(null);
+      loadAdminCommunities(adminCommunitiesFilter);
+    } catch (err) {
+      setCommunityApproveError(err.response?.data?.error || 'Failed to approve');
+    }
+  };
+
+  const submitRejectCommunity = async (e) => {
+    e.preventDefault();
+    setCommunityRejectError('');
+    try {
+      await api.put(`/admin/communities/${rejectingCommunity.id}/reject`, {
+        admin_notes: communityRejectNotes,
+      });
+      setRejectingCommunity(null);
+      loadAdminCommunities(adminCommunitiesFilter);
+    } catch (err) {
+      setCommunityRejectError(err.response?.data?.error || 'Failed to reject');
+    }
   };
 
   const openMember = async (member) => {
@@ -448,6 +496,31 @@ function AdminDashboard() {
                 </tbody>
               </table>
             )}
+
+            <div className="section-header" style={{ marginTop: 40 }}><h3>Fine Policy</h3></div>
+            {policy && (
+              <form className="policy-form" onSubmit={savePolicy}>
+                {policyError && <div className="error">{policyError}</div>}
+                {policySaved && <div className="success">Policy saved successfully</div>}
+                <div className="form-group">
+                  <label>Fine Per Day ($)</label>
+                  <input type="number" min="0" step="0.01"
+                    value={policyForm.fine_per_day}
+                    onChange={e => setPolicyForm({ ...policyForm, fine_per_day: e.target.value })}
+                    required />
+                  <p className="field-hint">Charged per day a book is overdue</p>
+                </div>
+                <div className="form-group">
+                  <label>Borrow Duration (days)</label>
+                  <input type="number" min="1"
+                    value={policyForm.borrow_days}
+                    onChange={e => setPolicyForm({ ...policyForm, borrow_days: e.target.value })}
+                    required />
+                  <p className="field-hint">Applies to new borrows only</p>
+                </div>
+                <button type="submit" className="btn btn-sm">Save Policy</button>
+              </form>
+            )}
           </>
         )}
 
@@ -489,41 +562,8 @@ function AdminDashboard() {
                 </tbody>
               </table>
             )}
-          </>
-        )}
 
-        {/* ── Fine Policy ── */}
-        {tab === 'policy' && policy && (
-          <>
-            <div className="section-header"><h3>Fine Policy</h3></div>
-            <form className="policy-form" onSubmit={savePolicy}>
-              {policyError && <div className="error">{policyError}</div>}
-              {policySaved && <div className="success">Policy saved successfully</div>}
-              <div className="form-group">
-                <label>Fine Per Day ($)</label>
-                <input type="number" min="0" step="0.01"
-                  value={policyForm.fine_per_day}
-                  onChange={e => setPolicyForm({ ...policyForm, fine_per_day: e.target.value })}
-                  required />
-                <p className="field-hint">Charged per day a book is overdue</p>
-              </div>
-              <div className="form-group">
-                <label>Borrow Duration (days)</label>
-                <input type="number" min="1"
-                  value={policyForm.borrow_days}
-                  onChange={e => setPolicyForm({ ...policyForm, borrow_days: e.target.value })}
-                  required />
-                <p className="field-hint">Applies to new borrows only</p>
-              </div>
-              <button type="submit" className="btn btn-sm">Save Policy</button>
-            </form>
-          </>
-        )}
-
-        {/* ── Memberships ── */}
-        {tab === 'memberships' && (
-          <>
-            <div className="section-header"><h3>Membership Pricing</h3></div>
+            <div className="section-header" style={{ marginTop: 40 }}><h3>Membership Pricing</h3></div>
             {membershipPricing && (
               <form className="membership-pricing-form" onSubmit={saveMembershipPricing}>
                 {membershipPricingError && <div className="error">{membershipPricingError}</div>}
@@ -618,6 +658,80 @@ function AdminDashboard() {
           </>
         )}
 
+        {/* ── Communities ── */}
+        {tab === 'communities' && (
+          <>
+            <div className="section-header">
+              <h3>Community Requests</h3>
+              <div className="btn-row">
+                {['pending', 'approved', 'rejected', ''].map(s => (
+                  <button
+                    key={s || 'all'}
+                    className={`btn btn-sm${adminCommunitiesFilter === s ? '' : ' btn-outline'}`}
+                    onClick={() => { setAdminCommunitiesFilter(s); loadAdminCommunities(s); }}
+                  >
+                    {s ? s.charAt(0).toUpperCase() + s.slice(1) : 'All'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {!adminCommunitiesLoaded ? (
+              <div className="empty">Loading…</div>
+            ) : adminCommunities.length === 0 ? (
+              <div className="empty">No communities{adminCommunitiesFilter ? ` with status "${adminCommunitiesFilter}"` : ''}</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Description</th>
+                    <th>Creator</th>
+                    <th>Members</th>
+                    <th>Posts</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminCommunities.map(c => (
+                    <tr key={c.id}>
+                      <td style={{ fontWeight: 500 }}>{c.name}</td>
+                      <td style={{ maxWidth: 200, color: '#555', fontSize: '0.85rem' }}>
+                        {c.description || <span className="muted">—</span>}
+                      </td>
+                      <td>{c.creator_username}</td>
+                      <td>{c.member_count}</td>
+                      <td>{c.post_count}</td>
+                      <td>
+                        <Badge
+                          variant={c.status === 'approved' ? 'active' : c.status === 'rejected' ? 'overdue' : 'returned'}
+                        >
+                          {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
+                        </Badge>
+                      </td>
+                      <td>{new Date(c.created_at).toLocaleDateString()}</td>
+                      <td>
+                        {c.status === 'pending' && (
+                          <div className="btn-row">
+                            <button className="btn btn-sm" onClick={() => { setApprovingCommunity(c); setCommunityApproveNotes(''); setCommunityApproveError(''); }}>Approve</button>
+                            <button className="btn btn-sm btn-outline" onClick={() => { setRejectingCommunity(c); setCommunityRejectNotes(''); setCommunityRejectError(''); }}>Reject</button>
+                          </div>
+                        )}
+                        {c.admin_notes && (
+                          <div style={{ fontSize: '0.75rem', color: '#666', marginTop: 4 }} title={c.admin_notes}>
+                            Note: {c.admin_notes.length > 40 ? c.admin_notes.slice(0, 40) + '…' : c.admin_notes}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+
         {/* ── Donations ── */}
         {tab === 'donations' && (
           <>
@@ -701,6 +815,55 @@ function AdminDashboard() {
           </>
         )}
       </div>
+
+      {/* ── Approve Community Modal ── */}
+      {approvingCommunity && (
+        <Modal title="Approve Community" onClose={() => setApprovingCommunity(null)}>
+          <p style={{ marginBottom: 16, fontSize: '0.9rem', color: '#555' }}>
+            Approving <strong>{approvingCommunity.name}</strong> created by <strong>{approvingCommunity.creator_username}</strong>.
+            The creator will automatically be added as a moderator.
+          </p>
+          <form onSubmit={submitApproveCommunity}>
+            {communityApproveError && <div className="error">{communityApproveError}</div>}
+            <div className="form-group">
+              <label>Admin notes <span className="muted" style={{ textTransform: 'none', fontSize: '0.75rem' }}>(optional)</span></label>
+              <input
+                value={communityApproveNotes}
+                onChange={e => setCommunityApproveNotes(e.target.value)}
+                placeholder="Any notes for the community creator…"
+              />
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-sm btn-outline" onClick={() => setApprovingCommunity(null)}>Cancel</button>
+              <button type="submit" className="btn btn-sm">Confirm Approval</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ── Reject Community Modal ── */}
+      {rejectingCommunity && (
+        <Modal title="Reject Community" onClose={() => setRejectingCommunity(null)}>
+          <p style={{ marginBottom: 16, fontSize: '0.9rem', color: '#555' }}>
+            Rejecting <strong>{rejectingCommunity.name}</strong> submitted by <strong>{rejectingCommunity.creator_username}</strong>.
+          </p>
+          <form onSubmit={submitRejectCommunity}>
+            {communityRejectError && <div className="error">{communityRejectError}</div>}
+            <div className="form-group">
+              <label>Reason <span className="muted" style={{ textTransform: 'none', fontSize: '0.75rem' }}>(optional — shown to creator)</span></label>
+              <input
+                value={communityRejectNotes}
+                onChange={e => setCommunityRejectNotes(e.target.value)}
+                placeholder="e.g. Duplicate community, inappropriate name…"
+              />
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-sm btn-outline" onClick={() => setRejectingCommunity(null)}>Cancel</button>
+              <button type="submit" className="btn btn-sm btn-outline">Confirm Rejection</button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {/* ── Approve Donation Modal ── */}
       {approvingDonation && (

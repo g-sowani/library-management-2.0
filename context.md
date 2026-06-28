@@ -70,6 +70,17 @@ backend/
                       #   created_at)
                       #   TIER_LIMITS = {silver:1, gold:3, family:1} (active concurrent borrows)
                       #   borrow_limit() helper reads TIER_LIMITS; to_dict() includes borrow_limit
+    community.py      # 6 models for the Gold-member community feature:
+                      #   Community (id, name, description, creator_id FK, status: pending|approved|rejected,
+                      #     admin_notes, created_at)
+                      #   CommunityMembership (community_id, user_id, role: member|moderator, joined_at)
+                      #   CommunityPost (community_id, author_id, title, content, created_at)
+                      #   CommunityComment (post_id, author_id, parent_id FK→self, content, created_at)
+                      #     — self-referential for unlimited reply depth
+                      #   PostReaction (post_id, user_id, emoji VARCHAR, created_at)
+                      #     — emoji column stores string keys: like|love|haha|wow|sad|angry
+                      #   CommentReaction (comment_id, user_id, emoji VARCHAR, created_at)
+                      #   VALID_REACTIONS = {'like','love','haha','wow','sad','angry'}
     __init__.py       # re-exports all models + seed_data() + _seed_memberships()
                       #   _seed_memberships() — randomly assigns tiers to any unassigned members
                       #     on every startup; groups family members by family_group_id (max 4)
@@ -97,11 +108,31 @@ backend/
                       # /api/admin/donations/:id/approve PUT — approve: adds book (or copy)
                       #   to catalogue, sets credit_amount (default price/4, admin-adjustable)
                       # /api/admin/donations/:id/reject PUT — reject with optional reason
+    communities.py    # Gold-member community endpoints; _gold_user() enforces tier
+                      # GET  /api/communities              — all approved communities
+                      # POST /api/communities              — create community (Gold; status=pending)
+                      # GET  /api/my-communities           — communities the caller has joined
+                      # POST /api/communities/:id/join     — join an approved community
+                      # DEL  /api/communities/:id/leave    — leave a community
+                      # GET  /api/communities/:id/posts    — list posts (members only)
+                      # POST /api/communities/:id/posts    — create post
+                      # GET  /api/communities/:id/posts/:pid — single post with threaded comments
+                      # POST /api/communities/:id/posts/:pid/comments — add comment or reply
+                      #   (parent_id in body = reply to that comment, any depth)
+                      # POST /api/communities/:id/posts/:pid/react — toggle post reaction
+                      # POST /api/communities/:id/posts/:pid/comments/:cid/react — toggle comment reaction
+                      # GET  /api/communities/activity-count?since= — count new activity
+                      #   (posts + comments + reactions by others) for badge polling
+                      # GET  /api/admin/communities        — all communities for admin review
+                      # PUT  /api/admin/communities/:id/approve — approve + auto-join creator as moderator
+                      # PUT  /api/admin/communities/:id/reject  — reject with optional reason
     __init__.py       # register_blueprints()
 ```
 
 ### DB migrations
-`app.py` runs `_migrate_db()` on every startup. It uses `ALTER TABLE` to add columns that exist in models but not yet in the SQLite file. New tables (e.g. `membership`) are created automatically by `db.create_all()`. `_seed_memberships()` runs on every startup and silently no-ops when all members already have a tier.
+`app.py` runs `_migrate_db()` on every startup. It uses a reusable `add_missing_cols(table, additions)` helper that calls `ALTER TABLE` for any column in models not yet present in the SQLite file. New tables (e.g. `community`, `community_membership`) are created automatically by `db.create_all()`. `_seed_memberships()` runs on every startup and silently no-ops when all members already have a tier.
+
+Tables currently patched by `_migrate_db()`: `book` (genre, description, author_bio, cover_url), `post_reaction` (created_at), `comment_reaction` (created_at).
 
 ### Fine calculation
 `Borrow.calculate_fine()` reads `fine_per_day` live from the `setting` table. `borrow_days` (loan duration) is also read from `setting` at borrow time. Both are configurable by the admin at runtime.
@@ -122,12 +153,14 @@ frontend/src/
     TopBar.js               # Header with title, username, optional badge slot, sign-out
                             #   accepts a `badge` prop rendered between username and sign-out
     NavTabs.js              # Tab bar driven by a tabs config array
+                            #   accepts `badges = {}` prop: { [tabId]: number }
+                            #   renders a red pill badge next to the tab label when count > 0
     Badge.js                # Status chip (active / overdue / returned)
     Modal.js                # Overlay modal; wide prop for 640px variant
     SearchBar.js            # Controlled search input
   pages/
     Login.js                # Sign-in / register form (role selector on register)
-    MemberDashboard.js      # Available Books · My Profile tabs
+    MemberDashboard.js      # Available Books · My Profile · Community tabs
                             #   TopBar shows membership tier badge (Gold amber, Silver grey, Family blue)
                             #   fetches /api/membership on mount alongside books/borrows
                             #
@@ -159,14 +192,43 @@ frontend/src/
                             # Donate modal: title, author, ISBN (optional), genre (optional),
                             #   condition dropdown (new/good/fair/poor), estimated value field
                             #   with live credit preview (value/4); success screen after submit
-    AdminDashboard.js       # Books · Borrowed · Fines · Members · Fine Policy · Memberships · Donations tabs
+                            #
+                            # Community tab (Gold members only; non-gold sees a locked card):
+                            #   3-level view: list → community → post
+                            #   List view: Browse all approved communities + My Communities strip;
+                            #     Create Community button → modal (name, description); submitted
+                            #     as pending until admin approves
+                            #   Community view: community header, member count, Join/Leave button,
+                            #     post list with SVG reaction mini-previews; Create Post button
+                            #   Post view: full post content, SVG reaction bar (like/love/haha/wow/sad/angry),
+                            #     threaded comments at unlimited depth (visual indent capped at depth 4),
+                            #     reply-to-reply at any level
+                            #   Notification badge: red number on the Community tab title showing
+                            #     new posts + comments + reactions since last visit; polled every 60 s;
+                            #     count stored in localStorage (communityLastSeen); badge clears on tab open
+                            #   Reaction icons: stroke-based inline SVGs (no icon library),
+                            #     keys: like | love | haha | wow | sad | angry
+    AdminDashboard.js       # Books · Borrowed · Fines · Members · Communities · Donations tabs
                             # + Edit book modal + Inventory Logs modal + Member Records modal
                             # + Approve Donation modal + Reject Donation modal
+                            # + Approve Community modal + Reject Community modal
                             #
-                            # Memberships tab:
-                            #   Pricing cards — Silver / Gold / Family monthly rates (editable form)
+                            # Fines tab (merged):
+                            #   Pending Fines table — all unpaid fines
+                            #   Fine Policy form — fine_per_day and borrow_days (live editable)
+                            #
+                            # Members tab (merged):
+                            #   All Members table — member list with tier badge + borrow history button
+                            #   Membership Pricing cards — Silver / Gold / Family monthly rates (editable)
                             #   Member Tiers table — all members with current tier badge,
                             #     family group, and inline tier-change dropdown
+                            #
+                            # Communities tab:
+                            #   Status filter buttons — Pending / Approved / Rejected / All
+                            #   Table: community name, description, creator, member count,
+                            #     post count, status badge, created date, Approve/Reject buttons
+                            #   Approve modal: optional admin notes; auto-joins creator as moderator
+                            #   Reject modal: optional reason
                             #
                             # Donations tab:
                             #   Status filter buttons — Pending / Approved / Rejected / All
@@ -250,6 +312,25 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 | GET | `/api/admin/donations` | admin | All donations; optional `?status=pending\|approved\|rejected` filter |
 | PUT | `/api/admin/donations/:id/approve` | admin | Approve donation — adds book to catalogue (or copy if title/ISBN already exists), sets credit_amount (default: estimated_price/4, admin-adjustable) |
 | PUT | `/api/admin/donations/:id/reject` | admin | Reject donation with optional `admin_notes` |
+
+### Communities (Gold members only)
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/communities` | gold | All approved communities with caller's membership status |
+| POST | `/api/communities` | gold | Create a community (status = pending until admin approves) |
+| GET | `/api/my-communities` | gold | Communities the caller has joined |
+| POST | `/api/communities/:id/join` | gold | Join an approved community |
+| DELETE | `/api/communities/:id/leave` | gold | Leave a community |
+| GET | `/api/communities/:id/posts` | gold+member | List posts (caller must be a member) |
+| POST | `/api/communities/:id/posts` | gold+member | Create a post |
+| GET | `/api/communities/:id/posts/:pid` | gold+member | Full post with nested comment tree |
+| POST | `/api/communities/:id/posts/:pid/comments` | gold+member | Add top-level comment or reply (`parent_id` in body for replies at any depth) |
+| POST | `/api/communities/:id/posts/:pid/react` | gold+member | Toggle post reaction (`emoji`: like\|love\|haha\|wow\|sad\|angry) |
+| POST | `/api/communities/:id/posts/:pid/comments/:cid/react` | gold+member | Toggle comment reaction |
+| GET | `/api/communities/activity-count?since=` | gold | Count new posts+comments+reactions since ISO timestamp (for badge polling) |
+| GET | `/api/admin/communities` | admin | All communities for admin review |
+| PUT | `/api/admin/communities/:id/approve` | admin | Approve community; auto-joins creator as moderator |
+| PUT | `/api/admin/communities/:id/reject` | admin | Reject with optional reason |
 
 ---
 
@@ -365,7 +446,7 @@ Three tiers control how many books a member can have active at once.
 | Tier | Active borrow limit | Notes |
 |------|-------------------|-------|
 | `silver` | 1 | Standard access |
-| `gold` | 3 | Community section (planned) |
+| `gold` | 3 | Full community section access |
 | `family` | 1 per person | Up to 4 members share one plan; each has their own account |
 
 **Borrow limit enforcement** is in `POST /api/borrow/:bookId`: before decrementing `available_copies` the endpoint counts `Borrow` records with `return_date = NULL` for the current user and compares against `Membership.borrow_limit()`. A 400 error is returned with a human-readable message (e.g. *"Silver membership allows 1 active borrow at a time"*). Users with no `Membership` record default to a limit of 1.
@@ -402,6 +483,22 @@ Members can donate physical books to the library. Donations sit in a `pending` q
 
 ---
 
+## Community System
+
+Gold members can create communities, which go through admin approval before becoming active. Once approved, other Gold members can join and participate.
+
+**Lifecycle:** `pending` → `approved` | `rejected` (admin decision).
+
+**Roles within a community:** `member` (default on join) · `moderator` (creator is auto-assigned on approval).
+
+**Threaded comments:** `CommunityComment.parent_id` is a self-referential FK. The backend `to_dict()` recursively serialises replies at any depth. The frontend `CommentItem` component is recursive with a `depth` prop; visual indentation is capped at depth 4 (uses `replies-list-flat` CSS class for lighter styling) but nesting continues in data.
+
+**Reactions:** Six types — `like`, `love`, `haha`, `wow`, `sad`, `angry`. Stored as VARCHAR string keys (not emoji characters) in `PostReaction.emoji` / `CommentReaction.emoji`. Each user can have at most one reaction per post or comment (unique constraint); submitting the same reaction again toggles it off. Frontend renders stroke-based inline SVG icons (no icon library), 12–15 px, via the `ReactionIcon` component.
+
+**Notification badge:** A red number on the Community tab label showing unseen activity. Computed by `GET /api/communities/activity-count?since=<iso>` which counts new posts, comments, post reactions, and comment reactions (by others) across all communities the caller is a member of. The frontend polls every 60 seconds when not on the Community tab; `communityLastSeen` is persisted in `localStorage` and updated whenever the Community tab is opened.
+
+---
+
 ## Key Design Decisions
 
 - **Session-based auth** over JWT — simpler for a monolith; Flask handles signing.
@@ -420,3 +517,8 @@ Members can donate physical books to the library. Donations sit in a `pending` q
 - **Membership limit is active-borrow count, not weekly quota** — "per week" language in product specs maps cleanly to concurrent active borrows: Silver = 1, Gold = 3, Family = 1 per person. This avoids time-window queries and means the limit resets naturally when a book is returned.
 - **Family group via integer ID, no separate table** — `family_group_id` on `Membership` is sufficient; a separate `FamilyGroup` table would add no behaviour. The backend auto-assigns groups when an admin sets tier to `family`.
 - **Membership pricing in `setting` table** — reuses the existing key/value store (same pattern as `fine_per_day`) so pricing changes take effect at request time without a server restart.
+- **Community reactions as string keys, not emoji chars** — storing `like`/`love`/etc. instead of emoji characters avoids encoding issues and makes the validation set (`VALID_REACTIONS`) unambiguous. The frontend resolves keys to SVG icons.
+- **SVG reaction icons inline, no icon library** — avoids adding a dependency; the `ReactionIcon` component renders stroke-based 24×24 viewBox SVGs sized via a `size` prop (default 13). Icons are feather-style paths for visual consistency.
+- **Notification badge via polling, not WebSockets** — 60-second polling via `setInterval` is simple and stateless. The activity-count endpoint is a single aggregating query; polling only runs when the Community tab is not active (to avoid counting events the user is already seeing).
+- **Admin tab merging (Fines + Members)** — Pending Fines and Fine Policy share a tab; All Members, Membership Pricing, and Member Tiers share a tab. Reduces nav clutter without hiding functionality.
+- **Comment depth capped visually at 4, not structurally** — nesting in data is unlimited; only the CSS indentation class switches at depth 4. This prevents the UI from becoming too narrow on deep threads while preserving full reply history.

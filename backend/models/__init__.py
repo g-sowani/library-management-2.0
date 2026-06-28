@@ -7,6 +7,8 @@ from models.reservation import Reservation
 from models.review import Review
 from models.membership import Membership
 from models.donation import Donation
+from models.community import (Community, CommunityMembership, CommunityPost,
+                               CommunityComment, PostReaction, CommentReaction)
 
 
 def seed_data():

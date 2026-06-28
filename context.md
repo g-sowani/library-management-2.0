@@ -1,7 +1,7 @@
 # Library Management System — Project Context
 
 ## Overview
-A full-stack library management app. Admins manage the book catalogue, monitor borrows, configure fines, and track inventory changes. Members browse books, borrow/return them, reserve books when all copies are out, view their fines, and leave optional ratings and reviews when returning a book. The Books tab surfaces personalised recommendations and trending content to help members discover what to read next.
+A full-stack library management app. Admins manage the book catalogue, monitor borrows, configure fines, track inventory changes, and review incoming book donations. Members browse books, borrow/return them, reserve books when all copies are out, view their fines, leave optional ratings and reviews when returning a book, and donate books to the library in exchange for credit. The Books tab surfaces personalised recommendations and trending content to help members discover what to read next.
 
 ---
 
@@ -60,6 +60,11 @@ backend/
     book_log.py       # BookLog (audit log per book — action, details, admin, timestamp)
     setting.py        # Setting (key/value) + get_setting() helper
     review.py         # Review (book↔user↔borrow, rating 1–5, review_text, is_anonymous, created_at)
+    donation.py       # Donation (user_id FK, title, author, isbn nullable, genre nullable,
+                      #   condition: new|good|fair|poor, estimated_price float,
+                      #   credit_amount float nullable — set on approval to estimated_price/4,
+                      #   status: pending|approved|rejected, admin_notes nullable,
+                      #   submitted_at, reviewed_at nullable, book_id nullable FK)
     membership.py     # Membership (user_id unique FK, tier: silver|gold|family,
                       #   family_group_id nullable int — links family plan members,
                       #   created_at)
@@ -86,6 +91,12 @@ backend/
                       #   memberships/pricing GET/PUT, members/<id>/membership PUT
                       #   members list now includes membership_tier and family_group_id
     membership.py     # /api/membership — GET current user's tier, pricing, family members list
+    donations.py      # /api/donations POST — member submits a donation
+                      # /api/my-donations GET — member's own donation history
+                      # /api/admin/donations GET — all donations (filterable by ?status=)
+                      # /api/admin/donations/:id/approve PUT — approve: adds book (or copy)
+                      #   to catalogue, sets credit_amount (default price/4, admin-adjustable)
+                      # /api/admin/donations/:id/reject PUT — reject with optional reason
     __init__.py       # register_blueprints()
 ```
 
@@ -135,20 +146,37 @@ frontend/src/
                             #        copies, avg rating + count, reviews list,
                             #        Borrow / Reserve / Borrow (Ready) / Borrowed action button
                             #
-                            # My Profile tab (single tab combining borrows + fines):
+                            # My Profile tab (single tab combining borrows + fines + donations):
                             #   Membership info card — tier badge, borrow limit, monthly rate,
                             #     family group members (family tier only)
                             #   My Borrowed Books — active borrows with Return button → Return+Review modal
                             #   My Reservations — queue position or ready status, cancel button
                             #   My Fines — fine amount and paid/unpaid status
+                            #   Donate a Book section — Donate button opens modal; table of past
+                            #     donations with status, estimated value, and credit earned;
+                            #     total credits earned card (approved donations only)
                             # Return modal: optional 5-star picker, review text, anonymous toggle
-    AdminDashboard.js       # Books · Borrowed · Fines · Members · Fine Policy · Memberships tabs
+                            # Donate modal: title, author, ISBN (optional), genre (optional),
+                            #   condition dropdown (new/good/fair/poor), estimated value field
+                            #   with live credit preview (value/4); success screen after submit
+    AdminDashboard.js       # Books · Borrowed · Fines · Members · Fine Policy · Memberships · Donations tabs
                             # + Edit book modal + Inventory Logs modal + Member Records modal
+                            # + Approve Donation modal + Reject Donation modal
                             #
                             # Memberships tab:
                             #   Pricing cards — Silver / Gold / Family monthly rates (editable form)
                             #   Member Tiers table — all members with current tier badge,
                             #     family group, and inline tier-change dropdown
+                            #
+                            # Donations tab:
+                            #   Status filter buttons — Pending / Approved / Rejected / All
+                            #   Table: member, title (+ ISBN/genre sub-row), author, condition,
+                            #     estimated value, credit awarded, status badge, submitted date,
+                            #     Approve/Reject buttons (pending only), admin notes preview
+                            #   Approve modal: credit field (defaults to price/4, editable),
+                            #     optional admin notes; on confirm adds book to catalogue
+                            #     (or increments copy count if title or ISBN already exists)
+                            #   Reject modal: optional reason field
 ```
 
 ### Auth flow
@@ -213,6 +241,15 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/api/membership` | member | Current user's tier, borrow limit, monthly rate, family group members |
+
+### Donations
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/api/donations` | member | Submit a book donation (title, author, isbn?, genre?, condition, estimated_price) |
+| GET | `/api/my-donations` | member | Caller's donation history |
+| GET | `/api/admin/donations` | admin | All donations; optional `?status=pending\|approved\|rejected` filter |
+| PUT | `/api/admin/donations/:id/approve` | admin | Approve donation — adds book to catalogue (or copy if title/ISBN already exists), sets credit_amount (default: estimated_price/4, admin-adjustable) |
+| PUT | `/api/admin/donations/:id/reject` | admin | Reject donation with optional `admin_notes` |
 
 ---
 
@@ -338,6 +375,30 @@ Three tiers control how many books a member can have active at once.
 **Pricing** is stored in the `setting` table under keys `membership_silver_rate`, `membership_gold_rate`, `membership_family_rate`. Defaults: $9.99 / $19.99 / $29.99 per month. The admin can change these at runtime via the Memberships tab without restarting the server.
 
 **Seeding**: `_seed_memberships()` in `models/__init__.py` runs on every startup. It finds any member `User` without a `Membership` row and randomly assigns them `silver`, `gold`, or `family`. Family members are grouped sequentially (4 per group). This is idempotent — it no-ops when all members already have a tier.
+
+---
+
+## Donation System
+
+Members can donate physical books to the library. Donations sit in a `pending` queue until an admin reviews them.
+
+**Member flow:**
+1. Member clicks **Donate** in the My Profile tab → modal opens with form fields: title, author, ISBN (optional), genre (optional), condition (new/good/fair/poor), estimated value. A live preview shows the credit they will earn (value ÷ 4).
+2. On submit, a `Donation` record is created with `status = 'pending'`. The member sees it immediately in the My Donations table.
+3. Once approved, the credit amount appears in the table and a running total of all earned credits is shown in a summary card.
+
+**Admin flow:**
+1. Admin opens the Donations tab (defaults to Pending view) and sees a table of submitted donations.
+2. **Approve**: opens a modal showing the default credit (estimated_price / 4). Admin can override the amount and add notes, then confirms. The book is added to the catalogue:
+   - If the donated book's title matches an existing book (case-insensitive) or its ISBN matches, a copy is added to that existing record.
+   - Otherwise a new `Book` row is created (ISBN defaults to `DONATED-{id}` if not provided).
+   - A `BookLog` entry is written in both cases.
+   - `donation.credit_amount` is set and `donation.status` → `'approved'`.
+3. **Reject**: admin optionally provides a reason. `donation.status` → `'rejected'`.
+
+**`Donation` model fields:** `id`, `user_id`, `title`, `author`, `isbn` (nullable), `genre` (nullable), `condition`, `estimated_price`, `credit_amount` (nullable — set on approval), `status`, `admin_notes` (nullable), `submitted_at`, `reviewed_at` (nullable), `book_id` (nullable FK — set to the matched or newly created book on approval).
+
+**Credit** is stored per donation record. Total credit earned = sum of `credit_amount` across all approved donations for a user. There is no separate wallet table; the member UI computes the total client-side.
 
 ---
 

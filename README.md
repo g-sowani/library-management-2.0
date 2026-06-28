@@ -1,6 +1,6 @@
 # Library Management System
 
-Full-stack library management app built with Flask and React. Members browse books, borrow/return/reserve them, rate and review, and get personalised recommendations. Admins manage the catalogue, monitor borrows, configure fine policy, and manage membership tiers.
+Full-stack library management app built with Flask and React. Members browse books, borrow/return/reserve them, rate and review, get personalised recommendations, and donate books to the library. Admins manage the catalogue, monitor borrows, configure fine policy, manage membership tiers, and review incoming book donations.
 
 ---
 
@@ -63,7 +63,6 @@ Created automatically on first run — no setup needed.
 
 **Member**
 - Browse all books with search, genre, availability, and rating filters
-- Browse all books with search, genre, availability, and rating filters
 - Borrow and return books; borrow limits enforced by membership tier
 - Reserve books when all copies are out; see your queue position
 - Rate (1–5 stars) and optionally review books at return time; post anonymously
@@ -71,7 +70,8 @@ Created automatically on first run — no setup needed.
 - Trending This Week strip — top 8 books by borrow count in the last 7 days
 - Personalised recommendations — content-based (genre/author preference profile)
 - Collaborative recommendations — users with similar reading history
-- **My Profile tab** — membership info card, active borrows, reservations, and fines in one place
+- **My Profile tab** — membership info card, active borrows, reservations, fines, and donation history in one place
+- **Donate a Book** — submit a physical book for the library; earn 1/4 of its estimated value as library credit upon admin approval
 
 **Admin**
 - Add / edit / delete books; ISBN uniqueness enforced
@@ -82,6 +82,7 @@ Created automatically on first run — no setup needed.
 - Configure fine-per-day rate and loan duration at runtime
 - Refresh book metadata (description, author bio, cover) from Open Library
 - Memberships tab: set per-tier monthly pricing (Silver / Gold / Family) and assign or change any member's tier
+- **Donations tab** — review pending donations; approve (adds book to catalogue and credits member) or reject with an optional reason; filter by status (Pending / Approved / Rejected / All)
 
 **Membership Tiers**
 

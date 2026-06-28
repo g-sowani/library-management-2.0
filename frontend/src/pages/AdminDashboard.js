@@ -15,6 +15,7 @@ const TABS = [
   { id: 'members', label: 'Members' },
   { id: 'policy', label: 'Fine Policy' },
   { id: 'memberships', label: 'Memberships' },
+  { id: 'donations', label: 'Donations' },
 ];
 
 const EMPTY_BOOK_FORM = { title: '', author: '', isbn: '', total_copies: 1, genre: '' };
@@ -64,6 +65,18 @@ function AdminDashboard() {
   const [membershipPricingSaved, setMembershipPricingSaved] = useState(false);
   const [membershipsLoaded, setMembershipsLoaded] = useState(false);
 
+  // Donations
+  const [donations, setDonations] = useState([]);
+  const [donationsLoaded, setDonationsLoaded] = useState(false);
+  const [donationStatusFilter, setDonationStatusFilter] = useState('pending');
+  const [approvingDonation, setApprovingDonation] = useState(null); // donation object
+  const [approveCredit, setApproveCredit] = useState('');
+  const [approveNotes, setApproveNotes] = useState('');
+  const [approveError, setApproveError] = useState('');
+  const [rejectingDonation, setRejectingDonation] = useState(null);
+  const [rejectNotes, setRejectNotes] = useState('');
+  const [rejectError, setRejectError] = useState('');
+
   const load = useCallback(() => {
     setLoadError('');
     Promise.all([
@@ -90,6 +103,11 @@ function AdminDashboard() {
     });
   }, []);
 
+  const loadDonations = useCallback((status) => {
+    const qs = status ? `?status=${status}` : '';
+    api.get(`/admin/donations${qs}`).then(r => { setDonations(r.data); setDonationsLoaded(true); });
+  }, []);
+
   const handleTabChange = (t) => {
     setTab(t);
     setPolicySaved(false);
@@ -100,6 +118,7 @@ function AdminDashboard() {
       if (!membersLoaded) loadMembers();
       setMembershipsLoaded(true);
     }
+    if (t === 'donations') loadDonations(donationStatusFilter);
   };
 
   const openMember = async (member) => {
@@ -223,6 +242,48 @@ function AdminDashboard() {
       loadMembers();
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to update tier');
+    }
+  };
+
+  const openApprove = (donation) => {
+    setApprovingDonation(donation);
+    setApproveCredit((donation.estimated_price / 4).toFixed(2));
+    setApproveNotes('');
+    setApproveError('');
+  };
+
+  const submitApprove = async (e) => {
+    e.preventDefault();
+    setApproveError('');
+    try {
+      await api.put(`/admin/donations/${approvingDonation.id}/approve`, {
+        credit_amount: Number(approveCredit),
+        admin_notes: approveNotes,
+      });
+      setApprovingDonation(null);
+      loadDonations(donationStatusFilter);
+    } catch (err) {
+      setApproveError(err.response?.data?.error || 'Failed to approve donation');
+    }
+  };
+
+  const openReject = (donation) => {
+    setRejectingDonation(donation);
+    setRejectNotes('');
+    setRejectError('');
+  };
+
+  const submitReject = async (e) => {
+    e.preventDefault();
+    setRejectError('');
+    try {
+      await api.put(`/admin/donations/${rejectingDonation.id}/reject`, {
+        admin_notes: rejectNotes,
+      });
+      setRejectingDonation(null);
+      loadDonations(donationStatusFilter);
+    } catch (err) {
+      setRejectError(err.response?.data?.error || 'Failed to reject donation');
     }
   };
 
@@ -556,7 +617,153 @@ function AdminDashboard() {
             )}
           </>
         )}
+
+        {/* ── Donations ── */}
+        {tab === 'donations' && (
+          <>
+            <div className="section-header">
+              <h3>Book Donations</h3>
+              <div className="btn-row">
+                {['pending', 'approved', 'rejected', ''].map(s => (
+                  <button
+                    key={s || 'all'}
+                    className={`btn btn-sm${donationStatusFilter === s ? '' : ' btn-outline'}`}
+                    onClick={() => { setDonationStatusFilter(s); loadDonations(s); }}
+                  >
+                    {s ? s.charAt(0).toUpperCase() + s.slice(1) : 'All'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {!donationsLoaded ? (
+              <div className="empty">Loading…</div>
+            ) : donations.length === 0 ? (
+              <div className="empty">No donations{donationStatusFilter ? ` with status "${donationStatusFilter}"` : ''}</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Member</th>
+                    <th>Title</th>
+                    <th>Author</th>
+                    <th>Condition</th>
+                    <th>Est. Value</th>
+                    <th>Credit</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {donations.map(d => (
+                    <tr key={d.id}>
+                      <td>{d.username}</td>
+                      <td>
+                        {d.title}
+                        {d.isbn && <div style={{ fontSize: '0.75rem', color: '#888' }}>ISBN: {d.isbn}</div>}
+                        {d.genre && <div style={{ fontSize: '0.75rem', color: '#888' }}>{d.genre}</div>}
+                      </td>
+                      <td>{d.author}</td>
+                      <td style={{ textTransform: 'capitalize' }}>{d.condition}</td>
+                      <td>${d.estimated_price.toFixed(2)}</td>
+                      <td>
+                        {d.credit_amount != null
+                          ? <span style={{ color: '#2e7d32', fontWeight: 600 }}>${d.credit_amount.toFixed(2)}</span>
+                          : <span className="muted">—</span>}
+                      </td>
+                      <td>
+                        <Badge
+                          variant={d.status === 'approved' ? 'active' : d.status === 'rejected' ? 'overdue' : 'returned'}
+                        >
+                          {d.status.charAt(0).toUpperCase() + d.status.slice(1)}
+                        </Badge>
+                      </td>
+                      <td>{new Date(d.submitted_at).toLocaleDateString()}</td>
+                      <td>
+                        {d.status === 'pending' && (
+                          <div className="btn-row">
+                            <button className="btn btn-sm" onClick={() => openApprove(d)}>Approve</button>
+                            <button className="btn btn-sm btn-outline" onClick={() => openReject(d)}>Reject</button>
+                          </div>
+                        )}
+                        {d.admin_notes && (
+                          <div style={{ fontSize: '0.75rem', color: '#666', marginTop: 4 }} title={d.admin_notes}>
+                            Note: {d.admin_notes.length > 40 ? d.admin_notes.slice(0, 40) + '…' : d.admin_notes}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
       </div>
+
+      {/* ── Approve Donation Modal ── */}
+      {approvingDonation && (
+        <Modal title="Approve Donation" onClose={() => setApprovingDonation(null)}>
+          <p style={{ marginBottom: 16, fontSize: '0.9rem', color: '#555' }}>
+            Approving <strong>{approvingDonation.title}</strong> by {approvingDonation.author} donated by <strong>{approvingDonation.username}</strong>.
+            The book will be added to the catalogue with 1 copy.
+          </p>
+          <form onSubmit={submitApprove}>
+            {approveError && <div className="error">{approveError}</div>}
+            <div className="form-group">
+              <label>Credit to award ($)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={approveCredit}
+                onChange={e => setApproveCredit(e.target.value)}
+                required
+              />
+              <p className="field-hint">
+                Default is 1/4 of estimated value (${(approvingDonation.estimated_price / 4).toFixed(2)}). You can adjust this.
+              </p>
+            </div>
+            <div className="form-group">
+              <label>Admin notes <span className="muted" style={{ textTransform: 'none', fontSize: '0.75rem' }}>(optional)</span></label>
+              <input
+                value={approveNotes}
+                onChange={e => setApproveNotes(e.target.value)}
+                placeholder="Any notes for the member…"
+              />
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-sm btn-outline" onClick={() => setApprovingDonation(null)}>Cancel</button>
+              <button type="submit" className="btn btn-sm">Confirm Approval</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ── Reject Donation Modal ── */}
+      {rejectingDonation && (
+        <Modal title="Reject Donation" onClose={() => setRejectingDonation(null)}>
+          <p style={{ marginBottom: 16, fontSize: '0.9rem', color: '#555' }}>
+            Rejecting <strong>{rejectingDonation.title}</strong> donated by <strong>{rejectingDonation.username}</strong>.
+          </p>
+          <form onSubmit={submitReject}>
+            {rejectError && <div className="error">{rejectError}</div>}
+            <div className="form-group">
+              <label>Reason <span className="muted" style={{ textTransform: 'none', fontSize: '0.75rem' }}>(optional — shown to member)</span></label>
+              <input
+                value={rejectNotes}
+                onChange={e => setRejectNotes(e.target.value)}
+                placeholder="e.g. Duplicate, poor condition, not in our catalogue…"
+              />
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-sm btn-outline" onClick={() => setRejectingDonation(null)}>Cancel</button>
+              <button type="submit" className="btn btn-sm btn-outline">Confirm Rejection</button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {/* ── Add Book Modal ── */}
       {showAdd && (

@@ -4,6 +4,7 @@ from routes.borrows import borrows_bp
 from routes.admin import admin_bp
 from routes.reservations import reservations_bp
 from routes.membership import membership_bp
+from routes.donations import donations_bp
 
 
 def register_blueprints(app):
@@ -13,3 +14,4 @@ def register_blueprints(app):
     app.register_blueprint(admin_bp)
     app.register_blueprint(reservations_bp)
     app.register_blueprint(membership_bp)
+    app.register_blueprint(donations_bp)

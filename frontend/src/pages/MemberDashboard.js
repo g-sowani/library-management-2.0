@@ -6,6 +6,7 @@ import NavTabs from "../components/NavTabs";
 import Badge from "../components/Badge";
 import Modal from "../components/Modal";
 import SearchBar from "../components/SearchBar";
+import { GENRES } from "../constants";
 
 const TABS = [
   { id: "books", label: "Available Books" },
@@ -78,6 +79,14 @@ function MemberDashboard() {
   const [reviewText, setReviewText] = useState("");
   const [reviewAnonymous, setReviewAnonymous] = useState(false);
 
+  // Donation
+  const EMPTY_DONATION = { title: "", author: "", isbn: "", genre: "", condition: "good", estimated_price: "" };
+  const [donations, setDonations] = useState([]);
+  const [showDonateModal, setShowDonateModal] = useState(false);
+  const [donationForm, setDonationForm] = useState(EMPTY_DONATION);
+  const [donationError, setDonationError] = useState("");
+  const [donationSuccess, setDonationSuccess] = useState(false);
+
   const selectedBook = books.find((b) => b.id === selectedBookId) || null;
 
   const load = useCallback(() => {
@@ -87,6 +96,7 @@ function MemberDashboard() {
       api.get("/my-borrows").then((r) => setBorrows(r.data)),
       api.get("/my-fines").then((r) => setFines(r.data)),
       api.get("/my-reservations").then((r) => setReservations(r.data)),
+      api.get("/my-donations").then((r) => setDonations(r.data)).catch(() => {}),
       api.get("/membership").then((r) => setMembershipInfo(r.data)).catch(() => {}),
       api
         .get("/recommendations")
@@ -224,6 +234,29 @@ function MemberDashboard() {
       load();
     } catch (e) {
       setError(e.response?.data?.error || "Failed to cancel reservation");
+    }
+  };
+
+  const openDonateModal = () => {
+    setDonationForm(EMPTY_DONATION);
+    setDonationError("");
+    setDonationSuccess(false);
+    setShowDonateModal(true);
+  };
+
+  const submitDonation = async (e) => {
+    e.preventDefault();
+    setDonationError("");
+    try {
+      await api.post("/donations", {
+        ...donationForm,
+        estimated_price: Number(donationForm.estimated_price),
+      });
+      setDonationSuccess(true);
+      setDonationForm(EMPTY_DONATION);
+      load();
+    } catch (err) {
+      setDonationError(err.response?.data?.error || "Failed to submit donation");
     }
   };
 
@@ -852,6 +885,76 @@ function MemberDashboard() {
                 </tbody>
               </table>
             )}
+
+            {/* Donate a Book */}
+            <div className="section-header" style={{ marginTop: 32 }}>
+              <h3>Donate a Book</h3>
+              <button className="btn btn-sm" onClick={openDonateModal}>Donate</button>
+            </div>
+            <p style={{ fontSize: "0.85rem", color: "#666", marginBottom: 16 }}>
+              Donate a book you own to the library. Once approved by an admin, the book is added to the catalogue and you earn <strong>1/4 of its estimated value</strong> as library credit.
+            </p>
+            {donations.length === 0 ? (
+              <div className="empty">No donations yet</div>
+            ) : (
+              <>
+                {(() => {
+                  const totalCredit = donations
+                    .filter((d) => d.status === "approved")
+                    .reduce((sum, d) => sum + (d.credit_amount || 0), 0);
+                  return totalCredit > 0 ? (
+                    <div className="membership-card" style={{ marginBottom: 16 }}>
+                      <div className="membership-card-stats">
+                        <div className="membership-stat">
+                          <span className="membership-stat-label">Total credits earned</span>
+                          <span className="membership-stat-value">${totalCredit.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Title</th>
+                      <th>Author</th>
+                      <th>Estimated Value</th>
+                      <th>Credit Earned</th>
+                      <th>Status</th>
+                      <th>Submitted</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {donations.map((d) => (
+                      <tr key={d.id}>
+                        <td>{d.title}</td>
+                        <td>{d.author}</td>
+                        <td>${d.estimated_price.toFixed(2)}</td>
+                        <td>
+                          {d.status === "approved"
+                            ? <span style={{ color: "#2e7d32", fontWeight: 600 }}>${(d.credit_amount || 0).toFixed(2)}</span>
+                            : <span className="muted">—</span>}
+                        </td>
+                        <td>
+                          <Badge
+                            variant={
+                              d.status === "approved"
+                                ? "active"
+                                : d.status === "rejected"
+                                ? "overdue"
+                                : "returned"
+                            }
+                          >
+                            {d.status.charAt(0).toUpperCase() + d.status.slice(1)}
+                          </Badge>
+                        </td>
+                        <td>{new Date(d.submitted_at).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
           </>
         )}
       </div>
@@ -984,6 +1087,97 @@ function MemberDashboard() {
                 No reviews yet. Be the first to review after borrowing!
               </div>
             </div>
+          )}
+        </Modal>
+      )}
+
+      {/* Donate a Book modal */}
+      {showDonateModal && (
+        <Modal title="Donate a Book" onClose={() => setShowDonateModal(false)}>
+          {donationSuccess ? (
+            <>
+              <p style={{ color: "#2e7d32", marginBottom: 20 }}>
+                Your donation has been submitted! The admin will review it and add the book to the catalogue. You'll earn <strong>1/4 of the estimated value</strong> as credit once approved.
+              </p>
+              <div className="modal-actions">
+                <button className="btn btn-sm" onClick={() => { setShowDonateModal(false); setDonationSuccess(false); }}>Close</button>
+                <button className="btn btn-sm btn-outline" onClick={() => setDonationSuccess(false)}>Donate another</button>
+              </div>
+            </>
+          ) : (
+            <form onSubmit={submitDonation}>
+              {donationError && <div className="error">{donationError}</div>}
+              <div className="form-group">
+                <label>Title *</label>
+                <input
+                  value={donationForm.title}
+                  onChange={(e) => setDonationForm({ ...donationForm, title: e.target.value })}
+                  placeholder="Book title"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Author *</label>
+                <input
+                  value={donationForm.author}
+                  onChange={(e) => setDonationForm({ ...donationForm, author: e.target.value })}
+                  placeholder="Author name"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>ISBN <span className="muted" style={{ textTransform: "none", fontSize: "0.75rem" }}>(optional — helps us find cover &amp; description)</span></label>
+                <input
+                  value={donationForm.isbn}
+                  onChange={(e) => setDonationForm({ ...donationForm, isbn: e.target.value })}
+                  placeholder="e.g. 978-0747532743"
+                />
+              </div>
+              <div className="form-group">
+                <label>Genre <span className="muted" style={{ textTransform: "none", fontSize: "0.75rem" }}>(optional)</span></label>
+                <select
+                  value={donationForm.genre}
+                  onChange={(e) => setDonationForm({ ...donationForm, genre: e.target.value })}
+                >
+                  <option value="">— Select genre —</option>
+                  {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Condition *</label>
+                <select
+                  value={donationForm.condition}
+                  onChange={(e) => setDonationForm({ ...donationForm, condition: e.target.value })}
+                  required
+                >
+                  <option value="new">New</option>
+                  <option value="good">Good</option>
+                  <option value="fair">Fair</option>
+                  <option value="poor">Poor</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Estimated Value ($) *</label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={donationForm.estimated_price}
+                  onChange={(e) => setDonationForm({ ...donationForm, estimated_price: e.target.value })}
+                  placeholder="e.g. 20.00"
+                  required
+                />
+                {donationForm.estimated_price > 0 && (
+                  <p className="field-hint">
+                    You will earn <strong>${(Number(donationForm.estimated_price) / 4).toFixed(2)}</strong> in library credit upon approval.
+                  </p>
+                )}
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-sm btn-outline" onClick={() => setShowDonateModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-sm">Submit Donation</button>
+              </div>
+            </form>
           )}
         </Modal>
       )}

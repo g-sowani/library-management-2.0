@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: library-management
+    runtime: python
+    rootDir: backend
+    buildCommand: |
+      pip install -r requirements.txt &&
+      cd ../frontend &&
+      npm install &&
+      npm run build
+    startCommand: gunicorn app:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://library-management.onrender.com
+    disk:
+      name: sqlite-data
+      mountPath: /opt/render/project/src/backend/instance
+      sizeGB: 1

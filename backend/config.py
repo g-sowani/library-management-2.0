@@ -5,3 +5,4 @@ class Config:
     SQLALCHEMY_DATABASE_URI = 'sqlite:///library.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     CORS_ORIGINS = ['http://localhost:3000']
+    GROQ_API_KEY = os.environ.get('GROQ_API_KEY')

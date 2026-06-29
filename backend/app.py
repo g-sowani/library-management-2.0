@@ -38,6 +38,7 @@ def _migrate_db():
         'description': 'TEXT',
         'author_bio': 'TEXT',
         'cover_url': 'VARCHAR(500)',
+        'cover_color': 'VARCHAR(7)',
     })
     add_missing_cols('user', {'avatar': 'TEXT'})
     add_missing_cols('post_reaction', {'created_at': 'DATETIME'})

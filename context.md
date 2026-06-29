@@ -12,7 +12,8 @@ A full-stack library management app. Admins manage the book catalogue, monitor b
 | Backend | Python 3 · Flask 3 · SQLAlchemy · SQLite |
 | Frontend | React 18 (Create React App) · Axios |
 | Auth | Flask session cookies (signed, `withCredentials`) |
-| Metadata | Open Library API (urllib, no extra dependency) |
+| Metadata | Open Library API (urllib) · Pillow (dominant colour extraction) |
+| AI Search | Groq API (`groq` Python SDK) · `llama-3.1-8b-instant` |
 
 ---
 
@@ -54,8 +55,10 @@ backend/
                       #   avatar: TEXT nullable — base64 data-URL stored in DB; NULL = no photo
                       #   has a joined-load `membership` relationship → Membership
     book.py           # Book (id, title, author, isbn, genre, total/available_copies,
-                      #        description, author_bio, cover_url)
+                      #        description, author_bio, cover_url, cover_color)
                       #   description/author_bio: NULL = never scraped, '' = tried/no data, text = data
+                      #   cover_color: VARCHAR(7) nullable — dominant mid-tone hex colour of cover image
+                      #     (e.g. '#a83c2e'); NULL = not yet extracted; set during scrape via Pillow
     borrow.py         # Borrow (user↔book, borrow/due/return dates, fine, fine_paid)
     reservation.py    # Reservation (user↔book, created_at, status: pending|ready)
     book_log.py       # BookLog (audit log per book — action, details, admin, timestamp)
@@ -91,9 +94,14 @@ backend/
     books.py          # /api/books/ — CRUD + PUT edit + GET logs + GET reviews
                       #   + GET trending + GET recommendations + GET collaborative-recommendations
                       #   + GET enrichment (lazy scrape) + POST scrape (admin re-scrape)
+                      #   + POST scrape-all (admin bulk re-scrape with sequential per-book processing)
+                      #   + POST ai-search — natural-language book search via Groq
                       #   book list includes reservation_count, avg_rating, rating_count,
-                      #   description, author_bio, cover_url per book
+                      #   description, author_bio, cover_url, cover_color per book
                       #   _scrape_book_data() — Open Library scraper (description, bio, cover)
+                      #   _extract_dominant_color(cover_url) — downloads cover image, resizes to
+                      #     64×64 via Pillow, bins mid-tone pixels (skips near-white/near-black),
+                      #     returns most-frequent bin as '#rrggbb'; called after every scrape
                       #   _scrape_and_store() — background thread helper (called on add_book)
     borrows.py        # /api/borrow/, /api/return/, /api/my-borrows, /api/my-fines
                       #   borrow enforces per-tier active-borrow limit (Silver 1, Gold 3, Family 1)
@@ -133,7 +141,7 @@ backend/
 ### DB migrations
 `app.py` runs `_migrate_db()` on every startup. It uses a reusable `add_missing_cols(table, additions)` helper that calls `ALTER TABLE` for any column in models not yet present in the SQLite file. New tables (e.g. `community`, `community_membership`) are created automatically by `db.create_all()`. `_seed_memberships()` runs on every startup and silently no-ops when all members already have a tier.
 
-Tables currently patched by `_migrate_db()`: `book` (genre, description, author_bio, cover_url), `user` (avatar), `post_reaction` (created_at), `comment_reaction` (created_at).
+Tables currently patched by `_migrate_db()`: `book` (genre, description, author_bio, cover_url, cover_color), `user` (avatar), `post_reaction` (created_at), `comment_reaction` (created_at).
 
 ### Fine calculation
 `Borrow.calculate_fine()` reads `fine_per_day` live from the `setting` table. `borrow_days` (loan duration) is also read from `setting` at borrow time. Both are configurable by the admin at runtime.
@@ -169,6 +177,10 @@ frontend/src/
     Badge.js                # Status chip (active / overdue / returned)
     Modal.js                # Overlay modal; wide prop for 640px variant
                             #   Header row has title on left and ✕ close button on right
+                            #   Hero mode: heroBg + heroTextColor + heroContent props render a
+                            #     full-width coloured zone (background set inline) that includes
+                            #     the header; padding removed from .modal root; .modal-body
+                            #     wraps the remaining children with restored padding
     SearchBar.js            # Controlled search input; supports autoFocus prop
   pages/
     Login.js                # Sign-in / register form (role selector on register)
@@ -179,8 +191,13 @@ frontend/src/
                             # Available Books tab (top → bottom):
                             #   1. Search trigger row — magnifying-glass icon button + book count
                             #      Active filters shown as a dot on the icon when panel is closed
-                            #   2. Collapsible search panel (searchOpen state) — text SearchBar
-                            #      (autoFocus) + genre / availability / rating dropdowns + Clear;
+                            #   2. Collapsible search panel (searchOpen state):
+                            #      search-panel-top row: SearchBar (keyword) OR ai-search-input
+                            #        (AI mode) + ✨ AI toggle button
+                            #      Keyword mode: genre / availability / rating dropdowns + Clear
+                            #      AI mode: natural-language input + Search button; fires
+                            #        POST /api/books/ai-search on Enter or button click;
+                            #        state: aiMode, aiQuery, aiResults, aiLoading, aiError
                             #      animates in with fade+translateY
                             #   3. Filtered results card grid (shown only when filters active) —
                             #      same rec-card style as strips; trending books get inline badge
@@ -197,11 +214,16 @@ frontend/src/
                             #     per click with smooth behavior; each strip has its own useRef
                             #
                             #   Click any card → Book Detail modal (wide):
-                            #     cover image + author/genre/availability/rating meta card
-                            #     Borrow / Reserve / Borrow (Ready) / Borrowed action button
-                            #       (placed above description)
-                            #     Description + author bio (lazy-enriched)
-                            #     Reviews list
+                            #     Hero zone (coloured with book cover's dominant colour):
+                            #       modal title + close button, cover image, meta rows
+                            #       (Author/Genre/Available/Rating), action button
+                            #       Text colours (labels, borders, subtle text) are computed
+                            #       at render from cover_color via wcagTextColor() (WCAG AA)
+                            #       coverPalette = useMemo over selectedBook.cover_color —
+                            #       instant, no async canvas extraction
+                            #     Below hero zone (default modal background):
+                            #       Description + author bio (lazy-enriched)
+                            #       Reviews list
                             #     ✕ close button in modal header (no bottom Close button)
                             #
                             # My Profile tab:
@@ -240,6 +262,10 @@ frontend/src/
                             # + Edit book modal + Inventory Logs modal + Member Records modal
                             # + Approve Donation modal + Reject Donation modal
                             # + Approve Community modal + Reject Community modal
+                            # + Refresh All Log modal — opens on "Refresh All"; calls
+                            #   POST /books/:id/scrape for each book sequentially; appends
+                            #   a log entry per book (✓ title — description, cover, author bio,
+                            #   color  |  ✗ title — failed) with a live progress bar
                             #
                             # Fines tab (merged):
                             #   Pending Fines table — all unpaid fines
@@ -295,9 +321,11 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 | DELETE | `/api/books/:id` | admin | Delete book (blocked if active borrows) |
 | GET | `/api/books/:id/logs` | admin | Inventory log for a book |
 | GET | `/api/books/:id/reviews` | member+ | Reviews for a book — `{ avg_rating, rating_count, reviews: [...] }` |
+| POST | `/api/books/scrape-all` | admin | Scrape Open Library for every book sequentially; stores description, author_bio, cover_url, cover_color; returns `{ count }` |
 | GET | `/api/trending` | member+ | Top 8 books by borrow count in the last 7 days; includes `borrow_count_week` |
 | GET | `/api/recommendations` | member+ | Top 8 content-based recommendations for the caller |
 | GET | `/api/collaborative-recommendations` | member+ | Top 8 collaborative-filtered recommendations for the caller |
+| POST | `/api/books/ai-search` | member+ | Natural-language search via Groq; body `{ query }` returns up to 8 matched books with a `reason` field per book |
 
 ### Borrows
 | Method | Path | Auth | Description |
@@ -429,6 +457,24 @@ User-based collaborative filtering using cosine similarity on implicit rating ve
 - Client-side dedup removes any book already shown in the content-based strip.
 - Empty if the user has no borrow history or no other user shares any books.
 
+### AI Search (`/api/books/ai-search`)
+Optional natural-language book search powered by Groq (`llama-3.1-8b-instant`).
+
+- Member types a freeform description (e.g. "boy with glasses at a magical school").
+- Backend formats the full book catalogue (`id. "Title" by Author [Genre]`) into a prompt asking the model to rank the most relevant matches.
+- Groq returns a raw JSON array `[{ "id": <int>, "reason": "<one-line explanation>" }]` ordered by relevance (up to 8 results).
+- Backend validates IDs against the DB, hydrates each match with full book data (ratings, availability, reservation count), and returns the result.
+- The API key is stored in `Config.GROQ_API_KEY` (falls back to env var `GROQ_API_KEY`).
+- Model: `llama-3.1-8b-instant` at `temperature=0.1` for consistent, deterministic ranking.
+
+**Frontend integration** (Available Books tab, search panel):
+- A `✨ AI` toggle button sits at the right end of the search input row.
+- When active: normal text filters are hidden; a natural-language input field takes their place; pressing Enter or clicking **Search** fires the request.
+- Results render as a card grid with an italic `✨ <reason>` badge on each card.
+- The book count label switches to `N AI matches` while in AI mode.
+- Toggling off or clicking **Clear** resets to normal keyword + filter search.
+- State: `aiMode`, `aiQuery`, `aiResults`, `aiLoading`, `aiError` (all local to `MemberDashboard`).
+
 ---
 
 ## Books Tab UI — Filter & Navigation
@@ -539,6 +585,7 @@ Gold members can create communities, which go through admin approval before beco
 - **Atomic UPDATE over ORM assignment** — `available_copies` is never read into Python and written back. All mutations use `UPDATE … SET available_copies = available_copies ± 1` so the DB handles the arithmetic atomically.
 - **Review submitted at return time** — the review is written in the same DB transaction as the return, so a review can never exist without a completed borrow. The `borrow_id` unique constraint prevents duplicate reviews per borrow.
 - **Anonymous reviews** — `is_anonymous` is stored on the `Review` record; the reviewer's username is resolved at read time and replaced with `"Anonymous"` before returning to the client, so the real identity is never exposed via the API.
+- **Cover colour extracted server-side, not client-side** — the dominant colour of each book cover is computed by the backend (Pillow, 64×64 downsample, mid-tone bin) and stored as `cover_color` in the database. It is served with the standard book list so member clients can apply it instantly when the detail modal opens — no async canvas extraction, no loading flicker. The WCAG-compliant foreground colour (`wcagTextColor`) is derived in the browser from the stored hex value at render time.
 - **Recommendations are read-only and parallel** — all three discovery endpoints (`/trending`, `/recommendations`, `/collaborative-recommendations`) are pure reads with no side effects; they are fetched in parallel on mount and failures are silently ignored so they never degrade the core browsing experience.
 - **Implicit rating weight (0.6)** — unrated borrows contribute a weight below a 3-star rating (0.6 < 0.6̄) so that books the user read but didn't bother to review pull less signal than books they actively rated. This prevents passive reads from dominating the preference profile.
 - **Collab dedup is client-side** — the collaborative strip filters out IDs already shown in the content-based strip in React, keeping both endpoints independent and cacheable without needing server-side coordination.
@@ -550,3 +597,6 @@ Gold members can create communities, which go through admin approval before beco
 - **Notification badge via polling, not WebSockets** — 60-second polling via `setInterval` is simple and stateless. The activity-count endpoint is a single aggregating query; polling only runs when the Community tab is not active (to avoid counting events the user is already seeing).
 - **Admin tab merging (Fines + Members)** — Pending Fines and Fine Policy share a tab; All Members, Membership Pricing, and Member Tiers share a tab. Reduces nav clutter without hiding functionality.
 - **Comment depth capped visually at 4, not structurally** — nesting in data is unlimited; only the CSS indentation class switches at depth 4. This prevents the UI from becoming too narrow on deep threads while preserving full reply history.
+- **AI search is a frontend toggle, not a separate page** — the `✨ AI` button lives inside the existing collapsible search panel so the feature is discoverable but not intrusive. Activating it clears normal filters (and vice-versa) so the two modes never conflict. Results use the same `books-grid` / `rec-card` layout as keyword results for visual consistency.
+- **Groq over OpenAI for AI search** — Groq's inference is significantly faster (sub-second for this catalogue size), which matters for a search-as-you-submit UX. `llama-3.1-8b-instant` is sufficient for semantic book matching; the prompt is constrained to return only IDs from the provided catalogue so hallucinated books are structurally impossible.
+- **API key in `Config`, not hardcoded** — `GROQ_API_KEY` is read from the environment (`os.environ.get`) with the key as the fallback default, making it easy to rotate without a code change.

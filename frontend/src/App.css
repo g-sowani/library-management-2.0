@@ -720,6 +720,47 @@ td {
   overflow-y: auto;
 }
 
+/* ── Hero-mode modal (dominant-color header) ────────────────────────────────── */
+
+.modal.modal-has-hero {
+  padding: 0;
+}
+
+.modal-hero {
+  transition: background 0.35s ease, color 0.35s ease;
+}
+
+.modal.modal-has-hero .modal-header {
+  padding: 24px 32px 12px;
+  margin-bottom: 0;
+}
+
+.modal.modal-has-hero h3 {
+  color: inherit;
+}
+
+.modal.modal-has-hero .modal-close-btn {
+  color: inherit;
+  opacity: 0.72;
+}
+
+.modal.modal-has-hero .modal-close-btn:hover {
+  opacity: 1;
+  color: inherit;
+}
+
+.modal-hero-content {
+  padding: 0 32px 24px;
+}
+
+.modal-body {
+  padding: 24px 32px 32px;
+}
+
+.modal-body > *:first-child {
+  margin-top: 0;
+}
+
 .modal-scroll {
   max-height: 360px;
   overflow-y: auto;
@@ -1102,6 +1143,74 @@ td {
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.search-panel-top {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ai-search-row {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  align-items: center;
+}
+
+.ai-search-input {
+  flex: 1;
+  padding: 7px 12px;
+  border: 1px solid var(--border-input);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.12s;
+}
+
+.ai-search-input:focus {
+  border-color: var(--text-4);
+}
+
+.ai-search-input:disabled {
+  opacity: 0.6;
+}
+
+.ai-toggle-btn {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--border-input);
+  background: var(--bg);
+  color: var(--text-4);
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+
+.ai-toggle-btn:hover {
+  border-color: var(--text-5);
+  background: var(--bg-muted);
+  color: var(--text);
+}
+
+.ai-toggle-btn.ai-toggle-active {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+}
+
+.ai-reason {
+  color: var(--text-4);
+  font-style: italic;
+}
+
+.ai-searching-msg {
+  font-style: italic;
+  color: var(--text-5);
 }
 
 /* ── Catalog controls ───────────────────────────────────────────────────────── */
@@ -1957,3 +2066,81 @@ td {
   min-width: 16px;
   text-align: center;
 }
+
+/* ── Refresh All log modal ──────────────────────────────────────────────────── */
+
+.refresh-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.refresh-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.refresh-progress-bar > div {
+  height: 100%;
+  background: var(--text);
+  border-radius: 2px;
+  transition: width 0.25s ease;
+}
+
+.refresh-progress-label {
+  font-size: 0.78rem;
+  color: var(--text-5);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.refresh-log {
+  max-height: 380px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.82rem;
+}
+
+.refresh-log-entry {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.refresh-log-entry:last-child {
+  border-bottom: none;
+}
+
+.refresh-log-icon {
+  font-size: 0.75rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.refresh-log-ok .refresh-log-icon   { color: #2e7d32; }
+.refresh-log-error .refresh-log-icon { color: #c62828; }
+.refresh-log-pending .refresh-log-icon { color: var(--text-5); }
+
+.refresh-log-title {
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.refresh-log-details {
+  font-size: 0.77rem;
+  color: var(--text-5);
+  white-space: nowrap;
+}
+
+.refresh-log-error .refresh-log-details { color: #c62828; }

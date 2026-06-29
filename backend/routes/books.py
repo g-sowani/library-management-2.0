@@ -132,6 +132,31 @@ def _scrape_book_data(isbn, title, author):
     }
 
 
+def _extract_dominant_color(cover_url):
+    """Download cover image and return the dominant mid-tone color as '#rrggbb'."""
+    try:
+        from PIL import Image
+        import io
+        req = urllib.request.Request(cover_url, headers={'User-Agent': 'LibraryApp/1.0'})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            img_data = resp.read()
+        img = Image.open(io.BytesIO(img_data)).convert('RGB')
+        img = img.resize((64, 64), Image.LANCZOS)
+        bins = {}
+        for r, g, b in img.getdata():
+            bright = (r + g + b) / 3
+            if bright > 220 or bright < 35:
+                continue
+            k = (round(r / 32) * 32, round(g / 32) * 32, round(b / 32) * 32)
+            bins[k] = bins.get(k, 0) + 1
+        if not bins:
+            return None
+        r, g, b = max(bins, key=bins.get)
+        return f'#{r:02x}{g:02x}{b:02x}'
+    except Exception:
+        return None
+
+
 def _scrape_and_store(app, book_id, isbn, title, author):
     """Background thread: scrape Open Library and persist to DB."""
     with app.app_context():
@@ -144,6 +169,8 @@ def _scrape_and_store(app, book_id, isbn, title, author):
                 book.description = data['description']   # '' if nothing found
                 book.author_bio = data['author_bio']     # '' if nothing found
                 book.cover_url = data['cover_url']
+                if data['cover_url']:
+                    book.cover_color = _extract_dominant_color(data['cover_url'])
                 db.session.commit()
         except Exception:
             db.session.rollback()
@@ -231,6 +258,26 @@ def book_enrichment(book_id):
     })
 
 
+@books_bp.route('/books/scrape-all', methods=['POST'])
+@admin_required
+def scrape_all_books():
+    """Scrape Open Library for every book sequentially and persist results."""
+    books = Book.query.all()
+    for book in books:
+        data = _scrape_book_data(book.isbn, book.title, book.author)
+        book.description = data['description']
+        book.author_bio = data['author_bio']
+        book.cover_url = data['cover_url']
+        if data['cover_url']:
+            book.cover_color = _extract_dominant_color(data['cover_url'])
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({'error': 'Failed to save scraped data'}), 500
+    return jsonify({'count': len(books)})
+
+
 @books_bp.route('/books/<int:book_id>/scrape', methods=['POST'])
 @admin_required
 def scrape_book(book_id):
@@ -243,6 +290,8 @@ def scrape_book(book_id):
         book.description = data['description']
         book.author_bio = data['author_bio']
         book.cover_url = data['cover_url']
+        if data['cover_url']:
+            book.cover_color = _extract_dominant_color(data['cover_url'])
         db.session.commit()
         db.session.refresh(book)
     except Exception:
@@ -252,6 +301,7 @@ def scrape_book(book_id):
         'description': book.description or '',
         'author_bio': book.author_bio or '',
         'cover_url': book.cover_url or '',
+        'cover_color': book.cover_color or '',
     })
 
 
@@ -603,6 +653,98 @@ def collaborative_recommendations():
 
     result.sort(key=lambda x: x.pop('_score'), reverse=True)
     return jsonify(result[:8])
+
+
+@books_bp.route('/books/ai-search', methods=['POST'])
+@login_required
+def ai_search():
+    import json as _json_mod
+    from groq import Groq
+    from models.reservation import Reservation
+    from models.review import Review
+    from sqlalchemy import func
+
+    query = (request.json or {}).get('query', '').strip()
+    if not query:
+        return jsonify({'error': 'Query is required'}), 400
+
+    books = Book.query.all()
+    if not books:
+        return jsonify([])
+
+    catalog_lines = '\n'.join(
+        f'{b.id}. "{b.title}" by {b.author} [{b.genre or "Unknown genre"}]'
+        for b in books
+    )
+
+    prompt = f"""You are a library search assistant. A user described a book using natural language.
+Find the most relevant books from the library catalog below that match the description.
+
+Library catalog:
+{catalog_lines}
+
+User's description: "{query}"
+
+Return a JSON array of up to 8 matching books ordered by relevance. Each object must have:
+- "id": the integer book ID from the catalog
+- "reason": a concise one-line explanation of why it matches (e.g. "Boy wizard at a magical boarding school")
+
+Only include books that genuinely match. If nothing matches well, return [].
+Return ONLY the raw JSON array with no markdown, no code fences, no extra text."""
+
+    try:
+        client = Groq(api_key=current_app.config['GROQ_API_KEY'])
+        response = client.chat.completions.create(
+            model='llama-3.1-8b-instant',
+            messages=[{'role': 'user', 'content': prompt}],
+            temperature=0.1,
+            max_tokens=512,
+        )
+        raw = response.choices[0].message.content.strip()
+        # Strip accidental code fences
+        if '```' in raw:
+            parts = raw.split('```')
+            raw = parts[1] if len(parts) > 1 else parts[0]
+            if raw.lower().startswith('json'):
+                raw = raw[4:]
+        matches = _json_mod.loads(raw.strip())
+        if not isinstance(matches, list):
+            matches = []
+    except Exception as e:
+        return jsonify({'error': f'AI search failed: {str(e)}'}), 500
+
+    book_map = {b.id: b for b in books}
+    valid_ids = [m['id'] for m in matches if isinstance(m, dict) and isinstance(m.get('id'), int)]
+
+    rating_rows = (
+        db.session.query(Review.book_id, func.avg(Review.rating), func.count(Review.id))
+        .filter(Review.book_id.in_(valid_ids))
+        .group_by(Review.book_id).all()
+    )
+    rating_stats = {row[0]: (float(row[1]), row[2]) for row in rating_rows}
+
+    res_counts = dict(
+        db.session.query(Reservation.book_id, func.count(Reservation.id))
+        .filter(Reservation.book_id.in_(valid_ids))
+        .group_by(Reservation.book_id).all()
+    )
+
+    result = []
+    for m in matches:
+        if not isinstance(m, dict) or not isinstance(m.get('id'), int):
+            continue
+        book = book_map.get(m['id'])
+        if not book:
+            continue
+        avg_r, r_count = rating_stats.get(book.id, (None, 0))
+        d = book.to_dict()
+        d['avg_rating'] = round(avg_r, 1) if avg_r else None
+        d['rating_count'] = r_count
+        d['reservation_count'] = res_counts.get(book.id, 0)
+        d['reason'] = m.get('reason', 'Matches your search')
+        result.append(d)
+
+    return jsonify(result)
 
 
 @books_bp.route('/books/<int:book_id>/logs')

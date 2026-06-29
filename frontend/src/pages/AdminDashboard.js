@@ -101,6 +101,9 @@ function AdminDashboard() {
   const [rejectError, setRejectError] = useState('');
 
   const [refreshingAll, setRefreshingAll] = useState(false);
+  const [showRefreshLog, setShowRefreshLog] = useState(false);
+  const [refreshLog, setRefreshLog] = useState([]);
+  const [refreshProgress, setRefreshProgress] = useState(null); // { done, total }
 
   const load = useCallback(() => {
     setLoadError('');
@@ -121,14 +124,29 @@ function AdminDashboard() {
 
   const handleRefreshAll = async () => {
     setRefreshingAll(true);
-    try {
-      await load();
-      showToast('All data refreshed successfully');
-    } catch {
-      setLoadError('Failed to load data. Is the server running?');
-    } finally {
-      setRefreshingAll(false);
+    setRefreshLog([]);
+    setRefreshProgress({ done: 0, total: books.length });
+    setShowRefreshLog(true);
+
+    for (let i = 0; i < books.length; i++) {
+      const book = books[i];
+      try {
+        const res = await api.post(`/books/${book.id}/scrape`);
+        const d = res.data;
+        const loaded = [];
+        if (d.description) loaded.push('description');
+        if (d.cover_url) loaded.push('cover');
+        if (d.author_bio) loaded.push('author bio');
+        if (d.cover_color) loaded.push('color');
+        setRefreshLog(prev => [...prev, { title: book.title, ok: true, loaded }]);
+      } catch {
+        setRefreshLog(prev => [...prev, { title: book.title, ok: false, loaded: [] }]);
+      }
+      setRefreshProgress({ done: i + 1, total: books.length });
     }
+
+    await load();
+    setRefreshingAll(false);
   };
 
   const loadMembers = useCallback(() => {
@@ -874,6 +892,46 @@ function AdminDashboard() {
           </>
         )}
       </div>
+
+      {/* ── Refresh All Log Modal ── */}
+      {showRefreshLog && (
+        <Modal title="Refresh All Books" onClose={() => !refreshingAll && setShowRefreshLog(false)} wide>
+          {refreshProgress && (
+            <div className="refresh-progress">
+              <div className="refresh-progress-bar">
+                <div style={{ width: `${(refreshProgress.done / refreshProgress.total) * 100}%` }} />
+              </div>
+              <span className="refresh-progress-label">
+                {refreshProgress.done} / {refreshProgress.total}
+              </span>
+            </div>
+          )}
+          <div className="refresh-log">
+            {refreshLog.map((entry, i) => (
+              <div key={i} className={`refresh-log-entry ${entry.ok ? 'refresh-log-ok' : 'refresh-log-error'}`}>
+                <span className="refresh-log-icon">{entry.ok ? '✓' : '✗'}</span>
+                <span className="refresh-log-title">{entry.title}</span>
+                <span className="refresh-log-details">
+                  {entry.ok
+                    ? (entry.loaded.length > 0 ? entry.loaded.join(', ') : 'no data found')
+                    : 'failed'}
+                </span>
+              </div>
+            ))}
+            {refreshingAll && (
+              <div className="refresh-log-entry refresh-log-pending">
+                <span className="refresh-log-icon">⋯</span>
+                <span className="refresh-log-title">Working…</span>
+              </div>
+            )}
+          </div>
+          {!refreshingAll && (
+            <div className="modal-actions">
+              <button className="btn btn-sm" onClick={() => setShowRefreshLog(false)}>Close</button>
+            </div>
+          )}
+        </Modal>
+      )}
 
       {/* ── Re-auth Modal ── */}
       {reAuthFor && (

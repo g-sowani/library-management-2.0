@@ -16,9 +16,143 @@ import SearchBar from "../components/SearchBar";
 import { GENRES } from "../constants";
 
 const TABS = [
+  { id: "home", label: "Home" },
   { id: "books", label: "Available Books" },
-  { id: "profile", label: "My Profile" },
   { id: "community", label: "Community" },
+  { id: "profile", label: "My Profile" },
+];
+
+const SERVICES = [
+  {
+    title: "Borrow Books",
+    desc: "Take home books up to your plan's limit and keep them for the full loan period.",
+    image: "/service_borrow.jpg",
+    color: "rgba(26,35,126,0.62)",
+    icon: (
+      <svg
+        width="40"
+        height="40"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="rgba(255,255,255,0.9)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+      </svg>
+    ),
+  },
+  {
+    title: "Reserve a Copy",
+    desc: "When all copies are out, join the queue and get first dibs when one is returned.",
+    image: "/service_reserve.jpg",
+    color: "rgba(191,54,12,0.62)",
+    icon: (
+      <svg
+        width="40"
+        height="40"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="rgba(255,255,255,0.9)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+        <line x1="16" y1="2" x2="16" y2="6" />
+        <line x1="8" y1="2" x2="8" y2="6" />
+        <line x1="3" y1="10" x2="21" y2="10" />
+      </svg>
+    ),
+  },
+  {
+    title: "AI Search",
+    desc: "Describe what you feel like reading in plain English and let AI find the right match.",
+    image: "/service_ai_search.jpg",
+    color: "rgba(74,20,140,0.62)",
+    icon: (
+      <svg
+        width="40"
+        height="40"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="rgba(255,255,255,0.9)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+      </svg>
+    ),
+  },
+  {
+    title: "Personalised Picks",
+    desc: "Get recommendations based on your reading history and readers who share your taste.",
+    image: "/service_picks.jpg",
+    color: "rgba(136,14,79,0.62)",
+    icon: (
+      <svg
+        width="40"
+        height="40"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="rgba(255,255,255,0.9)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+      </svg>
+    ),
+  },
+  {
+    title: "Reading Communities",
+    desc: "Gold members can create and join communities to discuss books and share reviews.",
+    image: "/service_community.jpg",
+    color: "rgba(27,94,32,0.62)",
+    icon: (
+      <svg
+        width="40"
+        height="40"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="rgba(255,255,255,0.9)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    ),
+  },
+  {
+    title: "Donate & Earn",
+    desc: "Donate books you no longer need and earn library credit in return.",
+    image: "/service_donate.jpg",
+    color: "rgba(62,39,35,0.62)",
+    icon: (
+      <svg
+        width="40"
+        height="40"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="rgba(255,255,255,0.9)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polyline points="16 3 21 3 21 8" />
+        <line x1="4" y1="20" x2="21" y2="3" />
+        <polyline points="21 16 21 21 16 21" />
+        <line x1="15" y1="15" x2="21" y2="21" />
+      </svg>
+    ),
+  },
 ];
 
 function wcagTextColor(r, g, b) {
@@ -310,6 +444,34 @@ function ChevronRight() {
   );
 }
 
+function BookLoader() {
+  return (
+    <div className="book-loader">
+      <div className="book-loader-scene">
+        <div className="bl-book">
+          <div className="bl-half bl-left">
+            <div className="bl-line" style={{ width: "72%" }} />
+            <div className="bl-line" style={{ width: "55%" }} />
+            <div className="bl-line" style={{ width: "80%" }} />
+            <div className="bl-line" style={{ width: "60%" }} />
+            <div className="bl-line" style={{ width: "68%" }} />
+          </div>
+          <div className="bl-spine" />
+          <div className="bl-half bl-right">
+            <div className="bl-line" style={{ width: "75%" }} />
+            <div className="bl-line" style={{ width: "58%" }} />
+            <div className="bl-line" style={{ width: "82%" }} />
+            <div className="bl-line" style={{ width: "63%" }} />
+            <div className="bl-line" style={{ width: "70%" }} />
+          </div>
+          <div className="bl-page" />
+        </div>
+      </div>
+      <p className="book-loader-label">Loading your library…</p>
+    </div>
+  );
+}
+
 function BookStrip({ children }) {
   const ref = useRef(null);
   const scroll = (dir) => {
@@ -363,7 +525,7 @@ function resizeImageToBase64(file, maxPx = 400) {
 
 function MemberDashboard() {
   const { user, logout, updateUser } = useAuth();
-  const [tab, setTab] = useState("books");
+  const [tab, setTab] = useState("home");
   const [books, setBooks] = useState([]);
   const [borrows, setBorrows] = useState([]);
   const [reservations, setReservations] = useState([]);
@@ -373,6 +535,7 @@ function MemberDashboard() {
   const [availFilter, setAvailFilter] = useState("all");
   const [ratingFilter, setRatingFilter] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [recommendations, setRecommendations] = useState([]);
   const [collabRecs, setCollabRecs] = useState([]);
@@ -400,6 +563,7 @@ function MemberDashboard() {
 
   // Avatar
   const avatarInputRef = useRef(null);
+  const servicesRef = useRef(null);
   const [avatarError, setAvatarError] = useState("");
 
   // Donation
@@ -474,7 +638,9 @@ function MemberDashboard() {
         .get("/trending")
         .then((r) => setTrending(r.data))
         .catch(() => {}),
-    ]).catch(() => setError("Failed to load data. Is the server running?"));
+    ])
+      .catch(() => setError("Failed to load data. Is the server running?"))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -793,6 +959,26 @@ function MemberDashboard() {
 
   const activeBorrows = borrows.filter((b) => !b.return_date);
   const borrowedBookIds = new Set(activeBorrows.map((b) => b.book_id));
+
+  // Tint the UI with the cover colour of the most recently borrowed book
+  const accentColor = useMemo(() => {
+    if (!borrows.length || !books.length) return null;
+    const sorted = [...borrows].sort(
+      (a, b) => new Date(b.borrow_date) - new Date(a.borrow_date)
+    );
+    const recent = sorted.find((b) => !b.return_date) || sorted[0];
+    const book = books.find((b) => b.id === recent?.book_id);
+    return book?.cover_color || null;
+  }, [borrows, books]);
+
+  // WCAG-safe text colour to render ON TOP of the accent background
+  const accentText = useMemo(() => {
+    if (!accentColor) return null;
+    const r = parseInt(accentColor.slice(1, 3), 16);
+    const g = parseInt(accentColor.slice(3, 5), 16);
+    const b = parseInt(accentColor.slice(5, 7), 16);
+    return wcagTextColor(r, g, b);
+  }, [accentColor]);
   const reservedBooks = Object.fromEntries(
     reservations.map((r) => [r.book_id, r])
   );
@@ -974,8 +1160,17 @@ function MemberDashboard() {
     ? { color: heroIsLight ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.38)" }
     : {};
 
+  if (loading) return <BookLoader />;
+
   return (
-    <div className="layout">
+    <div
+      className="layout"
+      style={
+        accentColor
+          ? { "--accent": accentColor, "--accent-text": accentText }
+          : {}
+      }
+    >
       <TopBar
         title="Library"
         username={user.username}
@@ -991,6 +1186,148 @@ function MemberDashboard() {
       />
       <div className="content">
         {error && <div className="error">{error}</div>}
+
+        {tab === "home" && (
+          <div className="home-tab">
+            {/* Hero */}
+            <div className="home-hero">
+              <div className="home-hero-title">
+                {(() => {
+                  const h = new Date().getHours();
+                  if (h >= 5 && h < 12) return "Good morning";
+                  if (h >= 12 && h < 17) return "Good afternoon";
+                  if (h >= 17 && h < 21) return "Good evening";
+                  return "Hello, night owl";
+                })()}
+              </div>
+              <h2 className="home-hero-eyebrow">{user.username}</h2>
+              <p className="home-hero-sub">
+                Browse the catalogue, borrow books, and connect with fellow
+                readers.
+              </p>
+            </div>
+
+            {/* Services */}
+            <div className="home-section">
+              <div className="home-section-heading">What we offer</div>
+              <div className="home-services-strip-wrapper">
+                <button
+                  className="services-arrow services-arrow-left"
+                  onClick={() =>
+                    servicesRef.current?.scrollBy({
+                      left: -380,
+                      behavior: "smooth",
+                    })
+                  }
+                  aria-label="Scroll left"
+                >
+                  <ChevronLeft />
+                </button>
+                <div className="home-services-strip" ref={servicesRef}>
+                  {SERVICES.map((s) => (
+                    <div
+                      className="home-service-card"
+                      key={s.title}
+                      style={{
+                        backgroundImage: `url(${s.image})`,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                      }}
+                    >
+                      {/* <div className="home-service-icon">{s.icon}</div> */}
+                      <div className="home-service-title">{s.title}</div>
+                      <div className="home-service-desc">{s.desc}</div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className="services-arrow services-arrow-right"
+                  onClick={() =>
+                    servicesRef.current?.scrollBy({
+                      left: 380,
+                      behavior: "smooth",
+                    })
+                  }
+                  aria-label="Scroll right"
+                >
+                  <ChevronRight />
+                </button>
+              </div>
+            </div>
+
+            {/* Book preview */}
+            {books.length > 0 && (
+              <div className="home-section">
+                <div className="home-section-header">
+                  <div className="home-section-heading">
+                    From the collection
+                  </div>
+                  <button
+                    className="home-view-all"
+                    onClick={() => handleTabChange("books")}
+                  >
+                    View all →
+                  </button>
+                </div>
+                <div className="home-books-grid">
+                  {books.slice(0, 6).map((book) => {
+                    const stars = book.avg_rating
+                      ? Math.round(book.avg_rating)
+                      : 0;
+                    return (
+                      <button
+                        key={book.id}
+                        className="home-book-card"
+                        onClick={() => openBook(book.id)}
+                      >
+                        <div className="home-book-cover-wrap">
+                          {book.cover_url ? (
+                            <img
+                              src={book.cover_url}
+                              alt=""
+                              className="home-book-cover"
+                            />
+                          ) : (
+                            <div className="home-book-cover-placeholder" />
+                          )}
+                        </div>
+                        <div className="home-book-info">
+                          <div className="home-book-title">{book.title}</div>
+                          <div className="home-book-author">{book.author}</div>
+                          <div className="home-book-meta">
+                            {book.genre && (
+                              <span className="rec-card-genre">
+                                {book.genre}
+                              </span>
+                            )}
+                            {book.avg_rating > 0 && (
+                              <span className="rec-card-rating">
+                                <span className="rec-stars">
+                                  {"★".repeat(stars)}
+                                  {"☆".repeat(5 - stars)}
+                                </span>
+                                <span className="rec-rating-val">
+                                  {book.avg_rating}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+                          <div className="home-book-avail">
+                            {book.available_copies > 0 ? (
+                              `${book.available_copies} available`
+                            ) : (
+                              <span className="muted">Unavailable</span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {tab === "books" && (
           <>
@@ -1120,6 +1457,33 @@ function MemberDashboard() {
                     </button>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Genre pills */}
+            {!aiMode && availableGenres.length > 0 && (
+              <div className="genre-strip" style={{ marginTop: 20 }}>
+                <button
+                  className={`genre-card${
+                    selectedGenre === "" ? " active" : ""
+                  }`}
+                  onClick={() => setSelectedGenre("")}
+                >
+                  <span className="genre-card-name">All</span>
+                  <span className="genre-card-count">{books.length}</span>
+                </button>
+                {availableGenres.map((g) => (
+                  <button
+                    key={g}
+                    className={`genre-card${
+                      selectedGenre === g ? " active" : ""
+                    }`}
+                    onClick={() => setSelectedGenre(g)}
+                  >
+                    <span className="genre-card-name">{g}</span>
+                    <span className="genre-card-count">{genreCounts[g]}</span>
+                  </button>
+                ))}
               </div>
             )}
 
@@ -2588,7 +2952,7 @@ function MemberDashboard() {
               </button>
               <button type="submit" className="btn btn-sm">
                 Post
-             </button>
+              </button>
             </div>
           </form>
         </Modal>

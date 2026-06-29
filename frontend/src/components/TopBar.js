@@ -51,12 +51,59 @@ function CheckIcon() {
   );
 }
 
+function BookIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+    </svg>
+  );
+}
+
+function LeafIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 20A7 7 0 0 1 4 13c0-7 7-11 7-11s7 4 7 11a7 7 0 0 1-7 7z"/>
+      <line x1="11" y1="20" x2="11" y2="13"/>
+    </svg>
+  );
+}
+
+function WavesIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/>
+      <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/>
+      <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/>
+    </svg>
+  );
+}
+
+function FlowerIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 2a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4z"/>
+      <path d="M12 14a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4z"/>
+      <path d="M2 12a4 4 0 0 1 4-4 4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4z"/>
+      <path d="M14 12a4 4 0 0 1 4-4 4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4z"/>
+    </svg>
+  );
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const THEMES = [
+const APPEARANCE = [
   { key: 'light',  label: 'Light',  Icon: SunIcon },
   { key: 'system', label: 'System', Icon: MonitorIcon },
   { key: 'dark',   label: 'Dark',   Icon: MoonIcon },
+];
+
+const READER_THEMES = [
+  { key: 'sepia',  label: 'Sepia',  Icon: BookIcon },
+  { key: 'forest', label: 'Forest', Icon: LeafIcon },
+  { key: 'ocean',  label: 'Ocean',  Icon: WavesIcon },
+  { key: 'rose',   label: 'Rose',   Icon: FlowerIcon },
 ];
 
 const TIER_LABEL = { silver: 'Silver', gold: 'Gold', family: 'Family' };
@@ -118,7 +165,23 @@ function TopBar({ title, username, avatar, tier, onLogout }) {
 
             {/* Appearance */}
             <div className="pd-section-label">Appearance</div>
-            {THEMES.map(({ key, label, Icon }) => (
+            {APPEARANCE.map(({ key, label, Icon }) => (
+              <button
+                key={key}
+                className={`pd-item${theme === key ? ' pd-item-active' : ''}`}
+                onClick={() => setTheme(key)}
+              >
+                <span className="pd-item-icon"><Icon /></span>
+                <span className="pd-item-label">{label}</span>
+                {theme === key && <CheckIcon />}
+              </button>
+            ))}
+
+            <div className="pd-divider" />
+
+            {/* Reader Themes */}
+            <div className="pd-section-label">Reader Themes</div>
+            {READER_THEMES.map(({ key, label, Icon }) => (
               <button
                 key={key}
                 className={`pd-item${theme === key ? ' pd-item-active' : ''}`}

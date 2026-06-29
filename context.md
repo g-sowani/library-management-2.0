@@ -46,6 +46,12 @@ Start the backend first. The CRA dev server proxies all `/api/*` requests to `ht
 ```
 backend/
   app.py              # Flask app factory (create_app) + entry point
+  seed_extra.py       # One-shot seeding script (run manually once) — adds 45 books across
+                      #   11 genres (Fiction, Sci-Fi, Fantasy, Mystery, Thriller, Biography,
+                      #   History, Science, Self-Help, Horror, Children's) + 4 extra member
+                      #   accounts (alice/alice123, bob/bob123, carol/carol123, dave/dave123)
+                      #   with rich borrow histories: on-time returns, paid/unpaid late fines,
+                      #   currently-borrowed, and overdue-not-returned records per user
   config.py           # Config class — ports, CORS origin, secret key
   extensions.py       # db = SQLAlchemy() singleton
   decorators.py       # @login_required, @admin_required
@@ -183,10 +189,47 @@ frontend/src/
                             #     wraps the remaining children with restored padding
     SearchBar.js            # Controlled search input; supports autoFocus prop
   pages/
+    (MemberDashboard.js exports one component but defines several helpers inline:)
+    BookLoader              # Full-page animated CSS loader: open book with two halves
+                            #   each having 5 placeholder lines, a spine div, and a
+                            #   turning-page div; shown while initial data fetch is in flight
+    BookStrip               # Horizontal scroll wrapper with left/right chevron arrows;
+                            #   arrows hidden by default, fade in on wrapper hover;
+                            #   scrolls 420 px per click; each strip has its own useRef
+    ReactionIcon            # Stroke-based inline SVG icon for community reactions;
+                            #   types: like|love|haha|wow|sad|angry; size prop (default 13)
+    CommentItem             # Recursive threaded comment with reaction buttons, Reply
+                            #   toggle, inline reply form; visual indent capped at depth 4
+    StarPicker              # 1–5 interactive star rating input with hover state
+    StarDisplay             # Read-only star display from a numeric rating
+    MembershipBadge         # Tier chip (Silver / Gold / Family) with tier-specific CSS class
     Login.js                # Sign-in / register form (role selector on register)
-    MemberDashboard.js      # Available Books · My Profile · Community tabs
+    MemberDashboard.js      # Home · Available Books · Community · My Profile tabs
                             #   TopBar receives avatar and tier; no badge prop
                             #   fetches /api/membership on mount alongside books/borrows
+                            #   while loading, renders <BookLoader /> (animated CSS open-book
+                            #     with page-lines on left and right halves, plus a turning page)
+                            #   global accent theming: cover_color of the user's most recently
+                            #     borrowed active book (or latest borrow) sets --accent /
+                            #     --accent-text CSS vars on the layout root; WCAG-safe text
+                            #     colour computed via wcagTextColor(); null if no borrow history
+                            #
+                            # Home tab (new, default landing tab):
+                            #   1. Hero banner — time-aware greeting ("Good morning/afternoon/
+                            #      evening/Hello night owl") + username + tagline
+                            #   2. "What we offer" services strip — horizontally scrollable
+                            #      cards with background-image photos, each describing a
+                            #      library feature; scroll 380 px per arrow click; 6 cards:
+                            #      Borrow Books · Reserve a Copy · AI Search · Personalised
+                            #      Picks · Reading Communities · Donate & Earn
+                            #      (images served from /public: service_borrow.jpg,
+                            #       service_reserve.jpg, service_ai_search.jpg,
+                            #       service_picks.jpg, service_community.jpg, service_donate.jpg)
+                            #   3. "From the collection" section — 6-book grid (first 6 books
+                            #      from API); each card shows cover image (or placeholder),
+                            #      title, author, genre badge, star rating; clicking a card
+                            #      opens the Book Detail modal; "View all →" button navigates
+                            #      to the Available Books tab
                             #
                             # Available Books tab (top → bottom):
                             #   1. Search trigger row — magnifying-glass icon button + book count

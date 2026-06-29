@@ -7,5 +7,5 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key')
     SQLALCHEMY_DATABASE_URI = 'sqlite:///library.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    CORS_ORIGINS = ['http://localhost:3000']
+    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(',')
     GROQ_API_KEY = os.environ.get('GROQ_API_KEY')

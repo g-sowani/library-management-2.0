@@ -63,6 +63,7 @@ Created automatically on first run — no setup needed.
 ## Features
 
 **Member**
+- **Home tab** (default landing page) — time-aware greeting, a horizontally scrollable "What we offer" services strip (6 feature cards with background photos: Borrow Books, Reserve a Copy, AI Search, Personalised Picks, Reading Communities, Donate & Earn), and a 6-book preview grid ("From the collection") with a "View all →" link to the Available Books tab
 - Browse all books grouped by genre in horizontal scrollable card strips with left/right arrow navigation (arrows appear on hover)
 - Search and filter via a collapsible panel (click the search icon to expand; text search + genre, availability, and rating dropdowns); results appear as a card grid
 - **AI Search** *(optional)* — click the `✨ AI` toggle inside the search panel to switch to natural-language search powered by Groq; describe a book in plain English (e.g. "boy with glasses at a magical school") and get semantically matched results from the library catalogue, each with a one-line AI-generated reason; press Enter or click Search to run; Clear returns to normal keyword mode
@@ -109,3 +110,24 @@ Rates are admin-configurable at runtime (defaults: Silver $9.99 · Gold $19.99 �
 **UI / Theme**
 - Light, Dark, and System (follows OS preference) colour modes — toggled from the profile dropdown in the top bar; preference persisted in `localStorage`
 - Profile dropdown in the top bar: avatar, username, membership tier badge, appearance toggle, and sign out — all in one place
+- **Global accent tinting** — the entire member layout is subtly tinted with the cover colour (`--accent` CSS variable) of the user's most recently active borrowed book; WCAG-safe text colour is auto-computed so contrast is always maintained
+- **Animated book loader** — an open-book CSS animation (two page halves with text lines and a turning page) is shown while initial data is loading, replacing a plain spinner
+
+## Seed Data Script
+
+`backend/seed_extra.py` is a one-shot helper script (run manually once, not auto-executed):
+
+```bash
+cd backend
+source .venv/bin/activate
+python seed_extra.py
+```
+
+Adds 45 books across 11 genres and 4 extra member accounts with rich borrow histories:
+
+| Username | Password  | Notes |
+|----------|-----------|-------|
+| alice    | alice123  | Heavy reader — on-time returns, some paid fines, 2 active borrows |
+| bob      | bob123    | Few borrows — unpaid fines, one overdue unreturned book |
+| carol    | carol123  | Consistent reader — no fines |
+| dave     | dave123   | Occasional reader — one overdue unreturned book |

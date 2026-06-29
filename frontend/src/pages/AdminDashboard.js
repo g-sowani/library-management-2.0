@@ -58,6 +58,12 @@ function AdminDashboard() {
     setTimeout(() => setToastMsg(''), 2500);
   };
 
+  // Re-auth modal (for sensitive admin actions)
+  const [reAuthFor, setReAuthFor] = useState(null); // 'policy' | 'pricing'
+  const [reAuthPassword, setReAuthPassword] = useState('');
+  const [reAuthError, setReAuthError] = useState('');
+  const [reAuthLoading, setReAuthLoading] = useState(false);
+
   // Fine policy
   const [policy, setPolicy] = useState(null);
   const [policyForm, setPolicyForm] = useState({ fine_per_day: '', borrow_days: '' });
@@ -94,9 +100,11 @@ function AdminDashboard() {
   const [rejectNotes, setRejectNotes] = useState('');
   const [rejectError, setRejectError] = useState('');
 
+  const [refreshingAll, setRefreshingAll] = useState(false);
+
   const load = useCallback(() => {
     setLoadError('');
-    Promise.all([
+    return Promise.all([
       api.get('/books').then(r => setBooks(r.data)),
       api.get('/admin/borrows').then(r => setBorrows(r.data)),
       api.get('/admin/fines').then(r => setFines(r.data)),
@@ -104,10 +112,24 @@ function AdminDashboard() {
         setPolicy(r.data);
         setPolicyForm({ fine_per_day: r.data.fine_per_day, borrow_days: r.data.borrow_days });
       }),
-    ]).catch(() => setLoadError('Failed to load data. Is the server running?'));
+    ]);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load().catch(() => setLoadError('Failed to load data. Is the server running?'));
+  }, [load]);
+
+  const handleRefreshAll = async () => {
+    setRefreshingAll(true);
+    try {
+      await load();
+      showToast('All data refreshed successfully');
+    } catch {
+      setLoadError('Failed to load data. Is the server running?');
+    } finally {
+      setRefreshingAll(false);
+    }
+  };
 
   const loadMembers = useCallback(() => {
     api.get('/admin/members').then(r => { setMembers(r.data); setMembersLoaded(true); });
@@ -213,10 +235,15 @@ function AdminDashboard() {
 
   const refreshMeta = async (id) => {
     try {
-      await api.post(`/books/${id}/scrape`);
-      showToast('Metadata refresh started');
-    } catch (err) {
-      alert('Failed to start metadata refresh');
+      const res = await api.post(`/books/${id}/scrape`);
+      setBooks(prev => prev.map(b =>
+        b.id === id
+          ? { ...b, description: res.data.description, author_bio: res.data.author_bio, cover_url: res.data.cover_url || b.cover_url }
+          : b
+      ));
+      showToast('Metadata refreshed');
+    } catch {
+      alert('Failed to refresh metadata');
     }
   };
 
@@ -262,9 +289,33 @@ function AdminDashboard() {
     }
   };
 
-  // ── Fine policy ───────────────────────────────────────────────
-  const savePolicy = async (e) => {
+  // ── Re-auth ───────────────────────────────────────────────────
+  const openReAuth = (e, forAction) => {
     e.preventDefault();
+    setReAuthFor(forAction);
+    setReAuthPassword('');
+    setReAuthError('');
+  };
+
+  const confirmReAuth = async () => {
+    setReAuthError('');
+    setReAuthLoading(true);
+    try {
+      await api.post('/admin/verify-password', { password: reAuthPassword });
+    } catch {
+      setReAuthError('Incorrect password. Please try again.');
+      setReAuthLoading(false);
+      return;
+    }
+    setReAuthLoading(false);
+    const action = reAuthFor;
+    setReAuthFor(null);
+    if (action === 'policy') await doSavePolicy();
+    if (action === 'pricing') await doSaveMembershipPricing();
+  };
+
+  // ── Fine policy ───────────────────────────────────────────────
+  const doSavePolicy = async () => {
     setPolicyError('');
     setPolicySaved(false);
     try {
@@ -277,9 +328,10 @@ function AdminDashboard() {
     }
   };
 
+  const savePolicy = (e) => openReAuth(e, 'policy');
+
   // ── Membership ────────────────────────────────────────────────
-  const saveMembershipPricing = async (e) => {
-    e.preventDefault();
+  const doSaveMembershipPricing = async () => {
     setMembershipPricingError('');
     setMembershipPricingSaved(false);
     try {
@@ -291,6 +343,8 @@ function AdminDashboard() {
       setMembershipPricingError(errs ? Object.values(errs).join(', ') : 'Failed to save pricing');
     }
   };
+
+  const saveMembershipPricing = (e) => openReAuth(e, 'pricing');
 
   const changeMemberTier = async (memberId, tier) => {
     try {
@@ -390,12 +444,12 @@ function AdminDashboard() {
             <div className="section-header">
               <h3>All Books</h3>
               <div className="btn-row">
-                <button className="btn btn-sm btn-outline btn-icon" onClick={load} title="Refresh all books data">
+                <button className="btn btn-sm btn-outline btn-icon" onClick={handleRefreshAll} disabled={refreshingAll} title="Refresh all books data">
                   <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="23 4 23 10 17 10"/>
                     <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                   </svg>
-                  Refresh All
+                  {refreshingAll ? 'Refreshing…' : 'Refresh All'}
                 </button>
                 <button className="btn btn-sm" onClick={() => setShowAdd(true)}>Add Book</button>
               </div>
@@ -820,6 +874,36 @@ function AdminDashboard() {
           </>
         )}
       </div>
+
+      {/* ── Re-auth Modal ── */}
+      {reAuthFor && (
+        <Modal
+          title="Confirm Your Identity"
+          onClose={() => setReAuthFor(null)}
+        >
+          <p style={{ marginBottom: 16, fontSize: '0.9rem', color: 'var(--text-secondary, #555)' }}>
+            This action requires you to re-enter your password to continue.
+          </p>
+          {reAuthError && <div className="error" style={{ marginBottom: 12 }}>{reAuthError}</div>}
+          <div className="form-group">
+            <label>Password</label>
+            <input
+              type="password"
+              value={reAuthPassword}
+              onChange={e => setReAuthPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && confirmReAuth()}
+              autoFocus
+              placeholder="Enter your password"
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+            <button className="btn btn-sm" onClick={confirmReAuth} disabled={reAuthLoading || !reAuthPassword}>
+              {reAuthLoading ? 'Verifying…' : 'Confirm'}
+            </button>
+            <button className="btn btn-sm btn-outline" onClick={() => setReAuthFor(null)}>Cancel</button>
+          </div>
+        </Modal>
+      )}
 
       {/* ── Approve Community Modal ── */}
       {approvingCommunity && (

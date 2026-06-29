@@ -282,7 +282,6 @@ function MemberDashboard() {
   const [selectedBookId, setSelectedBookId] = useState(null);
   const [actionError, setActionError] = useState("");
   const [bookReviews, setBookReviews] = useState(null);
-  const [enrichmentLoading, setEnrichmentLoading] = useState(false);
 
   // Return + review modal
   const [returnModal, setReturnModal] = useState(null); // { borrowId, bookTitle }
@@ -373,38 +372,6 @@ function MemberDashboard() {
       );
   }, [selectedBookId]);
 
-  // Lazy-fetch enrichment for books that have never been scraped (description === null)
-  useEffect(() => {
-    if (!selectedBookId) return;
-    const book = books.find((b) => b.id === selectedBookId);
-    if (!book || book.description !== null) return; // already have data or already tried
-    setEnrichmentLoading(true);
-    api
-      .get(`/books/${selectedBookId}/enrichment`)
-      .then((r) => {
-        setBooks((prev) =>
-          prev.map((b) =>
-            b.id === selectedBookId
-              ? {
-                  ...b,
-                  description: r.data.description,
-                  author_bio: r.data.author_bio,
-                  cover_url: r.data.cover_url || b.cover_url,
-                }
-              : b
-          )
-        );
-      })
-      .catch(() => {
-        // Mark as attempted so we don't retry this session
-        setBooks((prev) =>
-          prev.map((b) =>
-            b.id === selectedBookId ? { ...b, description: "" } : b
-          )
-        );
-      })
-      .finally(() => setEnrichmentLoading(false));
-  }, [selectedBookId]); // eslint-disable-line
 
   // Poll for community activity badge when not on the community tab
   useEffect(() => {
@@ -432,7 +399,6 @@ function MemberDashboard() {
   const closeBook = () => {
     setSelectedBookId(null);
     setActionError("");
-    setEnrichmentLoading(false);
   };
 
   const borrow = async (bookId) => {
@@ -1693,26 +1659,18 @@ function MemberDashboard() {
             <BookActionButton book={selectedBook} />
           </div>
 
-          {/* Description + author bio (lazy-loaded on first view) */}
-          {enrichmentLoading ? (
+          {/* Description + author bio (served from DB; admin populates via Refresh) */}
+          {selectedBook.description && (
             <div className="enrichment-section">
-              <div className="enrichment-loading">Fetching book details…</div>
+              <div className="enrichment-label">About this book</div>
+              <p className="enrichment-text">{selectedBook.description}</p>
             </div>
-          ) : (
-            <>
-              {selectedBook.description && (
-                <div className="enrichment-section">
-                  <div className="enrichment-label">About this book</div>
-                  <p className="enrichment-text">{selectedBook.description}</p>
-                </div>
-              )}
-              {selectedBook.author_bio && (
-                <div className="enrichment-section">
-                  <div className="enrichment-label">About the author</div>
-                  <p className="enrichment-text">{selectedBook.author_bio}</p>
-                </div>
-              )}
-            </>
+          )}
+          {selectedBook.author_bio && (
+            <div className="enrichment-section">
+              <div className="enrichment-label">About the author</div>
+              <p className="enrichment-text">{selectedBook.author_bio}</p>
+            </div>
           )}
 
           {/* Reviews list */}

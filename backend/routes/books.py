@@ -220,31 +220,10 @@ def book_reviews(book_id):
 @books_bp.route('/books/<int:book_id>/enrichment')
 @login_required
 def book_enrichment(book_id):
-    """Return stored description/bio/cover; scrape synchronously on first view if never tried."""
+    """Return stored description/bio/cover from DB. Never triggers a scrape."""
     book = db.session.get(Book, book_id)
     if not book:
         return jsonify({'error': 'Book not found'}), 404
-
-    # Already attempted (description is '' or has text) — serve from DB immediately.
-    if book.description is not None:
-        return jsonify({
-            'description': book.description,
-            'author_bio': book.author_bio or '',
-            'cover_url': book.cover_url or '',
-        })
-
-    # description IS NULL → first time this book has been viewed. Scrape now.
-    data = _scrape_book_data(book.isbn, book.title, book.author)
-    try:
-        book.description = data['description']
-        book.author_bio = data['author_bio']
-        book.cover_url = data['cover_url']
-        db.session.commit()
-        # Refresh so the returned object reflects the new values
-        db.session.refresh(book)
-    except Exception:
-        db.session.rollback()
-
     return jsonify({
         'description': book.description or '',
         'author_bio': book.author_bio or '',
@@ -255,12 +234,25 @@ def book_enrichment(book_id):
 @books_bp.route('/books/<int:book_id>/scrape', methods=['POST'])
 @admin_required
 def scrape_book(book_id):
-    """Re-scrape Open Library data for an existing book."""
+    """Scrape Open Library synchronously, persist, and return the updated data."""
     book = db.session.get(Book, book_id)
     if not book:
         return jsonify({'error': 'Book not found'}), 404
-    _spawn_scrape(book)
-    return jsonify({'message': 'Scrape started'})
+    data = _scrape_book_data(book.isbn, book.title, book.author)
+    try:
+        book.description = data['description']
+        book.author_bio = data['author_bio']
+        book.cover_url = data['cover_url']
+        db.session.commit()
+        db.session.refresh(book)
+    except Exception:
+        db.session.rollback()
+        return jsonify({'error': 'Failed to save scraped data'}), 500
+    return jsonify({
+        'description': book.description or '',
+        'author_bio': book.author_bio or '',
+        'cover_url': book.cover_url or '',
+    })
 
 
 @books_bp.route('/books', methods=['POST'])

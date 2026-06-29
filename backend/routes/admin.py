@@ -1,5 +1,6 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
 from datetime import datetime
+from werkzeug.security import check_password_hash
 from extensions import db
 from models import Borrow
 from models.user import User
@@ -27,6 +28,17 @@ def admin_fines():
             fines.append(b.to_dict())
     db.session.commit()
     return jsonify(fines)
+
+
+@admin_bp.route('/verify-password', methods=['POST'])
+@admin_required
+def verify_password():
+    data = request.json or {}
+    password = data.get('password', '')
+    user = db.session.get(User, session['user_id'])
+    if not user or not check_password_hash(user.password_hash, password):
+        return jsonify({'error': 'Incorrect password'}), 401
+    return jsonify({'ok': True})
 
 
 @admin_bp.route('/policy')

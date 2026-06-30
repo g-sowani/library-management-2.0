@@ -63,8 +63,8 @@ Created automatically on first run — no setup needed.
 ## Features
 
 **Member**
-- **Home tab** (default landing page) — time-aware greeting, a horizontally scrollable "What we offer" services strip (6 feature cards with background photos: Borrow Books, Reserve a Copy, AI Search, Personalised Picks, Reading Communities, Donate & Earn), and a 6-book preview grid ("From the collection") with a "View all →" link to the Available Books tab
-- Browse all books grouped by genre in horizontal scrollable card strips with left/right arrow navigation (arrows appear on hover)
+- **Home tab** (default landing page) — time-aware greeting, a horizontally scrollable "What we offer" services strip (6 feature cards with background photos: Borrow Books, Reserve a Copy, AI Search, Personalised Picks, Reading Communities, Donate & Earn), and a 6-book preview grid ("From the collection") with a "View all →" link to the Available Books tab; strip navigation arrows float over the cards and auto-hide 2 s after last use
+- Browse all books grouped by genre in horizontal scrollable card strips; bare chevron arrows appear on hover (only rendered when the strip actually overflows) and auto-hide 2 s after the last scroll click
 - Search and filter via a collapsible panel (click the search icon to expand; text search + genre, availability, and rating dropdowns); results appear as a card grid
 - **AI Search** *(optional)* — click the `✨ AI` toggle inside the search panel to switch to natural-language search powered by Groq; describe a book in plain English (e.g. "boy with glasses at a magical school") and get semantically matched results from the library catalogue, each with a one-line AI-generated reason; press Enter or click Search to run; Clear returns to normal keyword mode
 - Borrow and return books; borrow limits enforced by membership tier
@@ -83,7 +83,7 @@ Created automatically on first run — no setup needed.
 - Add / edit / delete books; ISBN uniqueness enforced
 - Inventory change log per book with reason tracking
 - Monitor all active borrows and overdue items
-- **Fines tab** — pending fines table + fine policy (fine-per-day rate and loan duration) in one place
+- **Fines tab** — pending fines table with status badge and **Mark Paid** button per row, running total; fine policy (fine-per-day rate and loan duration) in one place
 - **Members tab** — member list with borrow history, membership pricing cards, and per-member tier management in one place
 - **Refresh** (per book) — re-scrapes Open Library for description, author bio, cover URL, and dominant cover colour; result shown inline
 - **Refresh All** — scrapes every book in the catalogue sequentially; a live progress log modal opens showing each book's outcome as it completes (e.g. "Harry Potter — description, cover, author bio, color") with a progress bar
@@ -108,8 +108,9 @@ Rates are admin-configurable at runtime (defaults: Silver $9.99 · Gold $19.99 �
 - Admins can re-scrape any individual book or all books at once via the **Refresh** / **Refresh All** buttons in the Books tab
 
 **UI / Theme**
-- Light, Dark, and System (follows OS preference) colour modes — toggled from the profile dropdown in the top bar; preference persisted in `localStorage`
-- Profile dropdown in the top bar: avatar, username, membership tier badge, appearance toggle, and sign out — all in one place
+- **10 theme combinations** — Light and Dark base modes plus 4 reader palettes (Sepia, Forest, Ocean, Rose), each available in both light and dark variants; all combinations are fully WCAG AA compliant (≥ 4.5:1 contrast for every text level against its background)
+- Appearance (Light / System / Dark) and reader palette are independent controls in the profile dropdown; clicking an active reader theme toggles it off; preferences persisted in `localStorage`
+- Profile dropdown: avatar, username, membership tier badge, compact appearance row, compact reader themes row, sign out — all in one place
 - **Global accent tinting** — the entire member layout is subtly tinted with the cover colour (`--accent` CSS variable) of the user's most recently active borrowed book; WCAG-safe text colour is auto-computed so contrast is always maintained
 - **Animated book loader** — an open-book CSS animation (two page halves with text lines and a turning page) is shown while initial data is loading, replacing a plain spinner
 

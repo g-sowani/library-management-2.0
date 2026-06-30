@@ -43,14 +43,6 @@ function SignOutIcon() {
   );
 }
 
-function CheckIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="20 6 9 17 4 12"/>
-    </svg>
-  );
-}
-
 function BookIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -123,7 +115,7 @@ function TierBadge({ tier }) {
 // ── TopBar ────────────────────────────────────────────────────────────────────
 
 function TopBar({ title, username, avatar, tier, onLogout }) {
-  const { theme, setTheme } = useTheme();
+  const { appearance, setAppearance, readerTheme, setReaderTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
@@ -165,33 +157,37 @@ function TopBar({ title, username, avatar, tier, onLogout }) {
 
             {/* Appearance */}
             <div className="pd-section-label">Appearance</div>
-            {APPEARANCE.map(({ key, label, Icon }) => (
-              <button
-                key={key}
-                className={`pd-item${theme === key ? ' pd-item-active' : ''}`}
-                onClick={() => setTheme(key)}
-              >
-                <span className="pd-item-icon"><Icon /></span>
-                <span className="pd-item-label">{label}</span>
-                {theme === key && <CheckIcon />}
-              </button>
-            ))}
+            <div className="pd-options-row">
+              {APPEARANCE.map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  className={`pd-option${appearance === key ? ' pd-option-active' : ''}`}
+                  onClick={() => setAppearance(key)}
+                  title={label}
+                >
+                  <Icon />
+                  {label}
+                </button>
+              ))}
+            </div>
 
             <div className="pd-divider" />
 
             {/* Reader Themes */}
             <div className="pd-section-label">Reader Themes</div>
-            {READER_THEMES.map(({ key, label, Icon }) => (
-              <button
-                key={key}
-                className={`pd-item${theme === key ? ' pd-item-active' : ''}`}
-                onClick={() => setTheme(key)}
-              >
-                <span className="pd-item-icon"><Icon /></span>
-                <span className="pd-item-label">{label}</span>
-                {theme === key && <CheckIcon />}
-              </button>
-            ))}
+            <div className="pd-options-row">
+              {READER_THEMES.map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  className={`pd-option${readerTheme === key ? ' pd-option-active' : ''}`}
+                  onClick={() => setReaderTheme(readerTheme === key ? '' : key)}
+                  title={label}
+                >
+                  <Icon />
+                  {label}
+                </button>
+              ))}
+            </div>
 
             <div className="pd-divider" />
 

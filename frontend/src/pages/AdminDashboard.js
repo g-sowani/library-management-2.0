@@ -69,6 +69,7 @@ function AdminDashboard() {
   const [policyForm, setPolicyForm] = useState({ fine_per_day: '', borrow_days: '' });
   const [policyError, setPolicyError] = useState('');
   const [policySaved, setPolicySaved] = useState(false);
+  const [markingPaidId, setMarkingPaidId] = useState(null);
 
   // Memberships
   const [membershipPricing, setMembershipPricing] = useState(null);
@@ -332,6 +333,20 @@ function AdminDashboard() {
     if (action === 'pricing') await doSaveMembershipPricing();
   };
 
+  // ── Fines ─────────────────────────────────────────────────────
+  const markFinePaid = async (borrowId) => {
+    setMarkingPaidId(borrowId);
+    try {
+      await api.put(`/admin/fines/${borrowId}/mark-paid`);
+      setFines(prev => prev.filter(f => f.id !== borrowId));
+      showToast('Fine marked as paid');
+    } catch {
+      showToast('Failed to mark fine as paid');
+    } finally {
+      setMarkingPaidId(null);
+    }
+  };
+
   // ── Fine policy ───────────────────────────────────────────────
   const doSavePolicy = async () => {
     setPolicyError('');
@@ -475,6 +490,7 @@ function AdminDashboard() {
 
             <div className="search-top-bar">
               <SearchBar value={search} onChange={setSearch} placeholder="Search by title, author or genre…" className="search-bar-wide" />
+              
             </div>
 
             {availableGenres.length > 0 && (
@@ -577,13 +593,27 @@ function AdminDashboard() {
         {/* ── Fines ── */}
         {tab === 'fines' && (
           <>
-            <div className="section-header"><h3>Pending Fines</h3></div>
+            <div className="section-header">
+              <h3>Pending Fines</h3>
+              {fines.length > 0 && (
+                <span className="fine-amount" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                  {fines.length} unpaid · ${fines.reduce((s, f) => s + f.fine, 0).toFixed(2)} total
+                </span>
+              )}
+            </div>
             {fines.length === 0 ? (
               <div className="empty">No pending fines</div>
             ) : (
               <table>
                 <thead>
-                  <tr><th>Book</th><th>User</th><th>Due Date</th><th>Fine</th></tr>
+                  <tr>
+                    <th>Book</th>
+                    <th>User</th>
+                    <th>Due Date</th>
+                    <th>Fine</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
                 </thead>
                 <tbody>
                   {fines.map(b => (
@@ -592,6 +622,20 @@ function AdminDashboard() {
                       <td>{b.username}</td>
                       <td>{new Date(b.due_date).toLocaleDateString()}</td>
                       <td className="fine-amount">${b.fine.toFixed(2)}</td>
+                      <td>
+                        {b.return_date
+                          ? <Badge variant="returned">Returned Late</Badge>
+                          : <Badge variant="overdue">Overdue</Badge>}
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-sm"
+                          disabled={markingPaidId === b.id}
+                          onClick={() => markFinePaid(b.id)}
+                        >
+                          {markingPaidId === b.id ? 'Saving…' : 'Mark Paid'}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

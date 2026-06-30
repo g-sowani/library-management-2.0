@@ -4,6 +4,7 @@ const VARIANT_CLASS = {
   active: 'badge-active',
   overdue: 'badge-overdue',
   returned: 'badge-returned',
+  queue: 'badge-queue',
 };
 
 function Badge({ variant, children }) {

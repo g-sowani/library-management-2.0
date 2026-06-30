@@ -3,36 +3,48 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 const ThemeContext = createContext();
 
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(
-    () => localStorage.getItem('theme') || 'system'
+  const [appearance, setAppearanceState] = useState(
+    () => localStorage.getItem('appearance') || 'system'
+  );
+  const [readerTheme, setReaderThemeState] = useState(
+    () => localStorage.getItem('readerTheme') || ''
   );
 
   useEffect(() => {
-    const apply = (t) => {
+    const html = document.documentElement;
+
+    const apply = () => {
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.setAttribute(
-        'data-theme',
-        t === 'system' ? (prefersDark ? 'dark' : 'light') : t
-      );
+      const resolved = appearance === 'system' ? (prefersDark ? 'dark' : 'light') : appearance;
+      html.setAttribute('data-color-mode', resolved);
+      if (readerTheme) {
+        html.setAttribute('data-theme', readerTheme);
+      } else {
+        html.removeAttribute('data-theme');
+      }
     };
 
-    apply(theme);
+    apply();
 
-    if (theme === 'system') {
+    if (appearance === 'system') {
       const mq = window.matchMedia('(prefers-color-scheme: dark)');
-      const handler = () => apply('system');
-      mq.addEventListener('change', handler);
-      return () => mq.removeEventListener('change', handler);
+      mq.addEventListener('change', apply);
+      return () => mq.removeEventListener('change', apply);
     }
-  }, [theme]);
+  }, [appearance, readerTheme]);
 
-  const setTheme = (t) => {
-    localStorage.setItem('theme', t);
-    setThemeState(t);
+  const setAppearance = (a) => {
+    localStorage.setItem('appearance', a);
+    setAppearanceState(a);
+  };
+
+  const setReaderTheme = (t) => {
+    localStorage.setItem('readerTheme', t);
+    setReaderThemeState(t);
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme }}>
+    <ThemeContext.Provider value={{ appearance, setAppearance, readerTheme, setReaderTheme }}>
       {children}
     </ThemeContext.Provider>
   );

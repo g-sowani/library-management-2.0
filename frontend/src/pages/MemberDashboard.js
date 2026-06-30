@@ -474,28 +474,45 @@ function BookLoader() {
 
 function BookStrip({ children }) {
   const ref = useRef(null);
+  const timerRef = useRef(null);
+  const [active, setActive] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setOverflows(el.scrollWidth > el.clientWidth);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [children]);
+
   const scroll = (dir) => {
     ref.current?.scrollBy({ left: dir * 420, behavior: "smooth" });
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setActive(false), 2000);
   };
+
   return (
-    <div className="book-strip-wrapper">
-      <button
-        className="strip-arrow"
-        onClick={() => scroll(-1)}
-        aria-label="Scroll left"
-      >
-        <ChevronLeft />
-      </button>
+    <div
+      className={`book-strip-wrapper${active && overflows ? " arrows-active" : ""}`}
+      onMouseEnter={() => { if (overflows) { clearTimeout(timerRef.current); setActive(true); } }}
+      onMouseLeave={() => { clearTimeout(timerRef.current); setActive(false); }}
+    >
+      {overflows && (
+        <button className="strip-arrow strip-arrow-left" onClick={() => scroll(-1)} aria-label="Scroll left">
+          <ChevronLeft />
+        </button>
+      )}
       <div className="rec-strip" ref={ref}>
         {children}
       </div>
-      <button
-        className="strip-arrow"
-        onClick={() => scroll(1)}
-        aria-label="Scroll right"
-      >
-        <ChevronRight />
-      </button>
+      {overflows && (
+        <button className="strip-arrow strip-arrow-right" onClick={() => scroll(1)} aria-label="Scroll right">
+          <ChevronRight />
+        </button>
+      )}
     </div>
   );
 }
@@ -564,6 +581,8 @@ function MemberDashboard() {
   // Avatar
   const avatarInputRef = useRef(null);
   const servicesRef = useRef(null);
+  const servicesTimerRef = useRef(null);
+  const [servicesActive, setServicesActive] = useState(false);
   const [avatarError, setAvatarError] = useState("");
 
   // Donation
@@ -1210,15 +1229,24 @@ function MemberDashboard() {
             {/* Services */}
             <div className="home-section">
               <div className="home-section-heading">What we offer</div>
-              <div className="home-services-strip-wrapper">
+              <div
+                className={`home-services-strip-wrapper${servicesActive ? " arrows-active" : ""}`}
+                onMouseEnter={() => {
+                  clearTimeout(servicesTimerRef.current);
+                  setServicesActive(true);
+                }}
+                onMouseLeave={() => {
+                  clearTimeout(servicesTimerRef.current);
+                  setServicesActive(false);
+                }}
+              >
                 <button
                   className="services-arrow services-arrow-left"
-                  onClick={() =>
-                    servicesRef.current?.scrollBy({
-                      left: -380,
-                      behavior: "smooth",
-                    })
-                  }
+                  onClick={() => {
+                    servicesRef.current?.scrollBy({ left: -380, behavior: "smooth" });
+                    clearTimeout(servicesTimerRef.current);
+                    servicesTimerRef.current = setTimeout(() => setServicesActive(false), 2000);
+                  }}
                   aria-label="Scroll left"
                 >
                   <ChevronLeft />
@@ -1242,12 +1270,11 @@ function MemberDashboard() {
                 </div>
                 <button
                   className="services-arrow services-arrow-right"
-                  onClick={() =>
-                    servicesRef.current?.scrollBy({
-                      left: 380,
-                      behavior: "smooth",
-                    })
-                  }
+                  onClick={() => {
+                    servicesRef.current?.scrollBy({ left: 380, behavior: "smooth" });
+                    clearTimeout(servicesTimerRef.current);
+                    servicesTimerRef.current = setTimeout(() => setServicesActive(false), 2000);
+                  }}
                   aria-label="Scroll right"
                 >
                   <ChevronRight />
@@ -2007,7 +2034,7 @@ function MemberDashboard() {
             {activeBorrows.length === 0 ? (
               <div className="empty">No active borrows</div>
             ) : (
-              <table>
+              <table className="profile-table">
                 <thead>
                   <tr>
                     <th>Title</th>
@@ -2046,7 +2073,7 @@ function MemberDashboard() {
             {reservations.length === 0 ? (
               <div className="empty">No reservations</div>
             ) : (
-              <table>
+              <table className="profile-table">
                 <thead>
                   <tr>
                     <th>Title</th>
@@ -2064,7 +2091,7 @@ function MemberDashboard() {
                         {r.status === "ready" ? (
                           <Badge variant="active">Ready — go borrow!</Badge>
                         ) : (
-                          <Badge variant="overdue">
+                          <Badge variant="queue">
                             Queue #{r.queue_position}
                           </Badge>
                         )}
@@ -2089,7 +2116,7 @@ function MemberDashboard() {
             {fines.length === 0 ? (
               <div className="empty">No fines</div>
             ) : (
-              <table>
+              <table className="profile-table">
                 <thead>
                   <tr>
                     <th>Book</th>

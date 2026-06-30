@@ -115,6 +115,8 @@ backend/
     reservations.py   # /api/reserve/, /api/cancel-reservation/, /api/my-reservations
     admin.py          # /api/admin/ — borrows, fines, policy GET/PUT, members GET/POST,
                       #   memberships/pricing GET/PUT, members/<id>/membership PUT
+                      #   PUT /api/admin/fines/<borrow_id>/mark-paid — mark a fine as paid
+                      #     (sets fine_paid=True); 400 if no fine or already paid
                       #   members list now includes membership_tier and family_group_id
     membership.py     # /api/membership — GET current user's tier, pricing, family members list
     donations.py      # /api/donations POST — member submits a donation
@@ -165,13 +167,23 @@ frontend/src/
                             # Axios interceptor: 401 clears user; 403 re-fetches /auth/me
                             # to re-sync React state with the real Flask session
                             # updateUser(patch) merges patch into user state (used after avatar upload)
-    ThemeContext.js         # ThemeProvider + useTheme() — theme ('light'|'dark'|'system'), setTheme()
-                            # applies data-theme attribute on <html>; listens to OS prefers-color-scheme
-                            # when in 'system' mode; persists choice in localStorage under key 'theme'
+    ThemeContext.js         # ThemeProvider + useTheme() — two independent axes:
+                            #   appearance ('light'|'dark'|'system') → sets data-color-mode on <html>
+                            #   readerTheme ('sepia'|'forest'|'ocean'|'rose'|'') → sets data-theme on <html>
+                            #   'system' appearance listens to OS prefers-color-scheme and updates live
+                            #   Both persisted in localStorage ('appearance', 'readerTheme')
+                            #   Combined selectors ([data-color-mode="X"][data-theme="Y"]) give 10 total
+                            #   theme combinations (2 base + 4 reader × 2 modes); combined selectors
+                            #   have specificity 20 vs single-attribute 10 so reader+mode always wins
   components/
     TopBar.js               # Header with title on left; avatar button on right opens a profile dropdown
-                            #   Dropdown contains: avatar + username + tier badge, Appearance section
-                            #   (Light/System/Dark rows with active checkmark), Sign Out row
+                            #   Dropdown sections (top → bottom):
+                            #     avatar + username + tier badge (inline, not stretched)
+                            #     Appearance row — 3 compact pd-option buttons: Light / System / Dark
+                            #     Reader Themes row — 4 compact pd-option buttons: Sepia / Forest /
+                            #       Ocean / Rose; clicking an active theme toggles it off (back to base)
+                            #     Sign Out row
+                            #   pd-options-row / pd-option / pd-option-active CSS for compact inline layout
                             #   Closes on outside click; fade+slide animation
                             #   Props: title, username, avatar, tier, onLogout
     UserAvatar.js           # Circular avatar — renders <img> when avatar (base64) is set,
@@ -180,7 +192,8 @@ frontend/src/
     NavTabs.js              # Tab bar driven by a tabs config array
                             #   accepts `badges = {}` prop: { [tabId]: number }
                             #   renders a red pill badge next to the tab label when count > 0
-    Badge.js                # Status chip (active / overdue / returned)
+    Badge.js                # Status chip — variants: active (green), overdue (red), returned (gray),
+                            #   queue (yellow — used for reservation queue position)
     Modal.js                # Overlay modal; wide prop for 640px variant
                             #   Header row has title on left and ✕ close button on right
                             #   Hero mode: heroBg + heroTextColor + heroContent props render a
@@ -194,8 +207,14 @@ frontend/src/
                             #   each having 5 placeholder lines, a spine div, and a
                             #   turning-page div; shown while initial data fetch is in flight
     BookStrip               # Horizontal scroll wrapper with left/right chevron arrows;
-                            #   arrows hidden by default, fade in on wrapper hover;
-                            #   scrolls 420 px per click; each strip has its own useRef
+                            #   arrows only rendered when content overflows (ResizeObserver watches
+                            #     scrollWidth > clientWidth on the rec-strip; re-checks on resize)
+                            #   arrows are bare chevrons (no box/border), absolutely positioned over
+                            #     the strip at 50% vertical; appear on mouseenter via JS state class
+                            #     (arrows-active); auto-hide 2 s after the last click via setTimeout;
+                            #     mouseLeave cancels the timer and hides immediately
+                            #   scrolls 420 px per click with smooth behavior; each strip has its own
+                            #     useRef, useState (active), useRef (timer)
     ReactionIcon            # Stroke-based inline SVG icon for community reactions;
                             #   types: like|love|haha|wow|sad|angry; size prop (default 13)
     CommentItem             # Recursive threaded comment with reaction buttons, Reply
@@ -225,6 +244,10 @@ frontend/src/
                             #      (images served from /public: service_borrow.jpg,
                             #       service_reserve.jpg, service_ai_search.jpg,
                             #       service_picks.jpg, service_community.jpg, service_donate.jpg)
+                            #      Arrows: bare chevrons absolutely positioned over the cards
+                            #      (position:absolute, top:50%), appear on mouseenter, auto-hide
+                            #      2 s after the last click; JS state (servicesActive +
+                            #      servicesTimerRef) drives visibility via arrows-active class
                             #   3. "From the collection" section — 6-book grid (first 6 books
                             #      from API); each card shows cover image (or placeholder),
                             #      title, author, genre badge, star rating; clicking a card
@@ -252,9 +275,7 @@ frontend/src/
                             #   7. All books grouped by genre — BookStrip per genre
                             #      Trending books show an inline "Trending" badge in the card title
                             #
-                            #   BookStrip component — wraps rec-strip with left/right chevron arrows;
-                            #     arrows hidden by default, fade in on wrapper hover; scrolls 420px
-                            #     per click with smooth behavior; each strip has its own useRef
+                            #   BookStrip component — see BookStrip entry above
                             #
                             #   Click any card → Book Detail modal (wide):
                             #     Hero zone (coloured with book cover's dominant colour):
@@ -311,7 +332,9 @@ frontend/src/
                             #   color  |  ✗ title — failed) with a live progress bar
                             #
                             # Fines tab (merged):
-                            #   Pending Fines table — all unpaid fines
+                            #   Pending Fines table — all unpaid fines with Status badge
+                            #     (Overdue / Returned Late) and Mark Paid button per row;
+                            #     header shows total count + total dollar amount
                             #   Fine Policy form — fine_per_day and borrow_days (live editable)
                             #
                             # Members tab (merged):
@@ -390,6 +413,7 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 |---|---|---|---|
 | GET | `/api/admin/borrows` | admin | All currently borrowed books |
 | GET | `/api/admin/fines` | admin | All unpaid fines |
+| PUT | `/api/admin/fines/:borrow_id/mark-paid` | admin | Mark a fine as paid |
 | GET | `/api/admin/policy` | admin | Current fine policy |
 | PUT | `/api/admin/policy` | admin | Update `fine_per_day` and `borrow_days` |
 | GET | `/api/admin/members` | admin | All members; each entry includes `membership_tier` and `family_group_id` |
@@ -618,6 +642,8 @@ Gold members can create communities, which go through admin approval before beco
 
 ## Key Design Decisions
 
+- **Theme system: two-axis CSS custom properties** — `data-color-mode` (light/dark) and `data-theme` (sepia/forest/ocean/rose) are independent HTML attributes. Combined two-attribute CSS selectors (`[data-color-mode="dark"][data-theme="sepia"]`) have specificity 20 vs single-attribute 10, so every reader+mode combo reliably overrides base mode variables. 10 total combinations.
+- **WCAG AA compliance across all themes** — every `--text` through `--text-5` variable in all 10 theme combinations meets the 4.5:1 contrast ratio requirement against its `--bg`. The floor is tightest in constrained palettes (e.g. Forest Light green-on-green, Sepia Dark); `--text-4` and `--text-5` converge toward the same value in those cases rather than sacrificing compliance.
 - **Session-based auth** over JWT — simpler for a monolith; Flask handles signing.
 - **SQLite** — zero-config for development; swap `SQLALCHEMY_DATABASE_URI` in `config.py` to migrate to Postgres.
 - **Client-side filtering** — all books are loaded on mount; genre, availability, rating, and text filters are applied in-memory with `useMemo`.

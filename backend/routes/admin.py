@@ -182,6 +182,21 @@ def admin_member_borrows(user_id):
     return jsonify([b.to_dict() for b in sorted(m.borrows, key=lambda b: b.borrow_date, reverse=True)])
 
 
+@admin_bp.route('/fines/<int:borrow_id>/mark-paid', methods=['PUT'])
+@admin_required
+def mark_fine_paid(borrow_id):
+    borrow = db.session.get(Borrow, borrow_id)
+    if not borrow:
+        return jsonify({'error': 'Borrow not found'}), 404
+    if borrow.fine <= 0:
+        return jsonify({'error': 'No fine on this borrow'}), 400
+    if borrow.fine_paid:
+        return jsonify({'error': 'Fine already paid'}), 400
+    borrow.fine_paid = True
+    db.session.commit()
+    return jsonify(borrow.to_dict())
+
+
 @admin_bp.route('/policy', methods=['PUT'])
 @admin_required
 def update_policy():

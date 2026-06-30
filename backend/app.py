@@ -1,27 +1,17 @@
 import os
-from flask import Flask, send_from_directory
+from flask import Flask
 from flask_cors import CORS
 from config import Config
 from extensions import db
 from routes import register_blueprints
 
-REACT_BUILD = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'build')
-
 
 def create_app():
-    app = Flask(__name__, static_folder=REACT_BUILD, static_url_path='')
+    app = Flask(__name__)
     app.config.from_object(Config)
     CORS(app, supports_credentials=True, origins=app.config['CORS_ORIGINS'])
     db.init_app(app)
     register_blueprints(app)
-
-    @app.route('/', defaults={'path': ''})
-    @app.route('/<path:path>')
-    def serve_react(path):
-        full = os.path.join(REACT_BUILD, path)
-        if path and os.path.exists(full):
-            return send_from_directory(REACT_BUILD, path)
-        return send_from_directory(REACT_BUILD, 'index.html')
 
     with app.app_context():
         db.create_all()

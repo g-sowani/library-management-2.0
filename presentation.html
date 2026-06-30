@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Library Management System 2.0 — Presentation</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.6.0/dist/reveal.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.6.0/dist/theme/black.css" />
+<style>
+  :root {
+    --accent: #6c63ff;
+    --accent2: #00d9a7;
+    --accent3: #ff6b6b;
+    --gold: #ffd700;
+    --silver: #c0c0c0;
+  }
+
+  .reveal {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+
+  /* ── HERO SLIDE ── */
+  .hero-slide {
+    background: linear-gradient(135deg, #0f0f1a 0%, #1a1a3e 50%, #0f0f1a 100%);
+  }
+  .hero-title {
+    font-size: 2.6rem !important;
+    font-weight: 800 !important;
+    background: linear-gradient(90deg, #6c63ff, #00d9a7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.2em !important;
+  }
+  .hero-sub {
+    font-size: 1rem !important;
+    color: #aaa;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .hero-badges {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 1.6em;
+    flex-wrap: wrap;
+  }
+  .badge {
+    background: rgba(108,99,255,0.2);
+    border: 1px solid rgba(108,99,255,0.5);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 0.75rem;
+    color: #b0a8ff;
+    letter-spacing: 0.04em;
+  }
+  .badge.green { background: rgba(0,217,167,0.15); border-color: rgba(0,217,167,0.5); color: #00d9a7; }
+  .badge.red   { background: rgba(255,107,107,0.15); border-color: rgba(255,107,107,0.5); color: #ff8a8a; }
+  .badge.gold  { background: rgba(255,215,0,0.15); border-color: rgba(255,215,0,0.5); color: #ffd700; }
+
+  /* ── SECTION TITLE ── */
+  .section-label {
+    font-size: 0.7rem !important;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent2);
+    margin-bottom: 0.3em !important;
+  }
+  .slide-title {
+    font-size: 2rem !important;
+    font-weight: 700 !important;
+    color: #fff;
+    margin-bottom: 0.8em !important;
+  }
+
+  /* ── GRID CARDS ── */
+  .card-grid {
+    display: grid;
+    gap: 14px;
+    text-align: left;
+  }
+  .card-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .card-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .card-grid.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+  .card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: var(--accent);
+    border-radius: 3px 0 0 3px;
+  }
+  .card.green::before { background: var(--accent2); }
+  .card.red::before   { background: var(--accent3); }
+  .card.gold::before  { background: var(--gold); }
+  .card.purple::before{ background: #a855f7; }
+
+  .card-icon { font-size: 1.6rem; margin-bottom: 6px; display: block; }
+  .card-title {
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    color: #fff;
+    margin: 0 0 4px !important;
+  }
+  .card-body {
+    font-size: 0.68rem !important;
+    color: #aaa;
+    margin: 0 !important;
+    line-height: 1.5;
+  }
+
+  /* ── TECH STACK ── */
+  .stack-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    align-items: stretch;
+  }
+  .stack-label {
+    background: rgba(108,99,255,0.25);
+    color: #b0a8ff;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    min-width: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .stack-items {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .chip {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.72rem;
+    color: #e0e0e0;
+  }
+
+  /* ── CODE BLOCK ── */
+  .code-box {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 16px;
+    text-align: left;
+    font-family: 'Courier New', monospace;
+    font-size: 0.7rem;
+    line-height: 1.6;
+    color: #e6edf3;
+    overflow: hidden;
+  }
+  .code-box .kw  { color: #ff7b72; }
+  .code-box .str { color: #a5d6ff; }
+  .code-box .cmt { color: #8b949e; }
+  .code-box .fn  { color: #d2a8ff; }
+  .code-box .num { color: #79c0ff; }
+  .code-box .op  { color: #ff7b72; }
+
+  /* ── FLOW DIAGRAM ── */
+  .flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    flex-wrap: wrap;
+  }
+  .flow-step {
+    background: rgba(108,99,255,0.2);
+    border: 1px solid rgba(108,99,255,0.4);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 0.72rem;
+    color: #d0c8ff;
+    text-align: center;
+    min-width: 90px;
+  }
+  .flow-arrow {
+    color: #555;
+    font-size: 1.2rem;
+    margin: 0 6px;
+  }
+
+  /* ── STAT BOXES ── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .stat-box {
+    background: rgba(255,255,255,0.05);
+    border-radius: 10px;
+    padding: 16px 10px;
+    text-align: center;
+  }
+  .stat-num {
+    font-size: 2rem !important;
+    font-weight: 800 !important;
+    background: linear-gradient(90deg, #6c63ff, #00d9a7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0 !important;
+  }
+  .stat-label {
+    font-size: 0.65rem !important;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 4px 0 0 !important;
+  }
+
+  /* ── TIER CARDS ── */
+  .tier-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    text-align: center;
+  }
+  .tier-card {
+    border-radius: 10px;
+    padding: 18px 12px;
+  }
+  .tier-card.silver {
+    background: linear-gradient(135deg, rgba(192,192,192,0.15), rgba(192,192,192,0.05));
+    border: 1px solid rgba(192,192,192,0.3);
+  }
+  .tier-card.gold {
+    background: linear-gradient(135deg, rgba(255,215,0,0.2), rgba(255,215,0,0.05));
+    border: 1px solid rgba(255,215,0,0.4);
+  }
+  .tier-card.family {
+    background: linear-gradient(135deg, rgba(0,217,167,0.15), rgba(0,217,167,0.05));
+    border: 1px solid rgba(0,217,167,0.3);
+  }
+  .tier-name { font-size: 1rem !important; font-weight: 700 !important; margin: 4px 0 !important; }
+  .tier-price { font-size: 1.4rem !important; font-weight: 800 !important; margin: 4px 0 !important; }
+  .tier-detail { font-size: 0.65rem !important; color: #aaa; margin: 0 !important; line-height: 1.5; }
+
+  /* ── HIGHLIGHT BOX ── */
+  .highlight-box {
+    background: linear-gradient(135deg, rgba(108,99,255,0.15), rgba(0,217,167,0.1));
+    border: 1px solid rgba(108,99,255,0.3);
+    border-radius: 10px;
+    padding: 16px 20px;
+    text-align: left;
+    margin-top: 12px;
+  }
+  .highlight-box p { font-size: 0.75rem !important; color: #ccc; margin: 0 !important; line-height: 1.6; }
+
+  /* ── API TABLE ── */
+  .api-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.68rem;
+    text-align: left;
+  }
+  .api-table th {
+    background: rgba(108,99,255,0.25);
+    color: #b0a8ff;
+    padding: 7px 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .api-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    color: #ccc;
+    vertical-align: top;
+  }
+  .api-table tr:hover td { background: rgba(255,255,255,0.04); }
+  .method {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-weight: 700;
+    font-size: 0.6rem;
+    letter-spacing: 0.04em;
+  }
+  .get  { background: rgba(0,217,167,0.2); color: #00d9a7; }
+  .post { background: rgba(108,99,255,0.2); color: #b0a8ff; }
+  .put  { background: rgba(255,215,0,0.2);  color: #ffd700; }
+  .del  { background: rgba(255,107,107,0.2);color: #ff8a8a; }
+
+  /* ── DECISION LIST ── */
+  .decision-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+  }
+  .decision-list li {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 10px;
+    font-size: 0.72rem;
+    color: #ccc;
+    line-height: 1.4;
+  }
+  .decision-list li::before {
+    content: '→';
+    color: var(--accent);
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .decision-list li strong { color: #fff; }
+
+  /* ── FINAL SLIDE ── */
+  .final-slide { background: linear-gradient(135deg, #0f0f1a, #1a1a3e); }
+  .final-title {
+    font-size: 2.8rem !important;
+    font-weight: 800 !important;
+    background: linear-gradient(90deg, #6c63ff, #00d9a7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .link-row {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 1.2em;
+  }
+  .link-chip {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-size: 0.75rem;
+    color: #aaa;
+  }
+
+  /* ── MISC ── */
+  .reveal section { padding: 0 40px !important; }
+  .reveal h2, .reveal h3, .reveal p, .reveal li { text-align: center; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .concurrency-box {
+    background: #0d1117;
+    border-left: 3px solid var(--accent3);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    text-align: left;
+  }
+  .concurrency-box p { font-size: 0.68rem !important; color: #ccc; margin: 0 !important; line-height: 1.6; text-align: left; }
+  .concurrency-box .title { font-size: 0.78rem !important; color: #fff; font-weight: 700; margin-bottom: 4px !important; }
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ── SLIDE 1: HERO ── -->
+<section data-background-gradient="linear-gradient(135deg, #0f0f1a 0%, #1a1a3e 50%, #0f0f1a 100%)">
+  <h1 class="hero-title">Library Management System 2.0</h1>
+  <p class="hero-sub">Full-Stack Flask · React · AI-Powered Discovery</p>
+  <div class="hero-badges">
+    <span class="badge">Python · Flask 3</span>
+    <span class="badge">React 18</span>
+    <span class="badge green">Groq AI · Llama 3.1</span>
+    <span class="badge green">Collaborative Filtering</span>
+    <span class="badge red">Concurrency-Safe</span>
+    <span class="badge gold">Gold Community</span>
+  </div>
+  <br/>
+  <p style="font-size:0.7rem;color:#555;margin-top:1.2em;">Press → or Space to advance</p>
+</section>
+
+<!-- ── SLIDE 2: WHAT I BUILT ── -->
+<section>
+  <p class="section-label">Overview</p>
+  <h2 class="slide-title">This is not a CRUD app.</h2>
+  <div class="stat-grid">
+    <div class="stat-box">
+      <p class="stat-num">30+</p>
+      <p class="stat-label">REST Endpoints</p>
+    </div>
+    <div class="stat-box">
+      <p class="stat-num">11</p>
+      <p class="stat-label">DB Models</p>
+    </div>
+    <div class="stat-box">
+      <p class="stat-num">3</p>
+      <p class="stat-label">Rec Engines</p>
+    </div>
+    <div class="stat-box">
+      <p class="stat-num">AI</p>
+      <p class="stat-label">Natural Lang Search</p>
+    </div>
+  </div>
+  <div class="card-grid cols-2" style="margin-top:16px;">
+    <div class="card green">
+      <span class="card-icon">📚</span>
+      <p class="card-title">Members</p>
+      <p class="card-body">Browse, borrow, reserve, review, donate books. Get AI-powered and personalised recommendations. Join exclusive reading communities.</p>
+    </div>
+    <div class="card">
+      <span class="card-icon">🛡️</span>
+      <p class="card-title">Admins</p>
+      <p class="card-body">Manage catalogue, monitor borrows, configure fines, approve donations & communities, bulk-scrape Open Library metadata.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── SLIDE 3: TECH STACK ── -->
+<section>
+  <p class="section-label">Architecture</p>
+  <h2 class="slide-title">Tech Stack</h2>
+  <div style="text-align:left;">
+    <div class="stack-row">
+      <div class="stack-label">Backend</div>
+      <div class="stack-items">
+        <span class="chip">Python 3</span>
+        <span class="chip">Flask 3</span>
+        <span class="chip">SQLAlchemy</span>
+        <span class="chip">SQLite</span>
+        <span class="chip">Blueprints</span>
+      </div>
+    </div>
+    <div class="stack-row">
+      <div class="stack-label">Frontend</div>
+      <div class="stack-items">
+        <span class="chip">React 18</span>
+        <span class="chip">Axios</span>
+        <span class="chip">Context API</span>
+        <span class="chip">CSS Modules</span>
+      </div>
+    </div>
+    <div class="stack-row">
+      <div class="stack-label">Auth</div>
+      <div class="stack-items">
+        <span class="chip">Flask session cookies</span>
+        <span class="chip">withCredentials</span>
+        <span class="chip">Signed sessions</span>
+      </div>
+    </div>
+    <div class="stack-row">
+      <div class="stack-label">AI / Meta</div>
+      <div class="stack-items">
+        <span class="chip" style="border-color:rgba(108,99,255,0.5);color:#b0a8ff;">Groq API</span>
+        <span class="chip" style="border-color:rgba(108,99,255,0.5);color:#b0a8ff;">llama-3.1-8b-instant</span>
+        <span class="chip" style="border-color:rgba(0,217,167,0.4);color:#00d9a7;">Open Library API</span>
+        <span class="chip" style="border-color:rgba(0,217,167,0.4);color:#00d9a7;">Pillow (cover color)</span>
+      </div>
+    </div>
+    <div class="stack-row">
+      <div class="stack-label">Deploy</div>
+      <div class="stack-items">
+        <span class="chip">Railway (backend)</span>
+        <span class="chip">Vercel (frontend)</span>
+        <span class="chip">Nixpacks</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── SLIDE 4: FEATURE MAP ── -->
+<section>
+  <p class="section-label">Features</p>
+  <h2 class="slide-title">What Members Can Do</h2>
+  <div class="card-grid cols-3">
+    <div class="card green">
+      <span class="card-icon">📖</span>
+      <p class="card-title">Borrow & Return</p>
+      <p class="card-body">Tier-enforced concurrent borrow limits. Optional star rating + review at return time — written atomically in the same DB transaction.</p>
+    </div>
+    <div class="card green">
+      <span class="card-icon">📋</span>
+      <p class="card-title">Reservation Queue</p>
+      <p class="card-body">Reserve when all copies are out. Queue position shown live. Held copy auto-passes on cancel. No double-counting.</p>
+    </div>
+    <div class="card">
+      <span class="card-icon">✨</span>
+      <p class="card-title">AI Search</p>
+      <p class="card-body">Type "boy with glasses at a magical school" — Groq + Llama 3.1 ranks matching books with a per-result reason. Sub-second response.</p>
+    </div>
+    <div class="card">
+      <span class="card-icon">🎯</span>
+      <p class="card-title">Personalised Picks</p>
+      <p class="card-body">Content-based recs from borrow + rating history. Collab filtering via cosine similarity with peer readers.</p>
+    </div>
+    <div class="card gold">
+      <span class="card-icon">👥</span>
+      <p class="card-title">Communities</p>
+      <p class="card-body">Gold members only. Threaded posts at unlimited depth. 6 emoji reactions. Live notification badge polled every 60 s.</p>
+    </div>
+    <div class="card red">
+      <span class="card-icon">🎁</span>
+      <p class="card-title">Donate & Earn</p>
+      <p class="card-body">Donate physical books → earn credit (price ÷ 4). Admin approves and adds book to catalogue automatically.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── SLIDE 5: AI DISCOVERY ── -->
+<section>
+  <p class="section-label">Intelligence</p>
+  <h2 class="slide-title">Three Discovery Engines</h2>
+  <div class="card-grid cols-3">
+    <div class="card red">
+      <p class="card-title">🔥 Trending This Week</p>
+      <p class="card-body">Counts borrows in the last 7 days. Top 8 books sorted by borrow velocity. "Trending" badge visible across all filter views.</p>
+    </div>
+    <div class="card">
+      <p class="card-title">🎯 Content-Based Recs</p>
+      <p class="card-body">
+        Weighted preference profile from borrow history.<br/>
+        <strong style="color:#fff;">Score</strong> = 0.5 × genre_match + 0.3 × author_match + 0.2 × avg_rating<br/>
+        Implicit weight: 0.6 (below a 3★ rating intentionally).
+      </p>
+    </div>
+    <div class="card purple">
+      <p class="card-title">🤝 Collaborative Filter</p>
+      <p class="card-body">
+        Cosine similarity over implicit rating vectors.<br/>
+        Σ sim(peer) × peer_weight(book).<br/>
+        Returns "N readers like you read this".
+      </p>
+    </div>
+  </div>
+  <div class="highlight-box" style="margin-top:14px;">
+    <p>✨ <strong style="color:#fff;">AI Search (Groq)</strong> — Member types freeform description → backend formats the full catalogue as a prompt → Llama 3.1 returns ranked <code style="color:#b0a8ff;">[{id, reason}]</code> → backend validates IDs against DB and hydrates with live availability. Hallucinated books are structurally impossible since only DB IDs are returned.</p>
+  </div>
+</section>
+
+<!-- ── SLIDE 6: CONCURRENCY ── -->
+<section>
+  <p class="section-label">Engineering Depth</p>
+  <h2 class="slide-title">Concurrency-Safe Borrow Logic</h2>
+  <p style="font-size:0.75rem;color:#aaa;margin-bottom:14px;">Two independent layers so concurrent requests can never corrupt <code>available_copies</code></p>
+  <div class="two-col">
+    <div class="concurrency-box">
+      <p class="title">Layer 1 — Dialect-Aware Row Lock</p>
+      <p><strong style="color:#ff6b6b;">PostgreSQL:</strong> <code>SELECT … FOR UPDATE SKIP LOCKED</code> — returns <code>None</code> immediately if locked → 409 Conflict (retryable).<br/><br/><strong style="color:#00d9a7;">SQLite:</strong> plain <code>SELECT</code> — WAL journal serialises concurrent writers at the DB engine level.</p>
+    </div>
+    <div class="concurrency-box" style="border-left-color:var(--accent2);">
+      <p class="title">Layer 2 — Atomic Conditional UPDATE</p>
+      <p>The copy count is <strong style="color:#fff;">never</strong> read into Python and written back. All mutations use:<br/></p>
+      <div class="code-box" style="margin-top:8px;font-size:0.65rem;">
+        <span class="kw">UPDATE</span> book<br/>
+        &nbsp;&nbsp;<span class="kw">SET</span> available_copies = available_copies - <span class="num">1</span><br/>
+        &nbsp;&nbsp;<span class="kw">WHERE</span> id = ? <span class="op">AND</span> available_copies &gt; <span class="num">0</span>
+      </div>
+      <p style="margin-top:8px !important;"><code>rowcount == 0</code> → another transaction raced and won → 409 Conflict.</p>
+    </div>
+  </div>
+  <div class="flow" style="margin-top:14px;">
+    <div class="flow-step">Request In</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">lock_book()</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">Business Rules</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">Atomic UPDATE</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step" style="background:rgba(0,217,167,0.2);border-color:rgba(0,217,167,0.5);color:#00d9a7;">200 OK</div>
+  </div>
+</section>
+
+<!-- ── SLIDE 7: RESERVATION SYSTEM ── -->
+<section>
+  <p class="section-label">Feature Deep Dive</p>
+  <h2 class="slide-title">Reservation Queue System</h2>
+  <div class="flow" style="margin-bottom:16px;">
+    <div class="flow-step">All copies out</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">Reserve</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">pending</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step" style="background:rgba(255,215,0,0.15);border-color:rgba(255,215,0,0.4);color:#ffd700;">ready</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step" style="background:rgba(0,217,167,0.15);border-color:rgba(0,217,167,0.4);color:#00d9a7;">Borrowed</div>
+  </div>
+  <div class="card-grid cols-2">
+    <div class="card">
+      <p class="card-title">Smart Hold Tracking (No Extra Column)</p>
+      <p class="card-body">When a book is returned with a pending reservation, <code>available_copies</code> stays at 0 — the copy is implicitly held. Count of <code>ready</code> reservations = held copies. Zero extra DB columns needed.</p>
+    </div>
+    <div class="card green">
+      <p class="card-title">Button States</p>
+      <p class="card-body">
+        <span style="color:#00d9a7;">●</span> Copies available → <strong>Borrow</strong><br/>
+        <span style="color:#888;">●</span> No copies → <strong>Reserve</strong><br/>
+        <span style="color:#ffd700;">●</span> In queue → <strong>Reserved #N</strong><br/>
+        <span style="color:#6c63ff;">●</span> Ready for me → <strong>Borrow (Ready)</strong>
+      </p>
+    </div>
+  </div>
+  <div class="highlight-box">
+    <p>If the <code>ready</code> user cancels: the held copy auto-passes to the next <code>pending</code> waiter — or increments <code>available_copies</code> if the queue is empty. Queue integrity is maintained without any background job.</p>
+  </div>
+</section>
+
+<!-- ── SLIDE 8: MEMBERSHIP ── -->
+<section>
+  <p class="section-label">Business Logic</p>
+  <h2 class="slide-title">Membership Tiers</h2>
+  <div class="tier-row">
+    <div class="tier-card silver">
+      <p style="font-size:1.4rem;margin:0;">🥈</p>
+      <p class="tier-name" style="color:#c0c0c0;">Silver</p>
+      <p class="tier-price" style="color:#c0c0c0;">$9.99<span style="font-size:0.5em;font-weight:400;">/mo</span></p>
+      <p class="tier-detail">1 active borrow<br/>Standard access<br/>Full library browsing</p>
+    </div>
+    <div class="tier-card gold">
+      <p style="font-size:1.4rem;margin:0;">🥇</p>
+      <p class="tier-name" style="color:#ffd700;">Gold</p>
+      <p class="tier-price" style="color:#ffd700;">$19.99<span style="font-size:0.5em;font-weight:400;">/mo</span></p>
+      <p class="tier-detail">3 concurrent borrows<br/>Reading Communities<br/>All member features</p>
+    </div>
+    <div class="tier-card family">
+      <p style="font-size:1.4rem;margin:0;">👨‍👩‍👧‍👦</p>
+      <p class="tier-name" style="color:#00d9a7;">Family</p>
+      <p class="tier-price" style="color:#00d9a7;">$29.99<span style="font-size:0.5em;font-weight:400;">/mo</span></p>
+      <p class="tier-detail">1 borrow per person<br/>Up to 4 accounts<br/>Grouped by family_group_id</p>
+    </div>
+  </div>
+  <div class="highlight-box" style="margin-top:14px;">
+    <p><strong style="color:#fff;">Design insight:</strong> Family group is stored as a single <code>family_group_id</code> integer on <code>Membership</code> — no separate <code>FamilyGroup</code> table needed. Admin sets tier to <code>family</code>; backend auto-places the member in an existing group with room or creates a new one. Pricing lives in the <code>setting</code> table so rates change at runtime with zero restart.</p>
+  </div>
+</section>
+
+<!-- ── SLIDE 9: COMMUNITY SYSTEM ── -->
+<section>
+  <p class="section-label">Gold-Member Feature</p>
+  <h2 class="slide-title">Reading Communities</h2>
+  <div class="card-grid cols-2">
+    <div>
+      <div class="card gold" style="margin-bottom:12px;">
+        <p class="card-title">Lifecycle</p>
+        <div class="flow" style="flex-direction:column;align-items:flex-start;gap:6px;">
+          <div style="display:flex;align-items:center;gap:8px;"><span style="color:#ffd700;">●</span><span style="font-size:0.7rem;color:#ccc;">Create community → <code>pending</code></span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="color:#6c63ff;">●</span><span style="font-size:0.7rem;color:#ccc;">Admin reviews → <code>approved</code> / <code>rejected</code></span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="color:#00d9a7;">●</span><span style="font-size:0.7rem;color:#ccc;">Creator auto-joins as <strong>moderator</strong></span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="color:#a855f7;">●</span><span style="font-size:0.7rem;color:#ccc;">Gold members join & post</span></div>
+        </div>
+      </div>
+      <div class="card purple">
+        <p class="card-title">6 Emoji Reactions</p>
+        <p class="card-body">Stored as string keys (<code>like|love|haha|wow|sad|angry</code>), not emoji characters. Frontend renders stroke-based inline SVG icons — no icon library dependency. Toggle on/off via unique constraint.</p>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:12px;">
+        <p class="card-title">Threaded Comments</p>
+        <p class="card-body">Self-referential <code>parent_id FK → self</code> allows unlimited reply depth. Backend serialises recursively. Frontend <code>CommentItem</code> is recursive with a <code>depth</code> prop. Visual indent capped at 4 — data depth is unlimited.</p>
+      </div>
+      <div class="card red">
+        <p class="card-title">Live Notification Badge</p>
+        <p class="card-body">Polls <code>/api/communities/activity-count?since=&lt;iso&gt;</code> every 60 s (only when tab is not active). Count stored in <code>localStorage</code> as <code>communityLastSeen</code>. Single aggregating query — no WebSocket complexity.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── SLIDE 10: DONATION SYSTEM ── -->
+<section>
+  <p class="section-label">Economic Loop</p>
+  <h2 class="slide-title">Book Donation System</h2>
+  <div class="flow" style="margin-bottom:16px;">
+    <div class="flow-step">Member donates</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">pending queue</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">Admin reviews</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step" style="background:rgba(0,217,167,0.15);border-color:rgba(0,217,167,0.4);color:#00d9a7;">Book added to catalogue</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step" style="background:rgba(255,215,0,0.15);border-color:rgba(255,215,0,0.4);color:#ffd700;">Credit earned</div>
+  </div>
+  <div class="card-grid cols-3">
+    <div class="card green">
+      <p class="card-title">Smart Dedup</p>
+      <p class="card-body">On approval, if the title (case-insensitive) or ISBN matches an existing book — a copy is added to that record. No duplicates.</p>
+    </div>
+    <div class="card">
+      <p class="card-title">Credit Calculation</p>
+      <p class="card-body">Default credit = <code>estimated_price ÷ 4</code>. Admin can override. No separate wallet table — total credit is summed across approved donations at read time.</p>
+    </div>
+    <div class="card gold">
+      <p class="card-title">Audit Trail</p>
+      <p class="card-body">Every catalogue change writes a <code>BookLog</code> entry with the admin username — denormalised so logs survive user deletion.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── SLIDE 11: BACKEND ARCHITECTURE ── -->
+<section>
+  <p class="section-label">Backend</p>
+  <h2 class="slide-title">Flask App Architecture</h2>
+  <div class="card-grid cols-2">
+    <div style="text-align:left;">
+      <div class="code-box">
+        <span class="cmt"># Blueprint-based, factory pattern</span><br/>
+        <span class="fn">create_app</span>() → register_blueprints()<br/><br/>
+        routes/<br/>
+        &nbsp;&nbsp;<span class="str">auth.py</span>      <span class="cmt"># session login/logout/me</span><br/>
+        &nbsp;&nbsp;<span class="str">books.py</span>     <span class="cmt"># CRUD + scrape + AI search</span><br/>
+        &nbsp;&nbsp;<span class="str">borrows.py</span>   <span class="cmt"># borrow/return/fines</span><br/>
+        &nbsp;&nbsp;<span class="str">reservations.py</span><br/>
+        &nbsp;&nbsp;<span class="str">admin.py</span>     <span class="cmt"># policy, members, fines</span><br/>
+        &nbsp;&nbsp;<span class="str">donations.py</span><br/>
+        &nbsp;&nbsp;<span class="str">communities.py</span><br/>
+        &nbsp;&nbsp;<span class="str">membership.py</span><br/><br/>
+        <span class="cmt"># Auto migration on startup</span><br/>
+        <span class="fn">_migrate_db</span>() <span class="cmt"># ALTER TABLE for new cols</span>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:10px;">
+        <p class="card-title">Zero-Downtime Migrations</p>
+        <p class="card-body"><code>_migrate_db()</code> runs on every startup. Uses <code>add_missing_cols(table, additions)</code> helper — calls <code>ALTER TABLE</code> only for columns not yet in the SQLite schema. New tables created by <code>db.create_all()</code>.</p>
+      </div>
+      <div class="card green">
+        <p class="card-title">Open Library + Pillow</p>
+        <p class="card-body">Lazy scrape on first book view. Extracts description, author bio, cover image URL. Pillow downsamples cover to 64×64, bins mid-tone pixels, stores dominant <code>#rrggbb</code> in DB — used for instant theming without async canvas.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── SLIDE 12: API DESIGN ── -->
+<section>
+  <p class="section-label">API</p>
+  <h2 class="slide-title">RESTful Endpoints (Selected)</h2>
+  <table class="api-table">
+    <thead>
+      <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><span class="method post">POST</span></td><td>/api/books/ai-search</td><td>Natural-language search via Groq + Llama 3.1</td></tr>
+      <tr><td><span class="method get">GET</span></td><td>/api/collaborative-recommendations</td><td>Cosine-similarity peer-based recs</td></tr>
+      <tr><td><span class="method get">GET</span></td><td>/api/recommendations</td><td>Content-based recs from borrow history</td></tr>
+      <tr><td><span class="method get">GET</span></td><td>/api/trending</td><td>Top 8 books by borrows in last 7 days</td></tr>
+      <tr><td><span class="method post">POST</span></td><td>/api/return/:id</td><td>Return book + optional rating/review (atomic)</td></tr>
+      <tr><td><span class="method get">GET</span></td><td>/api/communities/activity-count</td><td>Badge polling: new posts+comments+reactions</td></tr>
+      <tr><td><span class="method put">PUT</span></td><td>/api/admin/donations/:id/approve</td><td>Approve donation → auto-add book to catalogue</td></tr>
+      <tr><td><span class="method put">PUT</span></td><td>/api/admin/policy</td><td>Update fine_per_day + borrow_days at runtime</td></tr>
+      <tr><td><span class="method put">PUT</span></td><td>/api/admin/members/:id/membership</td><td>Change tier + auto-assign family_group_id</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ── SLIDE 13: DESIGN DECISIONS ── -->
+<section>
+  <p class="section-label">Engineering Judgement</p>
+  <h2 class="slide-title">Key Design Decisions</h2>
+  <ul class="decision-list">
+    <li><strong>Session cookies over JWT</strong> — simpler for a monolith, Flask handles signing. Global Axios interceptor syncs React state on 401/403 to prevent stale "admin" UI after account switch.</li>
+    <li><strong>Client-side filtering</strong> — all books loaded on mount, filtered in-memory with <code>useMemo</code>. Zero extra API calls on every filter change.</li>
+    <li><strong>Cover colour extracted server-side (Pillow)</strong> — stored as <code>#rrggbb</code> in DB, served with book list. No async canvas extraction in the browser. WCAG-safe foreground computed at render.</li>
+    <li><strong>Implicit borrow weight = 0.6</strong> — intentionally below a 3-star rating (0.6 &lt; 0.6̄) so passive reads don't dominate the preference profile.</li>
+    <li><strong>Groq over OpenAI</strong> — sub-second inference for this catalogue size. <code>temperature=0.1</code> for deterministic ranking. Hallucinated books structurally impossible (only returns DB IDs).</li>
+    <li><strong>Collab dedup client-side</strong> — both rec endpoints stay independent and cacheable; React strips duplicates at render time.</li>
+    <li><strong>Reactions as string keys, not emoji chars</strong> — avoids encoding issues; <code>VALID_REACTIONS</code> set is unambiguous; SVG icons map from keys.</li>
+  </ul>
+</section>
+
+<!-- ── SLIDE 14: FRONTEND POLISH ── -->
+<section>
+  <p class="section-label">UI / UX</p>
+  <h2 class="slide-title">Frontend Polish</h2>
+  <div class="card-grid cols-3">
+    <div class="card">
+      <span class="card-icon">🎨</span>
+      <p class="card-title">Dynamic Accent Theming</p>
+      <p class="card-body">The dominant cover colour of the user's active borrow sets <code>--accent</code> / <code>--accent-text</code> CSS vars on the layout root. WCAG AA text colour computed per render.</p>
+    </div>
+    <div class="card green">
+      <span class="card-icon">🌙</span>
+      <p class="card-title">Light / Dark / System</p>
+      <p class="card-body"><code>ThemeContext</code> listens to <code>prefers-color-scheme</code> in system mode. Persisted in <code>localStorage</code>. Applies <code>data-theme</code> attribute on <code>&lt;html&gt;</code>.</p>
+    </div>
+    <div class="card">
+      <span class="card-icon">📖</span>
+      <p class="card-title">Book Loader</p>
+      <p class="card-body">Full-page animated CSS loader — open book with two halves, placeholder lines, spine, and turning page. Shown during initial data fetch.</p>
+    </div>
+    <div class="card gold">
+      <span class="card-icon">👤</span>
+      <p class="card-title">Avatar Upload</p>
+      <p class="card-body">Client-side canvas resize (max 400×400, JPEG 0.88) before <code>PUT /api/auth/avatar</code>. Stored as base64 data-URL in DB. Falls back to initial circle.</p>
+    </div>
+    <div class="card purple">
+      <span class="card-icon">🔍</span>
+      <p class="card-title">Search Panel</p>
+      <p class="card-body">Collapsible with fade+translateY. Keyword mode and ✨ AI mode in the same panel — toggling one clears the other. Active filters shown as a dot on the icon.</p>
+    </div>
+    <div class="card red">
+      <span class="card-icon">📜</span>
+      <p class="card-title">Horizontal Strips</p>
+      <p class="card-body"><code>BookStrip</code> component with left/right chevron arrows that fade in on hover. 420 px per click, smooth scroll, each strip has its own <code>useRef</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── SLIDE 15: FINAL ── -->
+<section data-background-gradient="linear-gradient(135deg, #0f0f1a 0%, #1a1a3e 50%, #0f0f1a 100%)">
+  <p class="final-title">Thank You</p>
+  <p style="font-size:0.9rem;color:#aaa;margin-top:0.4em;">Questions?</p>
+  <div class="card-grid cols-2" style="margin-top:1.4em;">
+    <div class="card green">
+      <p class="card-title">What I'd build next</p>
+      <p class="card-body">• WebSocket real-time community notifications<br/>• PostgreSQL for multi-node deploy<br/>• Waitlist emails when reservation is ready<br/>• Admin analytics dashboard</p>
+    </div>
+    <div class="card">
+      <p class="card-title">What I learned</p>
+      <p class="card-body">• TOCTOU race conditions in concurrent writes<br/>• Cosine similarity from scratch (no ML library)<br/>• Prompt engineering for deterministic AI output<br/>• WCAG contrast math for dynamic theming</p>
+    </div>
+  </div>
+  <div class="hero-badges" style="margin-top:1.4em;">
+    <span class="badge">Flask 3 · React 18</span>
+    <span class="badge green">Groq AI · Llama 3.1</span>
+    <span class="badge red">Concurrency-Safe</span>
+    <span class="badge gold">Deployed · Live</span>
+  </div>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@4.6.0/dist/reveal.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    transition: 'slide',
+    transitionSpeed: 'fast',
+    center: true,
+    progress: true,
+    controls: true,
+    controlsLayout: 'bottom-right',
+    slideNumber: 'c/t',
+    keyboard: true,
+    touch: true,
+  });
+</script>
+</body>
+</html>

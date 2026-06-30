@@ -175,6 +175,11 @@ frontend/src/
                             #   Combined selectors ([data-color-mode="X"][data-theme="Y"]) give 10 total
                             #   theme combinations (2 base + 4 reader × 2 modes); combined selectors
                             #   have specificity 20 vs single-attribute 10 so reader+mode always wins
+  hooks/
+    useToast.js             # Toast notification hook — returns { toasts, toast(msg, type?) }
+                            #   toast(msg) defaults type to 'success'; pass 'error' for red variant
+                            #   each toast auto-expires after 2.8 s; IDs are monotonic so stacked
+                            #   toasts each dismiss independently
   components/
     TopBar.js               # Header with title on left; avatar button on right opens a profile dropdown
                             #   Dropdown sections (top → bottom):
@@ -201,6 +206,19 @@ frontend/src/
                             #     the header; padding removed from .modal root; .modal-body
                             #     wraps the remaining children with restored padding
     SearchBar.js            # Controlled search input; supports autoFocus prop
+    Select.js               # Custom themed dropdown replacing all native <select> elements
+                            #   Props: value, onChange, children (<option> elements), className, disabled
+                            #   onChange fires a synthetic { target: { value } } event so all existing
+                            #     handlers work unmodified
+                            #   Parses <option> children via React.Children.toArray (handles dynamic lists)
+                            #   Closes on outside mousedown or Escape; chevron rotates 180° when open
+                            #   Variants: default (form-group sizing, 10px padding) and .filter-select
+                            #     (compact 6px padding) — applied via className prop
+                            #   .form-group .custom-select stretches to full width automatically
+    Toast.js                # Toast notification renderer — Props: toasts (array from useToast)
+                            #   Renders a .toast-stack (fixed bottom-right, flex-column, 8px gap)
+                            #   .toast-success uses --text/--bg (theme-aware); .toast-error is red
+                            #   Each toast animates in with toast-in (fade + translateY)
   pages/
     (MemberDashboard.js exports one component but defines several helpers inline:)
     BookLoader              # Full-page animated CSS loader: open book with two halves
@@ -259,20 +277,28 @@ frontend/src/
                             #      Active filters shown as a dot on the icon when panel is closed
                             #   2. Collapsible search panel (searchOpen state):
                             #      search-panel-top row: SearchBar (keyword) OR ai-search-input
-                            #        (AI mode) + ✨ AI toggle button
-                            #      Keyword mode: genre / availability / rating dropdowns + Clear
-                            #      AI mode: natural-language input + Search button; fires
-                            #        POST /api/books/ai-search on Enter or button click;
+                            #        (AI mode) + AI toggle button
+                            #      Keyword mode: availability / rating custom Select dropdowns + Clear
+                            #        (genre filter also available via the genre pill strip below)
+                            #      AI mode: natural-language input only; fires POST /api/books/ai-search
+                            #        on Enter; no Search button — placeholder hints "(press Enter)"
+                            #        3-second AbortController timeout — if request exceeds 3 s,
+                            #        aiResults is set to [] which triggers the no-results state
                             #        state: aiMode, aiQuery, aiResults, aiLoading, aiError
+                            #      Both modes show "No results found for this search. Try again"
+                            #        (with inline Clear button) when results are empty
                             #      animates in with fade+translateY
                             #   3. Filtered results card grid (shown only when filters active) —
                             #      same rec-card style as strips; trending books get inline badge
-                            #   4. Trending This Week strip — BookStrip with hover-reveal arrows;
+                            #   4. Genre pill strip — horizontally scrollable genre buttons; clicking
+                            #      an already-active pill deselects it (toggles back to "All");
+                            #      pill text uses --text so it adapts across all themes
+                            #   5. Trending This Week strip — BookStrip with hover-reveal arrows;
                             #      cards identical in style to other strips
-                            #   5. Recommended for you strip — content-based recs (BookStrip)
-                            #   6. Readers like you also enjoyed strip — collab-filtered recs
+                            #   6. Recommended for you strip — content-based recs (BookStrip)
+                            #   7. Readers like you also enjoyed strip — collab-filtered recs
                             #      (deduped against content-based strip client-side) (BookStrip)
-                            #   7. All books grouped by genre — BookStrip per genre
+                            #   8. All books grouped by genre — BookStrip per genre
                             #      Trending books show an inline "Trending" badge in the card title
                             #
                             #   BookStrip component — see BookStrip entry above
@@ -299,13 +325,19 @@ frontend/src/
                             #   My Borrowed Books — active borrows with Return button → Return+Review modal
                             #   My Reservations — queue position or ready status, cancel button
                             #   My Fines — fine amount and paid/unpaid status
+                            #   All three tables use .profile-table with center-aligned columns
                             #   Donate a Book section — Donate button opens modal; table of past
                             #     donations with status, estimated value, and credit earned;
                             #     total credits earned card (approved donations only)
                             # Return modal: optional 5-star picker, review text, anonymous toggle
                             # Donate modal: title, author, ISBN (optional), genre (optional),
-                            #   condition dropdown (new/good/fair/poor), estimated value field
-                            #   with live credit preview (value/4); success screen after submit
+                            #   condition — all dropdowns use the custom Select component
+                            #   estimated value field with live credit preview (value/4);
+                            #   success screen after submit
+                            # Toast notifications (useToast hook + Toast component) fire on:
+                            #   borrow, return (with/without review), reserve, cancel reservation,
+                            #   avatar upload, donation submit, join/leave community,
+                            #   create community, create post
                             #
                             # Community tab (Gold members only; non-gold sees a locked card):
                             #   3-level view: list → community → post
@@ -341,7 +373,12 @@ frontend/src/
                             #   All Members table — member list with tier badge + borrow history button
                             #   Membership Pricing cards — Silver / Gold / Family monthly rates (editable)
                             #   Member Tiers table — all members with current tier badge,
-                            #     family group, and inline tier-change dropdown
+                            #     family group, and inline tier-change custom Select
+                            # Toast notifications fire on: add book, delete book, edit book,
+                            #   refresh metadata, mark fine paid, save policy, save membership
+                            #   pricing, change member tier, approve/reject donation,
+                            #   approve/reject community; policy/pricing no longer use inline
+                            #   "Saved" state — toasts replace those entirely
                             #
                             # Communities tab:
                             #   Status filter buttons — Pending / Approved / Rejected / All
@@ -666,6 +703,10 @@ Gold members can create communities, which go through admin approval before beco
 - **Notification badge via polling, not WebSockets** — 60-second polling via `setInterval` is simple and stateless. The activity-count endpoint is a single aggregating query; polling only runs when the Community tab is not active (to avoid counting events the user is already seeing).
 - **Admin tab merging (Fines + Members)** — Pending Fines and Fine Policy share a tab; All Members, Membership Pricing, and Member Tiers share a tab. Reduces nav clutter without hiding functionality.
 - **Comment depth capped visually at 4, not structurally** — nesting in data is unlimited; only the CSS indentation class switches at depth 4. This prevents the UI from becoming too narrow on deep threads while preserving full reply history.
-- **AI search is a frontend toggle, not a separate page** — the `✨ AI` button lives inside the existing collapsible search panel so the feature is discoverable but not intrusive. Activating it clears normal filters (and vice-versa) so the two modes never conflict. Results use the same `books-grid` / `rec-card` layout as keyword results for visual consistency.
+- **AI search is a frontend toggle, not a separate page** — the AI button lives inside the existing collapsible search panel so the feature is discoverable but not intrusive. Activating it clears normal filters (and vice-versa) so the two modes never conflict. Results use the same `books-grid` / `rec-card` layout as keyword results for visual consistency.
+- **AI search submit is Enter-only, no button** — removing the Search button keeps the input row uncluttered; the placeholder hints `(press Enter)`. A 3-second `AbortController` timeout guards against slow Groq responses — if the request is aborted, the empty-results state renders instead of a hanging spinner.
 - **Groq over OpenAI for AI search** — Groq's inference is significantly faster (sub-second for this catalogue size), which matters for a search-as-you-submit UX. `llama-3.1-8b-instant` is sufficient for semantic book matching; the prompt is constrained to return only IDs from the provided catalogue so hallucinated books are structurally impossible.
 - **API key in `Config`, not hardcoded** — `GROQ_API_KEY` is read from the environment (`os.environ.get`) with the key as the fallback default, making it easy to rotate without a code change.
+- **Custom Select replaces all native dropdowns** — `Select.js` parses `<option>` children via `React.Children.toArray` and fires a synthetic `{ target: { value } }` event so all existing onChange handlers work without modification. Two size variants: default (form-group, full-width) and `.filter-select` (compact inline). Fully theme-aware via CSS custom properties.
+- **Toast system via `useToast` hook** — a module-level counter generates monotonic IDs so concurrent toasts each auto-dismiss independently after 2.8 s. Success toasts use `--text`/`--bg` (inverted, theme-safe); error toasts are hardcoded red. Both dashboards share the same hook; the `Toast` component is rendered once at the root of each page.
+- **Genre pill deselect** — clicking an active genre pill toggles it off (sets `selectedGenre` to `""`) rather than requiring the user to click the "All" pill. Same behaviour as many filter UIs users already know.

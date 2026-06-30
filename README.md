@@ -65,8 +65,8 @@ Created automatically on first run — no setup needed.
 **Member**
 - **Home tab** (default landing page) — time-aware greeting, a horizontally scrollable "What we offer" services strip (6 feature cards with background photos: Borrow Books, Reserve a Copy, AI Search, Personalised Picks, Reading Communities, Donate & Earn), and a 6-book preview grid ("From the collection") with a "View all →" link to the Available Books tab; strip navigation arrows float over the cards and auto-hide 2 s after last use
 - Browse all books grouped by genre in horizontal scrollable card strips; bare chevron arrows appear on hover (only rendered when the strip actually overflows) and auto-hide 2 s after the last scroll click
-- Search and filter via a collapsible panel (click the search icon to expand; text search + genre, availability, and rating dropdowns); results appear as a card grid
-- **AI Search** *(optional)* — click the `✨ AI` toggle inside the search panel to switch to natural-language search powered by Groq; describe a book in plain English (e.g. "boy with glasses at a magical school") and get semantically matched results from the library catalogue, each with a one-line AI-generated reason; press Enter or click Search to run; Clear returns to normal keyword mode
+- Search and filter via a collapsible panel (click the search icon to expand; text search + availability and rating dropdowns); results appear as a card grid; clicking an active genre pill deselects it to clear the genre filter
+- **AI Search** *(optional)* — click the AI toggle inside the search panel to switch to natural-language search powered by Groq; describe a book in plain English (e.g. "boy with glasses at a magical school") and get semantically matched results from the library catalogue, each with a one-line AI-generated reason; press Enter to run (no separate Search button); times out after 3 s with a clear retry prompt; Clear returns to normal keyword mode
 - Borrow and return books; borrow limits enforced by membership tier
 - Reserve books when all copies are out; see your queue position
 - Rate (1–5 stars) and optionally review books at return time; post anonymously
@@ -74,10 +74,11 @@ Created automatically on first run — no setup needed.
 - Trending This Week strip — top 8 books by borrow count in the last 7 days
 - Personalised recommendations — content-based (genre/author preference profile)
 - Collaborative recommendations — users with similar reading history
-- **My Profile tab** — membership info card, active borrows, reservations, fines, and donation history in one place
+- **My Profile tab** — membership info card, active borrows, reservations, fines, and donation history in one place; borrow/reservation/fines tables are center-aligned
 - **Profile photo** — upload and change a profile avatar from the My Profile tab; avatar shown in the top-bar dropdown and resized/compressed client-side before upload
 - **Donate a Book** — submit a physical book for the library; earn 1/4 of its estimated value as library credit upon admin approval
 - **Community tab** *(Gold members only)* — create and join member communities, make posts, comment with unlimited reply threading, and react with SVG reaction icons (like / love / haha / wow / sad / angry); red badge on the tab title shows new activity since your last visit
+- **Toast notifications** — brief bottom-right confirmations appear after every key action (borrow, return, reserve, cancel, donate, avatar upload, community actions)
 
 **Admin**
 - Add / edit / delete books; ISBN uniqueness enforced
@@ -89,6 +90,7 @@ Created automatically on first run — no setup needed.
 - **Refresh All** — scrapes every book in the catalogue sequentially; a live progress log modal opens showing each book's outcome as it completes (e.g. "Harry Potter — description, cover, author bio, color") with a progress bar
 - **Communities tab** — review pending community requests; approve (auto-joins creator as moderator) or reject; filter by status
 - **Donations tab** — review pending donations; approve (adds book to catalogue and credits member) or reject with an optional reason; filter by status
+- **Toast notifications** — confirmations appear after every admin action (add/edit/delete book, mark fine paid, save policy/pricing, change tier, approve/reject donations and communities)
 
 **Membership Tiers**
 
@@ -113,6 +115,8 @@ Rates are admin-configurable at runtime (defaults: Silver $9.99 · Gold $19.99 �
 - Profile dropdown: avatar, username, membership tier badge, compact appearance row, compact reader themes row, sign out — all in one place
 - **Global accent tinting** — the entire member layout is subtly tinted with the cover colour (`--accent` CSS variable) of the user's most recently active borrowed book; WCAG-safe text colour is auto-computed so contrast is always maintained
 - **Animated book loader** — an open-book CSS animation (two page halves with text lines and a turning page) is shown while initial data is loading, replacing a plain spinner
+- **Custom dropdowns** — all `<select>` elements are replaced by a theme-aware `Select` component; chevron rotates on open, closes on outside click, fully styled with CSS custom properties across all 10 theme combinations
+- **Placeholder text** — all input and textarea placeholders use `--text-5` so they adapt to every theme rather than using browser-default grey
 
 ## Seed Data Script
 

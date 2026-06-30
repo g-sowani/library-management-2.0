@@ -1133,7 +1133,7 @@ function MemberDashboard() {
       setAiResults(r.data);
     } catch (e) {
       const timedOut = e.name === "CanceledError" || e.code === "ERR_CANCELED";
-      setAiError(timedOut ? null : (e.response?.data?.error || null));
+      setAiError(timedOut ? null : e.response?.data?.error || null);
       setAiResults([]);
     } finally {
       clearTimeout(timer);
@@ -1569,12 +1569,15 @@ function MemberDashboard() {
             {aiMode && aiLoading && (
               <div className="empty ai-searching-msg">Searching with AI…</div>
             )}
-            {aiMode && !aiLoading && aiResults !== null && aiResults.length === 0 && (
-              <div className="empty search-no-results">
-                No results found for this search.{" "}
-                <button className="btn-link" onClick={clearFilters}>Try again</button>
-              </div>
-            )}
+            {aiMode &&
+              !aiLoading &&
+              aiResults !== null &&
+              aiResults.length === 0 && (
+                <div className="empty search-no-results">
+                  No results found for this search.{" "}
+                  {/* <button className="btn-link" onClick={clearFilters}>Try again</button> */}
+                </div>
+              )}
             {aiMode &&
               !aiLoading &&
               aiResults !== null &&
@@ -1643,7 +1646,7 @@ function MemberDashboard() {
             {!aiMode && hasActiveFilters && filteredBooks.length === 0 && (
               <div className="empty search-no-results">
                 No results found for this search.{" "}
-                <button className="btn-link" onClick={clearFilters}>Try again</button>
+                {/* <button className="btn-link" onClick={clearFilters}>Try again</button> */}
               </div>
             )}
             {!aiMode && hasActiveFilters && filteredBooks.length > 0 && (

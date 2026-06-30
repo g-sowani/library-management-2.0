@@ -15,7 +15,7 @@ services:
       - key: GROQ_API_KEY
         sync: false
       - key: CORS_ORIGINS
-        value: https://library-management-2-0-18rmicp2c-gargeesowani-8887s-projects.vercel.app,https://library-management.onrender.com
+        value: https://library-management-2-0.vercel.app,https://library-management.onrender.com
     disk:
       name: sqlite-data
       mountPath: /opt/render/project/src/backend/instance

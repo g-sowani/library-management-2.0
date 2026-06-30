@@ -1,46 +1,51 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import api from '../api';
-import { useAuth } from '../context/AuthContext';
-import TopBar from '../components/TopBar';
-import NavTabs from '../components/NavTabs';
-import Badge from '../components/Badge';
-import Modal from '../components/Modal';
-import SearchBar from '../components/SearchBar';
-import Select from '../components/Select';
-import Toast from '../components/Toast';
-import { useToast } from '../hooks/useToast';
-import { GENRES } from '../constants';
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import api from "../api";
+import { useAuth } from "../context/AuthContext";
+import TopBar from "../components/TopBar";
+import NavTabs from "../components/NavTabs";
+import Badge from "../components/Badge";
+import Modal from "../components/Modal";
+import SearchBar from "../components/SearchBar";
+import Select from "../components/Select";
+import Toast from "../components/Toast";
+import { useToast } from "../hooks/useToast";
 
 const TABS = [
-  { id: 'books', label: 'Books' },
-  { id: 'borrows', label: 'Borrowed Books' },
-  { id: 'fines', label: 'Fines' },
-  { id: 'members', label: 'Members' },
-  { id: 'communities', label: 'Communities' },
-  { id: 'donations', label: 'Donations' },
+  { id: "books", label: "Books" },
+  { id: "borrows", label: "Borrowed Books" },
+  { id: "fines", label: "Fines" },
+  { id: "members", label: "Members" },
+  { id: "communities", label: "Communities" },
+  { id: "donations", label: "Donations" },
 ];
 
-const EMPTY_BOOK_FORM = { title: '', author: '', isbn: '', total_copies: 1, genre: '' };
+const EMPTY_BOOK_FORM = {
+  title: "",
+  author: "",
+  isbn: "",
+  total_copies: 1,
+  genre: "",
+};
 
 function AdminDashboard() {
   const { user, logout } = useAuth();
-  const [tab, setTab] = useState('books');
+  const [tab, setTab] = useState("books");
   const [books, setBooks] = useState([]);
   const [borrows, setBorrows] = useState([]);
   const [fines, setFines] = useState([]);
-  const [search, setSearch] = useState('');
-  const [selectedGenre, setSelectedGenre] = useState('');
-  const [loadError, setLoadError] = useState('');
+  const [search, setSearch] = useState("");
+  const [selectedGenre, setSelectedGenre] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   // Add book
   const [showAdd, setShowAdd] = useState(false);
   const [bookForm, setBookForm] = useState(EMPTY_BOOK_FORM);
-  const [bookError, setBookError] = useState('');
+  const [bookError, setBookError] = useState("");
 
   // Edit book
   const [editingBook, setEditingBook] = useState(null);
   const [editForm, setEditForm] = useState({});
-  const [editError, setEditError] = useState('');
+  const [editError, setEditError] = useState("");
 
   // Book logs
   const [logsBook, setLogsBook] = useState(null);
@@ -58,71 +63,113 @@ function AdminDashboard() {
 
   // Re-auth modal (for sensitive admin actions)
   const [reAuthFor, setReAuthFor] = useState(null); // 'policy' | 'pricing'
-  const [reAuthPassword, setReAuthPassword] = useState('');
-  const [reAuthError, setReAuthError] = useState('');
+  const [reAuthPassword, setReAuthPassword] = useState("");
+  const [reAuthError, setReAuthError] = useState("");
   const [reAuthLoading, setReAuthLoading] = useState(false);
 
   // Fine policy
   const [policy, setPolicy] = useState(null);
-  const [policyForm, setPolicyForm] = useState({ fine_per_day: '', borrow_days: '' });
-  const [policyError, setPolicyError] = useState('');
+  const [policyForm, setPolicyForm] = useState({
+    fine_per_day: "",
+    borrow_days: "",
+  });
+  const [policyError, setPolicyError] = useState("");
   const [markingPaidId, setMarkingPaidId] = useState(null);
 
   // Memberships
   const [membershipPricing, setMembershipPricing] = useState(null);
-  const [membershipPricingForm, setMembershipPricingForm] = useState({ silver_rate: '', gold_rate: '', family_rate: '' });
-  const [membershipPricingError, setMembershipPricingError] = useState('');
+  const [membershipPricingForm, setMembershipPricingForm] = useState({
+    silver_rate: "",
+    gold_rate: "",
+    family_rate: "",
+  });
+  const [membershipPricingError, setMembershipPricingError] = useState("");
   const [membershipsLoaded, setMembershipsLoaded] = useState(false);
 
   // Donations
   const [donations, setDonations] = useState([]);
   const [donationsLoaded, setDonationsLoaded] = useState(false);
-  const [donationStatusFilter, setDonationStatusFilter] = useState('pending');
+  const [donationStatusFilter, setDonationStatusFilter] = useState("pending");
 
   // Communities
   const [adminCommunities, setAdminCommunities] = useState([]);
   const [adminCommunitiesLoaded, setAdminCommunitiesLoaded] = useState(false);
-  const [adminCommunitiesFilter, setAdminCommunitiesFilter] = useState('pending');
+  const [adminCommunitiesFilter, setAdminCommunitiesFilter] =
+    useState("pending");
   const [approvingCommunity, setApprovingCommunity] = useState(null);
-  const [communityApproveNotes, setCommunityApproveNotes] = useState('');
-  const [communityApproveError, setCommunityApproveError] = useState('');
+  const [communityApproveNotes, setCommunityApproveNotes] = useState("");
+  const [communityApproveError, setCommunityApproveError] = useState("");
   const [rejectingCommunity, setRejectingCommunity] = useState(null);
-  const [communityRejectNotes, setCommunityRejectNotes] = useState('');
-  const [communityRejectError, setCommunityRejectError] = useState('');
+  const [communityRejectNotes, setCommunityRejectNotes] = useState("");
+  const [communityRejectError, setCommunityRejectError] = useState("");
   const [approvingDonation, setApprovingDonation] = useState(null); // donation object
-  const [approveCredit, setApproveCredit] = useState('');
-  const [approveNotes, setApproveNotes] = useState('');
-  const [approveError, setApproveError] = useState('');
+  const [approveCredit, setApproveCredit] = useState("");
+  const [approveNotes, setApproveNotes] = useState("");
+  const [approveError, setApproveError] = useState("");
   const [rejectingDonation, setRejectingDonation] = useState(null);
-  const [rejectNotes, setRejectNotes] = useState('');
-  const [rejectError, setRejectError] = useState('');
+  const [rejectNotes, setRejectNotes] = useState("");
+  const [rejectError, setRejectError] = useState("");
+
+  // Genres
+  const [genres, setGenres] = useState([]);
+  const [showAddGenre, setShowAddGenre] = useState(false);
+  const [newGenreName, setNewGenreName] = useState("");
+  const [genreError, setGenreError] = useState("");
+  const [genreSaving, setGenreSaving] = useState(false);
 
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [showRefreshLog, setShowRefreshLog] = useState(false);
   const [refreshLog, setRefreshLog] = useState([]);
   const [refreshProgress, setRefreshProgress] = useState(null); // { done, total }
+  const [refreshModalTitle, setRefreshModalTitle] =
+    useState("Refresh All Books");
+  const [refreshingBookId, setRefreshingBookId] = useState(null);
+  const [refreshBookId, setRefreshBookId] = useState(null);
+
+  // AI field generation
+  const [aiGenModal, setAiGenModal] = useState(null); // { bookId, field, bookTitle }
+  const [aiGenContent, setAiGenContent] = useState("");
+  const [aiGenLoading, setAiGenLoading] = useState(false);
+  const [aiGenError, setAiGenError] = useState("");
+  const [aiGenSaving, setAiGenSaving] = useState(false);
+
+  // Cover upload
+  const [coverUploadBookId, setCoverUploadBookId] = useState(null);
+  const [coverUploadMode, setCoverUploadMode] = useState("file");
+  const [coverUploadPreview, setCoverUploadPreview] = useState("");
+  const [coverUploadUrl, setCoverUploadUrl] = useState("");
+  const [coverUploadSaving, setCoverUploadSaving] = useState(false);
+  const [coverUploadError, setCoverUploadError] = useState("");
 
   const load = useCallback(() => {
-    setLoadError('');
+    setLoadError("");
     return Promise.all([
-      api.get('/books').then(r => setBooks(r.data)),
-      api.get('/admin/borrows').then(r => setBorrows(r.data)),
-      api.get('/admin/fines').then(r => setFines(r.data)),
-      api.get('/admin/policy').then(r => {
+      api.get("/books").then((r) => setBooks(r.data)),
+      api.get("/admin/borrows").then((r) => setBorrows(r.data)),
+      api.get("/admin/fines").then((r) => setFines(r.data)),
+      api.get("/admin/policy").then((r) => {
         setPolicy(r.data);
-        setPolicyForm({ fine_per_day: r.data.fine_per_day, borrow_days: r.data.borrow_days });
+        setPolicyForm({
+          fine_per_day: r.data.fine_per_day,
+          borrow_days: r.data.borrow_days,
+        });
       }),
+      api.get("/genres").then((r) => setGenres(r.data.map((g) => g.name))),
     ]);
   }, []);
 
   useEffect(() => {
-    load().catch(() => setLoadError('Failed to load data. Is the server running?'));
+    load().catch(() =>
+      setLoadError("Failed to load data. Is the server running?")
+    );
   }, [load]);
 
   const handleRefreshAll = async () => {
     setRefreshingAll(true);
+    setRefreshBookId(null);
     setRefreshLog([]);
     setRefreshProgress({ done: 0, total: books.length });
+    setRefreshModalTitle("Refresh All Books");
     setShowRefreshLog(true);
 
     for (let i = 0; i < books.length; i++) {
@@ -131,13 +178,19 @@ function AdminDashboard() {
         const res = await api.post(`/books/${book.id}/scrape`);
         const d = res.data;
         const loaded = [];
-        if (d.description) loaded.push('description');
-        if (d.cover_url) loaded.push('cover');
-        if (d.author_bio) loaded.push('author bio');
-        if (d.cover_color) loaded.push('color');
-        setRefreshLog(prev => [...prev, { title: book.title, ok: true, loaded }]);
+        if (d.description) loaded.push("description");
+        if (d.cover_url) loaded.push("cover");
+        if (d.author_bio) loaded.push("author bio");
+        if (d.cover_color) loaded.push("color");
+        setRefreshLog((prev) => [
+          ...prev,
+          { title: book.title, ok: true, loaded },
+        ]);
       } catch {
-        setRefreshLog(prev => [...prev, { title: book.title, ok: false, loaded: [] }]);
+        setRefreshLog((prev) => [
+          ...prev,
+          { title: book.title, ok: false, loaded: [] },
+        ]);
       }
       setRefreshProgress({ done: i + 1, total: books.length });
     }
@@ -147,24 +200,34 @@ function AdminDashboard() {
   };
 
   const loadMembers = useCallback(() => {
-    api.get('/admin/members').then(r => { setMembers(r.data); setMembersLoaded(true); });
+    api.get("/admin/members").then((r) => {
+      setMembers(r.data);
+      setMembersLoaded(true);
+    });
   }, []);
 
   const loadMembershipPricing = useCallback(() => {
-    api.get('/admin/memberships/pricing').then(r => {
+    api.get("/admin/memberships/pricing").then((r) => {
       setMembershipPricing(r.data);
-      setMembershipPricingForm({ silver_rate: r.data.silver_rate, gold_rate: r.data.gold_rate, family_rate: r.data.family_rate });
+      setMembershipPricingForm({
+        silver_rate: r.data.silver_rate,
+        gold_rate: r.data.gold_rate,
+        family_rate: r.data.family_rate,
+      });
     });
   }, []);
 
   const loadDonations = useCallback((status) => {
-    const qs = status ? `?status=${status}` : '';
-    api.get(`/admin/donations${qs}`).then(r => { setDonations(r.data); setDonationsLoaded(true); });
+    const qs = status ? `?status=${status}` : "";
+    api.get(`/admin/donations${qs}`).then((r) => {
+      setDonations(r.data);
+      setDonationsLoaded(true);
+    });
   }, []);
 
   const loadAdminCommunities = useCallback((status) => {
-    const qs = status ? `?status=${status}` : '';
-    api.get(`/admin/communities${qs}`).then(r => {
+    const qs = status ? `?status=${status}` : "";
+    api.get(`/admin/communities${qs}`).then((r) => {
       setAdminCommunities(r.data);
       setAdminCommunitiesLoaded(true);
     });
@@ -173,44 +236,46 @@ function AdminDashboard() {
   const handleTabChange = (t) => {
     setTab(t);
 
-    if (t === 'members') {
+    if (t === "members") {
       if (!membersLoaded) loadMembers();
       if (!membershipsLoaded) {
         loadMembershipPricing();
         setMembershipsLoaded(true);
       }
     }
-    if (t === 'donations') loadDonations(donationStatusFilter);
-    if (t === 'communities') loadAdminCommunities(adminCommunitiesFilter);
+    if (t === "donations") loadDonations(donationStatusFilter);
+    if (t === "communities") loadAdminCommunities(adminCommunitiesFilter);
   };
 
   const submitApproveCommunity = async (e) => {
     e.preventDefault();
-    setCommunityApproveError('');
+    setCommunityApproveError("");
     try {
       await api.put(`/admin/communities/${approvingCommunity.id}/approve`, {
         admin_notes: communityApproveNotes,
       });
       setApprovingCommunity(null);
       loadAdminCommunities(adminCommunitiesFilter);
-      toast('Community approved');
+      toast("Community approved");
     } catch (err) {
-      setCommunityApproveError(err.response?.data?.error || 'Failed to approve');
+      setCommunityApproveError(
+        err.response?.data?.error || "Failed to approve"
+      );
     }
   };
 
   const submitRejectCommunity = async (e) => {
     e.preventDefault();
-    setCommunityRejectError('');
+    setCommunityRejectError("");
     try {
       await api.put(`/admin/communities/${rejectingCommunity.id}/reject`, {
         admin_notes: communityRejectNotes,
       });
       setRejectingCommunity(null);
       loadAdminCommunities(adminCommunitiesFilter);
-      toast('Community rejected');
+      toast("Community rejected");
     } catch (err) {
-      setCommunityRejectError(err.response?.data?.error || 'Failed to reject');
+      setCommunityRejectError(err.response?.data?.error || "Failed to reject");
     }
   };
 
@@ -229,15 +294,18 @@ function AdminDashboard() {
   // ── Add book ──────────────────────────────────────────────────
   const addBook = async (e) => {
     e.preventDefault();
-    setBookError('');
+    setBookError("");
     try {
-      await api.post('/books', { ...bookForm, total_copies: Number(bookForm.total_copies) });
+      await api.post("/books", {
+        ...bookForm,
+        total_copies: Number(bookForm.total_copies),
+      });
       setShowAdd(false);
       setBookForm(EMPTY_BOOK_FORM);
       load();
-      toast('Book added');
+      toast("Book added");
     } catch (err) {
-      setBookError(err.response?.data?.error || 'Failed to add book');
+      setBookError(err.response?.data?.error || "Failed to add book");
     }
   };
 
@@ -245,23 +313,225 @@ function AdminDashboard() {
     try {
       await api.delete(`/books/${id}`);
       load();
-      toast('Book deleted');
+      toast("Book deleted");
     } catch (err) {
-      toast(err.response?.data?.error || 'Cannot delete book', 'error');
+      toast(err.response?.data?.error || "Cannot delete book", "error");
+    }
+  };
+
+  const addGenre = async (e) => {
+    e.preventDefault();
+    setGenreError("");
+    const name = newGenreName.trim();
+    if (!name) return;
+    if (!/^[A-Za-z]+$/.test(name)) {
+      setGenreError("Letters only (a–z), no spaces or special characters");
+      return;
+    }
+    setGenreSaving(true);
+    try {
+      const { data } = await api.post("/genres", { name });
+      setGenres((prev) => [...prev, data.name].sort());
+      setShowAddGenre(false);
+      setNewGenreName("");
+      toast(`Genre "${data.name}" added`);
+    } catch (err) {
+      setGenreError(err.response?.data?.error || "Failed to add genre");
+    } finally {
+      setGenreSaving(false);
     }
   };
 
   const refreshMeta = async (id) => {
+    const book = books.find((b) => b.id === id);
+    setRefreshingBookId(id);
+    setRefreshBookId(id);
+    setRefreshLog([]);
+    setRefreshProgress(null);
+    setRefreshModalTitle(`Refreshing : ${book.title}`);
+    setShowRefreshLog(true);
     try {
       const res = await api.post(`/books/${id}/scrape`);
-      setBooks(prev => prev.map(b =>
-        b.id === id
-          ? { ...b, description: res.data.description, author_bio: res.data.author_bio, cover_url: res.data.cover_url || b.cover_url }
-          : b
-      ));
-      toast('Metadata refreshed');
+      const d = res.data;
+      const loaded = [];
+      if (d.description) loaded.push("description");
+      if (d.cover_url) loaded.push("cover");
+      if (d.author_bio) loaded.push("author bio");
+      if (d.cover_color) loaded.push("color");
+      setRefreshLog([{ title: book.title, ok: true, loaded }]);
+      setBooks((prev) =>
+        prev.map((b) =>
+          b.id === id
+            ? {
+                ...b,
+                description: d.description,
+                author_bio: d.author_bio,
+                cover_url: d.cover_url || b.cover_url,
+                cover_color: d.cover_color || b.cover_color,
+              }
+            : b
+        )
+      );
+      toast(
+        loaded.length > 0
+          ? `Metadata changed · ${loaded.join(", ")}`
+          : "Metadata changed · no data found"
+      );
     } catch {
-      toast('Failed to refresh metadata', 'error');
+      setRefreshLog([{ title: book.title, ok: false, loaded: [] }]);
+      toast("Failed to refresh metadata", "error");
+    } finally {
+      setRefreshingBookId(null);
+    }
+  };
+
+  // ── AI field generation ───────────────────────────────────────
+  const openAiGen = async (bookId, field) => {
+    const book = books.find((b) => b.id === bookId);
+    setAiGenModal({ bookId, field, bookTitle: book?.title || "" });
+    setAiGenContent("");
+    setAiGenError("");
+    setAiGenLoading(true);
+    try {
+      const res = await api.post(`/books/${bookId}/generate-field`, { field });
+      setAiGenContent(res.data.content);
+    } catch (err) {
+      setAiGenError(err.response?.data?.error || "Generation failed");
+    } finally {
+      setAiGenLoading(false);
+    }
+  };
+
+  const regenerateAiField = async () => {
+    if (!aiGenModal) return;
+    setAiGenContent("");
+    setAiGenError("");
+    setAiGenLoading(true);
+    try {
+      const res = await api.post(`/books/${aiGenModal.bookId}/generate-field`, {
+        field: aiGenModal.field,
+      });
+      setAiGenContent(res.data.content);
+    } catch (err) {
+      setAiGenError(err.response?.data?.error || "Generation failed");
+    } finally {
+      setAiGenLoading(false);
+    }
+  };
+
+  const saveAiGenContent = async () => {
+    if (!aiGenModal || !aiGenContent.trim()) return;
+    setAiGenSaving(true);
+    setAiGenError("");
+    try {
+      await api.put(`/books/${aiGenModal.bookId}/patch-metadata`, {
+        [aiGenModal.field]: aiGenContent.trim(),
+      });
+      setBooks((prev) =>
+        prev.map((b) =>
+          b.id === aiGenModal.bookId
+            ? { ...b, [aiGenModal.field]: aiGenContent.trim() }
+            : b
+        )
+      );
+      const logLabel =
+        aiGenModal.field === "author_bio" ? "author bio" : aiGenModal.field;
+      setRefreshLog((prev) =>
+        prev.map((entry, i) =>
+          i === 0
+            ? { ...entry, loaded: [...entry.loaded, logLabel] }
+            : entry
+        )
+      );
+      toast(
+        `${aiGenModal.field === "author_bio" ? "Author bio" : "Description"} saved`
+      );
+      setAiGenModal(null);
+    } catch (err) {
+      setAiGenError(err.response?.data?.error || "Failed to save");
+    } finally {
+      setAiGenSaving(false);
+    }
+  };
+
+  // ── Cover upload ──────────────────────────────────────────────
+  const openCoverUpload = (bookId) => {
+    setCoverUploadBookId(bookId);
+    setCoverUploadMode("file");
+    setCoverUploadPreview("");
+    setCoverUploadUrl("");
+    setCoverUploadError("");
+  };
+
+  const handleCoverFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxSize = 400;
+        let { width, height } = img;
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = Math.round((height * maxSize) / width);
+            width = maxSize;
+          } else {
+            width = Math.round((width * maxSize) / height);
+            height = maxSize;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        setCoverUploadPreview(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const saveCoverUpload = async () => {
+    if (!coverUploadBookId) return;
+    const urlToSave =
+      coverUploadMode === "file"
+        ? coverUploadPreview
+        : coverUploadUrl.trim();
+    if (!urlToSave) return;
+    setCoverUploadSaving(true);
+    setCoverUploadError("");
+    try {
+      const res = await api.put(
+        `/books/${coverUploadBookId}/patch-metadata`,
+        { cover_url: urlToSave }
+      );
+      setBooks((prev) =>
+        prev.map((b) =>
+          b.id === coverUploadBookId
+            ? {
+                ...b,
+                cover_url: res.data.cover_url,
+                cover_color: res.data.cover_color,
+              }
+            : b
+        )
+      );
+      setRefreshLog((prev) =>
+        prev.map((entry, i) =>
+          i === 0
+            ? { ...entry, loaded: [...entry.loaded, "cover"] }
+            : entry
+        )
+      );
+      toast("Cover saved");
+      setCoverUploadBookId(null);
+      setCoverUploadPreview("");
+      setCoverUploadUrl("");
+    } catch (err) {
+      setCoverUploadError(err.response?.data?.error || "Failed to save cover");
+    } finally {
+      setCoverUploadSaving(false);
     }
   };
 
@@ -272,16 +542,16 @@ function AdminDashboard() {
       title: book.title,
       author: book.author,
       isbn: book.isbn,
-      genre: book.genre || '',
+      genre: book.genre || "",
       total_copies: book.total_copies,
-      discard_reason: '',
+      discard_reason: "",
     });
-    setEditError('');
+    setEditError("");
   };
 
   const saveEdit = async (e) => {
     e.preventDefault();
-    setEditError('');
+    setEditError("");
     try {
       await api.put(`/books/${editingBook.id}`, {
         ...editForm,
@@ -289,9 +559,9 @@ function AdminDashboard() {
       });
       setEditingBook(null);
       load();
-      toast('Book updated');
+      toast("Book updated");
     } catch (err) {
-      setEditError(err.response?.data?.error || 'Failed to update book');
+      setEditError(err.response?.data?.error || "Failed to update book");
     }
   };
 
@@ -312,25 +582,25 @@ function AdminDashboard() {
   const openReAuth = (e, forAction) => {
     e.preventDefault();
     setReAuthFor(forAction);
-    setReAuthPassword('');
-    setReAuthError('');
+    setReAuthPassword("");
+    setReAuthError("");
   };
 
   const confirmReAuth = async () => {
-    setReAuthError('');
+    setReAuthError("");
     setReAuthLoading(true);
     try {
-      await api.post('/admin/verify-password', { password: reAuthPassword });
+      await api.post("/admin/verify-password", { password: reAuthPassword });
     } catch {
-      setReAuthError('Incorrect password. Please try again.');
+      setReAuthError("Incorrect password. Please try again.");
       setReAuthLoading(false);
       return;
     }
     setReAuthLoading(false);
     const action = reAuthFor;
     setReAuthFor(null);
-    if (action === 'policy') await doSavePolicy();
-    if (action === 'pricing') await doSaveMembershipPricing();
+    if (action === "policy") await doSavePolicy();
+    if (action === "pricing") await doSaveMembershipPricing();
   };
 
   // ── Fines ─────────────────────────────────────────────────────
@@ -338,10 +608,10 @@ function AdminDashboard() {
     setMarkingPaidId(borrowId);
     try {
       await api.put(`/admin/fines/${borrowId}/mark-paid`);
-      setFines(prev => prev.filter(f => f.id !== borrowId));
-      toast('Fine marked as paid');
+      setFines((prev) => prev.filter((f) => f.id !== borrowId));
+      toast("Fine marked as paid");
     } catch {
-      toast('Failed to mark fine as paid', 'error');
+      toast("Failed to mark fine as paid", "error");
     } finally {
       setMarkingPaidId(null);
     }
@@ -349,54 +619,63 @@ function AdminDashboard() {
 
   // ── Fine policy ───────────────────────────────────────────────
   const doSavePolicy = async () => {
-    setPolicyError('');
+    setPolicyError("");
     try {
-      const res = await api.put('/admin/policy', policyForm);
+      const res = await api.put("/admin/policy", policyForm);
       setPolicy(res.data);
-      toast('Policy saved');
+      toast("Policy saved");
     } catch (err) {
       const errs = err.response?.data?.errors;
-      setPolicyError(errs ? Object.values(errs).join(', ') : 'Failed to save policy');
+      setPolicyError(
+        errs ? Object.values(errs).join(", ") : "Failed to save policy"
+      );
     }
   };
 
-  const savePolicy = (e) => openReAuth(e, 'policy');
+  const savePolicy = (e) => openReAuth(e, "policy");
 
   // ── Membership ────────────────────────────────────────────────
   const doSaveMembershipPricing = async () => {
-    setMembershipPricingError('');
+    setMembershipPricingError("");
     try {
-      const res = await api.put('/admin/memberships/pricing', membershipPricingForm);
+      const res = await api.put(
+        "/admin/memberships/pricing",
+        membershipPricingForm
+      );
       setMembershipPricing(res.data);
-      toast('Pricing saved');
+      toast("Pricing saved");
     } catch (err) {
       const errs = err.response?.data?.errors;
-      setMembershipPricingError(errs ? Object.values(errs).join(', ') : 'Failed to save pricing');
+      setMembershipPricingError(
+        errs ? Object.values(errs).join(", ") : "Failed to save pricing"
+      );
     }
   };
 
-  const saveMembershipPricing = (e) => openReAuth(e, 'pricing');
+  const saveMembershipPricing = (e) => openReAuth(e, "pricing");
 
   const changeMemberTier = async (memberId, tier) => {
     try {
-      await api.put(`/admin/members/${memberId}/membership`, { tier: tier || null });
+      await api.put(`/admin/members/${memberId}/membership`, {
+        tier: tier || null,
+      });
       loadMembers();
-      toast('Tier updated');
+      toast("Tier updated");
     } catch (err) {
-      toast(err.response?.data?.error || 'Failed to update tier', 'error');
+      toast(err.response?.data?.error || "Failed to update tier", "error");
     }
   };
 
   const openApprove = (donation) => {
     setApprovingDonation(donation);
     setApproveCredit((donation.estimated_price / 4).toFixed(2));
-    setApproveNotes('');
-    setApproveError('');
+    setApproveNotes("");
+    setApproveError("");
   };
 
   const submitApprove = async (e) => {
     e.preventDefault();
-    setApproveError('');
+    setApproveError("");
     try {
       await api.put(`/admin/donations/${approvingDonation.id}/approve`, {
         credit_amount: Number(approveCredit),
@@ -404,56 +683,76 @@ function AdminDashboard() {
       });
       setApprovingDonation(null);
       loadDonations(donationStatusFilter);
-      toast('Donation approved');
+      toast("Donation approved");
     } catch (err) {
-      setApproveError(err.response?.data?.error || 'Failed to approve donation');
+      setApproveError(
+        err.response?.data?.error || "Failed to approve donation"
+      );
     }
   };
 
   const openReject = (donation) => {
     setRejectingDonation(donation);
-    setRejectNotes('');
-    setRejectError('');
+    setRejectNotes("");
+    setRejectError("");
   };
 
   const submitReject = async (e) => {
     e.preventDefault();
-    setRejectError('');
+    setRejectError("");
     try {
       await api.put(`/admin/donations/${rejectingDonation.id}/reject`, {
         admin_notes: rejectNotes,
       });
       setRejectingDonation(null);
       loadDonations(donationStatusFilter);
-      toast('Donation rejected');
+      toast("Donation rejected");
     } catch (err) {
-      setRejectError(err.response?.data?.error || 'Failed to reject donation');
+      setRejectError(err.response?.data?.error || "Failed to reject donation");
     }
   };
 
   // ── Helpers ───────────────────────────────────────────────────
   const genreCounts = useMemo(() => {
     const counts = {};
-    books.forEach(b => {
-      const g = b.genre || 'Other';
+    books.forEach((b) => {
+      const g = b.genre || "Other";
       counts[g] = (counts[g] || 0) + 1;
     });
     return counts;
   }, [books]);
 
-  const availableGenres = useMemo(() => Object.keys(genreCounts).sort(), [genreCounts]);
+  const availableGenres = useMemo(
+    () => Object.keys(genreCounts).sort(),
+    [genreCounts]
+  );
 
-  const filteredBooks = useMemo(() => books.filter(b => {
-    const q = search.toLowerCase();
-    const matchSearch = b.title.toLowerCase().includes(q)
-      || b.author.toLowerCase().includes(q)
-      || (b.genre || '').toLowerCase().includes(q);
-    const matchGenre = !selectedGenre || (b.genre || 'Other') === selectedGenre;
-    return matchSearch && matchGenre;
-  }), [books, search, selectedGenre]);
+  // Union of Genre-table entries + genres already used on books, sorted
+  const allGenres = useMemo(
+    () => [...new Set([...genres, ...Object.keys(genreCounts)])].sort(),
+    [genres, genreCounts]
+  );
 
-  const isDiscarding = editingBook && Number(editForm.total_copies) < editingBook.total_copies;
-  const borrowed = editingBook ? editingBook.total_copies - editingBook.available_copies : 0;
+  const filteredBooks = useMemo(
+    () =>
+      books.filter((b) => {
+        const q = search.toLowerCase();
+        const matchSearch =
+          b.title.toLowerCase().includes(q) ||
+          b.author.toLowerCase().includes(q) ||
+          (b.genre || "").toLowerCase().includes(q);
+        const matchGenre =
+          !selectedGenre || (b.genre || "Other") === selectedGenre;
+        return matchSearch && matchGenre;
+      }),
+    [books, search, selectedGenre]
+  );
+
+  const isDiscarding =
+    editingBook && Number(editForm.total_copies) < editingBook.total_copies;
+  const borrowed = editingBook
+    ? editingBook.total_copies - editingBook.available_copies
+    : 0;
 
   const bookField = (key) => ({
     value: bookForm[key],
@@ -461,94 +760,205 @@ function AdminDashboard() {
   });
 
   const editField = (key) => ({
-    value: editForm[key] ?? '',
+    value: editForm[key] ?? "",
     onChange: (e) => setEditForm({ ...editForm, [key]: e.target.value }),
   });
 
   return (
     <div className="layout">
-      <TopBar title="Library Admin" username={user.username} onLogout={logout} />
+      <TopBar
+        title="Library Admin"
+        username={user.username}
+        onLogout={logout}
+      />
       <NavTabs tabs={TABS} active={tab} onChange={handleTabChange} />
       <div className="content">
         {loadError && <div className="error">{loadError}</div>}
 
         {/* ── Books ── */}
-        {tab === 'books' && (
+        {tab === "books" && (
           <>
             <div className="section-header">
               <h3>All Books</h3>
               <div className="btn-row">
-                <button className="btn btn-sm btn-outline btn-icon" onClick={handleRefreshAll} disabled={refreshingAll} title="Refresh all books data">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="23 4 23 10 17 10"/>
-                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                <button
+                  className="btn btn-sm btn-outline btn-icon"
+                  onClick={
+                    refreshingAll
+                      ? () => setShowRefreshLog(true)
+                      : handleRefreshAll
+                  }
+                  title={
+                    refreshingAll
+                      ? "Show refresh progress"
+                      : "Refresh all books data"
+                  }
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="23 4 23 10 17 10" />
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                   </svg>
-                  {refreshingAll ? 'Refreshing…' : 'Refresh All'}
+                  {refreshingAll ? "Refreshing…" : "Refresh All"}
                 </button>
-                <button className="btn btn-sm" onClick={() => setShowAdd(true)}>Add Book</button>
+                <button className="btn btn-sm" onClick={() => setShowAdd(true)}>
+                  Add Book
+                </button>
               </div>
             </div>
 
             <div className="search-top-bar">
-              <SearchBar value={search} onChange={setSearch} placeholder="Search by title, author or genre…" className="search-bar-wide" />
-              
+              <SearchBar
+                value={search}
+                onChange={setSearch}
+                placeholder="Search by title, author or genre…"
+                className="search-bar-wide"
+              />
             </div>
 
             {availableGenres.length > 0 && (
               <div className="genre-strip">
                 <button
-                  className={`genre-card${!selectedGenre ? ' active' : ''}`}
-                  onClick={() => setSelectedGenre('')}
+                  className={`genre-card${!selectedGenre ? " active" : ""}`}
+                  onClick={() => setSelectedGenre("")}
                 >
                   <span className="genre-card-name">All</span>
                   <span className="genre-card-count">{books.length}</span>
                 </button>
-                {availableGenres.map(genre => (
+                {availableGenres.map((genre) => (
                   <button
                     key={genre}
-                    className={`genre-card${selectedGenre === genre ? ' active' : ''}`}
-                    onClick={() => setSelectedGenre(selectedGenre === genre ? '' : genre)}
+                    className={`genre-card${
+                      selectedGenre === genre ? " active" : ""
+                    }`}
+                    onClick={() =>
+                      setSelectedGenre(selectedGenre === genre ? "" : genre)
+                    }
                   >
                     <span className="genre-card-name">{genre}</span>
-                    <span className="genre-card-count">{genreCounts[genre]}</span>
+                    <span className="genre-card-count">
+                      {genreCounts[genre]}
+                    </span>
                   </button>
                 ))}
+                <button
+                  className="genre-card genre-card-add"
+                  onClick={() => {
+                    setNewGenreName("");
+                    setGenreError("");
+                    setShowAddGenre(true);
+                  }}
+                >
+                  <span className="genre-card-name">+ Genre</span>
+                </button>
               </div>
             )}
 
             {filteredBooks.length === 0 && (
-              <div className="empty">{search || selectedGenre ? 'No books match your filters' : 'No books yet'}</div>
+              <div className="empty">
+                {search || selectedGenre
+                  ? "No books match your filters"
+                  : "No books yet"}
+              </div>
             )}
             {filteredBooks.length > 0 && (
               <table>
                 <thead>
-                  <tr><th>Title</th><th>Author</th><th>Genre</th><th>ISBN</th><th>Copies</th><th></th></tr>
+                  <tr>
+                    <th>Title</th>
+                    <th>Author</th>
+                    <th>Genre</th>
+                    <th>ISBN</th>
+                    <th>Copies</th>
+                    <th></th>
+                  </tr>
                 </thead>
                 <tbody>
-                  {filteredBooks.map(b => (
+                  {filteredBooks.map((b) => (
                     <tr key={b.id}>
                       <td>{b.title}</td>
                       <td>{b.author}</td>
                       <td>{b.genre || <span className="muted">—</span>}</td>
                       <td>{b.isbn}</td>
-                      <td>{b.available_copies} / {b.total_copies}</td>
+                      <td>
+                        {b.available_copies} / {b.total_copies}
+                      </td>
                       <td>
                         <div className="btn-row">
                           <div className="btn-group">
-                            <button className="btn btn-sm" onClick={() => openEdit(b)}>Edit</button>
-                            <button className="btn btn-sm btn-group-danger btn-icon" onClick={() => deleteBook(b.id)} title="Delete book">
-                              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="3 6 5 6 21 6"/>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => openEdit(b)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="btn btn-sm btn-group-danger btn-icon"
+                              onClick={() => deleteBook(b.id)}
+                              title="Delete book"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="13"
+                                height="13"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
                               </svg>
                             </button>
                           </div>
-                          <button className="btn btn-sm btn-outline" onClick={() => openLogs(b)}>Logs</button>
-                          <button className="btn btn-sm btn-outline btn-icon" onClick={() => refreshMeta(b.id)} title="Re-fetch description, author bio, and cover from Open Library">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="23 4 23 10 17 10"/>
-                              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                          <button
+                            className="btn btn-sm btn-outline"
+                            onClick={() => openLogs(b)}
+                          >
+                            Logs
+                          </button>
+                          <button
+                            className="btn btn-sm btn-outline btn-icon"
+                            onClick={() =>
+                              refreshingBookId === b.id
+                                ? setShowRefreshLog(true)
+                                : refreshMeta(b.id)
+                            }
+                            disabled={refreshingAll}
+                            title={
+                              refreshingBookId === b.id
+                                ? "Show refresh progress"
+                                : "Re-fetch description, author bio, and cover from Open Library"
+                            }
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="13"
+                              height="13"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <polyline points="23 4 23 10 17 10" />
+                              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                             </svg>
+                            {refreshingBookId === b.id && (
+                              <span style={{ marginLeft: 4 }}>…</span>
+                            )}
                           </button>
                         </div>
                       </td>
@@ -561,26 +971,34 @@ function AdminDashboard() {
         )}
 
         {/* ── Borrowed Books ── */}
-        {tab === 'borrows' && (
+        {tab === "borrows" && (
           <>
-            <div className="section-header"><h3>Currently Borrowed</h3></div>
+            <div className="section-header">
+              <h3>Currently Borrowed</h3>
+            </div>
             {borrows.length === 0 ? (
               <div className="empty">No active borrows</div>
             ) : (
               <table>
                 <thead>
-                  <tr><th>Book</th><th>Borrower</th><th>Borrow Date</th><th>Due Date</th><th>Status</th></tr>
+                  <tr>
+                    <th>Book</th>
+                    <th>Borrower</th>
+                    <th>Borrow Date</th>
+                    <th>Due Date</th>
+                    <th>Status</th>
+                  </tr>
                 </thead>
                 <tbody>
-                  {borrows.map(b => (
+                  {borrows.map((b) => (
                     <tr key={b.id}>
                       <td>{b.book_title}</td>
                       <td>{b.username}</td>
                       <td>{new Date(b.borrow_date).toLocaleDateString()}</td>
                       <td>{new Date(b.due_date).toLocaleDateString()}</td>
                       <td>
-                        <Badge variant={b.is_overdue ? 'overdue' : 'active'}>
-                          {b.is_overdue ? 'Overdue' : 'Active'}
+                        <Badge variant={b.is_overdue ? "overdue" : "active"}>
+                          {b.is_overdue ? "Overdue" : "Active"}
                         </Badge>
                       </td>
                     </tr>
@@ -592,13 +1010,17 @@ function AdminDashboard() {
         )}
 
         {/* ── Fines ── */}
-        {tab === 'fines' && (
+        {tab === "fines" && (
           <>
             <div className="section-header">
               <h3>Pending Fines</h3>
               {fines.length > 0 && (
-                <span className="fine-amount" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                  {fines.length} unpaid · ${fines.reduce((s, f) => s + f.fine, 0).toFixed(2)} total
+                <span
+                  className="fine-amount"
+                  style={{ fontSize: "0.9rem", fontWeight: 600 }}
+                >
+                  {fines.length} unpaid · $
+                  {fines.reduce((s, f) => s + f.fine, 0).toFixed(2)} total
                 </span>
               )}
             </div>
@@ -617,16 +1039,18 @@ function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {fines.map(b => (
+                  {fines.map((b) => (
                     <tr key={b.id}>
                       <td>{b.book_title}</td>
                       <td>{b.username}</td>
                       <td>{new Date(b.due_date).toLocaleDateString()}</td>
                       <td className="fine-amount">${b.fine.toFixed(2)}</td>
                       <td>
-                        {b.return_date
-                          ? <Badge variant="returned">Returned Late</Badge>
-                          : <Badge variant="overdue">Overdue</Badge>}
+                        {b.return_date ? (
+                          <Badge variant="returned">Returned Late</Badge>
+                        ) : (
+                          <Badge variant="overdue">Overdue</Badge>
+                        )}
                       </td>
                       <td>
                         <button
@@ -634,7 +1058,7 @@ function AdminDashboard() {
                           disabled={markingPaidId === b.id}
                           onClick={() => markFinePaid(b.id)}
                         >
-                          {markingPaidId === b.id ? 'Saving…' : 'Mark Paid'}
+                          {markingPaidId === b.id ? "Saving…" : "Mark Paid"}
                         </button>
                       </td>
                     </tr>
@@ -643,83 +1067,150 @@ function AdminDashboard() {
               </table>
             )}
 
-            <div className="section-header" style={{ marginTop: 40 }}><h3>Fine Policy</h3></div>
+            <div className="section-header" style={{ marginTop: 40 }}>
+              <h3>Fine Policy</h3>
+            </div>
             {policy && (
               <form className="policy-form" onSubmit={savePolicy}>
                 {policyError && <div className="error">{policyError}</div>}
                 <div className="form-group">
                   <label>Fine Per Day ($)</label>
-                  <input type="number" min="0" step="0.01"
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
                     value={policyForm.fine_per_day}
-                    onChange={e => setPolicyForm({ ...policyForm, fine_per_day: e.target.value })}
-                    required />
-                  <p className="field-hint">Charged per day a book is overdue</p>
+                    onChange={(e) =>
+                      setPolicyForm({
+                        ...policyForm,
+                        fine_per_day: e.target.value,
+                      })
+                    }
+                    required
+                  />
+                  <p className="field-hint">
+                    Charged per day a book is overdue
+                  </p>
                 </div>
                 <div className="form-group">
                   <label>Borrow Duration (days)</label>
-                  <input type="number" min="1"
+                  <input
+                    type="number"
+                    min="1"
                     value={policyForm.borrow_days}
-                    onChange={e => setPolicyForm({ ...policyForm, borrow_days: e.target.value })}
-                    required />
+                    onChange={(e) =>
+                      setPolicyForm({
+                        ...policyForm,
+                        borrow_days: e.target.value,
+                      })
+                    }
+                    required
+                  />
                   <p className="field-hint">Applies to new borrows only</p>
                 </div>
-                <button type="submit" className="btn btn-sm">Save Policy</button>
+                <button type="submit" className="btn btn-sm">
+                  Save Policy
+                </button>
               </form>
             )}
           </>
         )}
 
         {/* ── Members ── */}
-        {tab === 'members' && (
+        {tab === "members" && (
           <>
-            <div className="section-header"><h3>Membership Pricing</h3></div>
+            <div className="section-header">
+              <h3>Membership Pricing</h3>
+            </div>
             {membershipPricing && (
-              <form className="membership-pricing-form" onSubmit={saveMembershipPricing}>
-                {membershipPricingError && <div className="error">{membershipPricingError}</div>}
+              <form
+                className="membership-pricing-form"
+                onSubmit={saveMembershipPricing}
+              >
+                {membershipPricingError && (
+                  <div className="error">{membershipPricingError}</div>
+                )}
                 <div className="tier-pricing-grid">
                   <div className="tier-pricing-card">
                     <div className="tier-pricing-name">Silver</div>
-                    <div className="tier-pricing-desc">1 book at a time · Standard access</div>
+                    <div className="tier-pricing-desc">
+                      1 book at a time · Standard access
+                    </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label>Monthly Rate ($)</label>
                       <input
-                        type="number" min="0" step="0.01" required
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
                         value={membershipPricingForm.silver_rate}
-                        onChange={e => setMembershipPricingForm({ ...membershipPricingForm, silver_rate: e.target.value })}
+                        onChange={(e) =>
+                          setMembershipPricingForm({
+                            ...membershipPricingForm,
+                            silver_rate: e.target.value,
+                          })
+                        }
                       />
                     </div>
                   </div>
                   <div className="tier-pricing-card tier-pricing-card-gold">
                     <div className="tier-pricing-name">Gold</div>
-                    <div className="tier-pricing-desc">3 books at a time · Community access</div>
+                    <div className="tier-pricing-desc">
+                      3 books at a time · Community access
+                    </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label>Monthly Rate ($)</label>
                       <input
-                        type="number" min="0" step="0.01" required
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
                         value={membershipPricingForm.gold_rate}
-                        onChange={e => setMembershipPricingForm({ ...membershipPricingForm, gold_rate: e.target.value })}
+                        onChange={(e) =>
+                          setMembershipPricingForm({
+                            ...membershipPricingForm,
+                            gold_rate: e.target.value,
+                          })
+                        }
                       />
                     </div>
                   </div>
                   <div className="tier-pricing-card">
                     <div className="tier-pricing-name">Family</div>
-                    <div className="tier-pricing-desc">Up to 4 members · 1 book each · Shared plan</div>
+                    <div className="tier-pricing-desc">
+                      Up to 4 members · 1 book each · Shared plan
+                    </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label>Monthly Rate ($)</label>
                       <input
-                        type="number" min="0" step="0.01" required
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
                         value={membershipPricingForm.family_rate}
-                        onChange={e => setMembershipPricingForm({ ...membershipPricingForm, family_rate: e.target.value })}
+                        onChange={(e) =>
+                          setMembershipPricingForm({
+                            ...membershipPricingForm,
+                            family_rate: e.target.value,
+                          })
+                        }
                       />
                     </div>
                   </div>
                 </div>
-                <p className="field-hint" style={{ marginBottom: 12 }}>Gold rate must be higher than Silver; Family rate is for the whole group</p>
-                <button type="submit" className="btn btn-sm">Save Pricing</button>
+                <p className="field-hint" style={{ marginBottom: 12 }}>
+                  Gold rate must be higher than Silver; Family rate is for the
+                  whole group
+                </p>
+                <button type="submit" className="btn btn-sm">
+                  Save Pricing
+                </button>
               </form>
             )}
 
-            <div className="section-header" style={{ marginTop: 40 }}><h3>Member Records</h3></div>
+            <div className="section-header" style={{ marginTop: 40 }}>
+              <h3>Member Records</h3>
+            </div>
             {!membersLoaded ? (
               <div className="empty">Loading…</div>
             ) : members.length === 0 ? (
@@ -740,26 +1231,51 @@ function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {members.map(m => (
+                  {members.map((m) => (
                     <tr key={m.id}>
                       <td>{m.username}</td>
                       <td>
-                        {m.membership_tier
-                          ? <span className={`membership-badge membership-badge-${m.membership_tier}`}>{m.membership_tier.charAt(0).toUpperCase() + m.membership_tier.slice(1)}</span>
-                          : <span className="muted">None</span>}
+                        {m.membership_tier ? (
+                          <span
+                            className={`membership-badge membership-badge-${m.membership_tier}`}
+                          >
+                            {m.membership_tier.charAt(0).toUpperCase() +
+                              m.membership_tier.slice(1)}
+                          </span>
+                        ) : (
+                          <span className="muted">None</span>
+                        )}
                       </td>
-                      <td>{m.family_group_id != null ? `Group ${m.family_group_id}` : <span className="muted">—</span>}</td>
+                      <td>
+                        {m.family_group_id != null ? (
+                          `Group ${m.family_group_id}`
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
                       <td>{m.currently_borrowed}</td>
                       <td>{m.total_borrows}</td>
-                      <td className={m.fines_pending > 0 ? 'fine-amount' : ''}>
-                        {m.fines_pending > 0 ? `$${m.fines_pending.toFixed(2)}` : <span className="muted">—</span>}
+                      <td className={m.fines_pending > 0 ? "fine-amount" : ""}>
+                        {m.fines_pending > 0 ? (
+                          `$${m.fines_pending.toFixed(2)}`
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
                       </td>
-                      <td>{m.fines_paid > 0 ? `$${m.fines_paid.toFixed(2)}` : <span className="muted">—</span>}</td>
+                      <td>
+                        {m.fines_paid > 0 ? (
+                          `$${m.fines_paid.toFixed(2)}`
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
                       <td>
                         <Select
                           className="filter-select"
-                          value={m.membership_tier || ''}
-                          onChange={e => changeMemberTier(m.id, e.target.value)}
+                          value={m.membership_tier || ""}
+                          onChange={(e) =>
+                            changeMemberTier(m.id, e.target.value)
+                          }
                         >
                           <option value="">None</option>
                           <option value="silver">Silver</option>
@@ -768,7 +1284,12 @@ function AdminDashboard() {
                         </Select>
                       </td>
                       <td>
-                        <button className="btn btn-sm btn-outline" onClick={() => openMember(m)}>View Records</button>
+                        <button
+                          className="btn btn-sm btn-outline"
+                          onClick={() => openMember(m)}
+                        >
+                          View Records
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -779,18 +1300,23 @@ function AdminDashboard() {
         )}
 
         {/* ── Communities ── */}
-        {tab === 'communities' && (
+        {tab === "communities" && (
           <>
             <div className="section-header">
               <h3>Community Requests</h3>
               <div className="btn-row">
-                {['pending', 'approved', 'rejected', ''].map(s => (
+                {["pending", "approved", "rejected", ""].map((s) => (
                   <button
-                    key={s || 'all'}
-                    className={`btn btn-sm${adminCommunitiesFilter === s ? '' : ' btn-outline'}`}
-                    onClick={() => { setAdminCommunitiesFilter(s); loadAdminCommunities(s); }}
+                    key={s || "all"}
+                    className={`btn btn-sm${
+                      adminCommunitiesFilter === s ? "" : " btn-outline"
+                    }`}
+                    onClick={() => {
+                      setAdminCommunitiesFilter(s);
+                      loadAdminCommunities(s);
+                    }}
                   >
-                    {s ? s.charAt(0).toUpperCase() + s.slice(1) : 'All'}
+                    {s ? s.charAt(0).toUpperCase() + s.slice(1) : "All"}
                   </button>
                 ))}
               </div>
@@ -798,7 +1324,12 @@ function AdminDashboard() {
             {!adminCommunitiesLoaded ? (
               <div className="empty">Loading…</div>
             ) : adminCommunities.length === 0 ? (
-              <div className="empty">No communities{adminCommunitiesFilter ? ` with status "${adminCommunitiesFilter}"` : ''}</div>
+              <div className="empty">
+                No communities
+                {adminCommunitiesFilter
+                  ? ` with status "${adminCommunitiesFilter}"`
+                  : ""}
+              </div>
             ) : (
               <table>
                 <thead>
@@ -814,10 +1345,16 @@ function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {adminCommunities.map(c => (
+                  {adminCommunities.map((c) => (
                     <tr key={c.id}>
                       <td style={{ fontWeight: 500 }}>{c.name}</td>
-                      <td style={{ maxWidth: 200, color: '#555', fontSize: '0.85rem' }}>
+                      <td
+                        style={{
+                          maxWidth: 200,
+                          color: "#555",
+                          fontSize: "0.85rem",
+                        }}
+                      >
                         {c.description || <span className="muted">—</span>}
                       </td>
                       <td>{c.creator_username}</td>
@@ -825,22 +1362,56 @@ function AdminDashboard() {
                       <td>{c.post_count}</td>
                       <td>
                         <Badge
-                          variant={c.status === 'approved' ? 'active' : c.status === 'rejected' ? 'overdue' : 'returned'}
+                          variant={
+                            c.status === "approved"
+                              ? "active"
+                              : c.status === "rejected"
+                              ? "overdue"
+                              : "returned"
+                          }
                         >
                           {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
                         </Badge>
                       </td>
                       <td>{new Date(c.created_at).toLocaleDateString()}</td>
                       <td>
-                        {c.status === 'pending' && (
+                        {c.status === "pending" && (
                           <div className="btn-row">
-                            <button className="btn btn-sm" onClick={() => { setApprovingCommunity(c); setCommunityApproveNotes(''); setCommunityApproveError(''); }}>Approve</button>
-                            <button className="btn btn-sm btn-outline" onClick={() => { setRejectingCommunity(c); setCommunityRejectNotes(''); setCommunityRejectError(''); }}>Reject</button>
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => {
+                                setApprovingCommunity(c);
+                                setCommunityApproveNotes("");
+                                setCommunityApproveError("");
+                              }}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline"
+                              onClick={() => {
+                                setRejectingCommunity(c);
+                                setCommunityRejectNotes("");
+                                setCommunityRejectError("");
+                              }}
+                            >
+                              Reject
+                            </button>
                           </div>
                         )}
                         {c.admin_notes && (
-                          <div style={{ fontSize: '0.75rem', color: '#666', marginTop: 4 }} title={c.admin_notes}>
-                            Note: {c.admin_notes.length > 40 ? c.admin_notes.slice(0, 40) + '…' : c.admin_notes}
+                          <div
+                            style={{
+                              fontSize: "0.75rem",
+                              color: "#666",
+                              marginTop: 4,
+                            }}
+                            title={c.admin_notes}
+                          >
+                            Note:{" "}
+                            {c.admin_notes.length > 40
+                              ? c.admin_notes.slice(0, 40) + "…"
+                              : c.admin_notes}
                           </div>
                         )}
                       </td>
@@ -853,18 +1424,23 @@ function AdminDashboard() {
         )}
 
         {/* ── Donations ── */}
-        {tab === 'donations' && (
+        {tab === "donations" && (
           <>
             <div className="section-header">
               <h3>Book Donations</h3>
               <div className="btn-row">
-                {['pending', 'approved', 'rejected', ''].map(s => (
+                {["pending", "approved", "rejected", ""].map((s) => (
                   <button
-                    key={s || 'all'}
-                    className={`btn btn-sm${donationStatusFilter === s ? '' : ' btn-outline'}`}
-                    onClick={() => { setDonationStatusFilter(s); loadDonations(s); }}
+                    key={s || "all"}
+                    className={`btn btn-sm${
+                      donationStatusFilter === s ? "" : " btn-outline"
+                    }`}
+                    onClick={() => {
+                      setDonationStatusFilter(s);
+                      loadDonations(s);
+                    }}
                   >
-                    {s ? s.charAt(0).toUpperCase() + s.slice(1) : 'All'}
+                    {s ? s.charAt(0).toUpperCase() + s.slice(1) : "All"}
                   </button>
                 ))}
               </div>
@@ -873,7 +1449,12 @@ function AdminDashboard() {
             {!donationsLoaded ? (
               <div className="empty">Loading…</div>
             ) : donations.length === 0 ? (
-              <div className="empty">No donations{donationStatusFilter ? ` with status "${donationStatusFilter}"` : ''}</div>
+              <div className="empty">
+                No donations
+                {donationStatusFilter
+                  ? ` with status "${donationStatusFilter}"`
+                  : ""}
+              </div>
             ) : (
               <table>
                 <thead>
@@ -890,40 +1471,80 @@ function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {donations.map(d => (
+                  {donations.map((d) => (
                     <tr key={d.id}>
                       <td>{d.username}</td>
                       <td>
                         {d.title}
-                        {d.isbn && <div style={{ fontSize: '0.75rem', color: '#888' }}>ISBN: {d.isbn}</div>}
-                        {d.genre && <div style={{ fontSize: '0.75rem', color: '#888' }}>{d.genre}</div>}
+                        {d.isbn && (
+                          <div style={{ fontSize: "0.75rem", color: "#888" }}>
+                            ISBN: {d.isbn}
+                          </div>
+                        )}
+                        {d.genre && (
+                          <div style={{ fontSize: "0.75rem", color: "#888" }}>
+                            {d.genre}
+                          </div>
+                        )}
                       </td>
                       <td>{d.author}</td>
-                      <td style={{ textTransform: 'capitalize' }}>{d.condition}</td>
+                      <td style={{ textTransform: "capitalize" }}>
+                        {d.condition}
+                      </td>
                       <td>${d.estimated_price.toFixed(2)}</td>
                       <td>
-                        {d.credit_amount != null
-                          ? <span style={{ color: '#2e7d32', fontWeight: 600 }}>${d.credit_amount.toFixed(2)}</span>
-                          : <span className="muted">—</span>}
+                        {d.credit_amount != null ? (
+                          <span style={{ color: "#2e7d32", fontWeight: 600 }}>
+                            ${d.credit_amount.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
                       </td>
                       <td>
                         <Badge
-                          variant={d.status === 'approved' ? 'active' : d.status === 'rejected' ? 'overdue' : 'returned'}
+                          variant={
+                            d.status === "approved"
+                              ? "active"
+                              : d.status === "rejected"
+                              ? "overdue"
+                              : "returned"
+                          }
                         >
                           {d.status.charAt(0).toUpperCase() + d.status.slice(1)}
                         </Badge>
                       </td>
                       <td>{new Date(d.submitted_at).toLocaleDateString()}</td>
                       <td>
-                        {d.status === 'pending' && (
+                        {d.status === "pending" && (
                           <div className="btn-row">
-                            <button className="btn btn-sm" onClick={() => openApprove(d)}>Approve</button>
-                            <button className="btn btn-sm btn-outline" onClick={() => openReject(d)}>Reject</button>
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => openApprove(d)}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline"
+                              onClick={() => openReject(d)}
+                            >
+                              Reject
+                            </button>
                           </div>
                         )}
                         {d.admin_notes && (
-                          <div style={{ fontSize: '0.75rem', color: '#666', marginTop: 4 }} title={d.admin_notes}>
-                            Note: {d.admin_notes.length > 40 ? d.admin_notes.slice(0, 40) + '…' : d.admin_notes}
+                          <div
+                            style={{
+                              fontSize: "0.75rem",
+                              color: "#666",
+                              marginTop: 4,
+                            }}
+                            title={d.admin_notes}
+                          >
+                            Note:{" "}
+                            {d.admin_notes.length > 40
+                              ? d.admin_notes.slice(0, 40) + "…"
+                              : d.admin_notes}
                           </div>
                         )}
                       </td>
@@ -936,96 +1557,203 @@ function AdminDashboard() {
         )}
       </div>
 
-      {/* ── Refresh All Log Modal ── */}
+      {/* ── Refresh Log Panel ── */}
       {showRefreshLog && (
-        <Modal title="Refresh All Books" onClose={() => !refreshingAll && setShowRefreshLog(false)} wide>
-          {refreshProgress && (
-            <div className="refresh-progress">
-              <div className="refresh-progress-bar">
-                <div style={{ width: `${(refreshProgress.done / refreshProgress.total) * 100}%` }} />
-              </div>
-              <span className="refresh-progress-label">
-                {refreshProgress.done} / {refreshProgress.total}
-              </span>
-            </div>
-          )}
-          <div className="refresh-log">
-            {refreshLog.map((entry, i) => (
-              <div key={i} className={`refresh-log-entry ${entry.ok ? 'refresh-log-ok' : 'refresh-log-error'}`}>
-                <span className="refresh-log-icon">{entry.ok ? '✓' : '✗'}</span>
-                <span className="refresh-log-title">{entry.title}</span>
-                <span className="refresh-log-details">
-                  {entry.ok
-                    ? (entry.loaded.length > 0 ? entry.loaded.join(', ') : 'no data found')
-                    : 'failed'}
+        <div className="refresh-panel">
+          <div className="refresh-panel-header">
+            <span className="refresh-panel-title">{refreshModalTitle}</span>
+            <button
+              className="modal-close-btn"
+              onClick={() => setShowRefreshLog(false)}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="refresh-panel-body">
+            {refreshProgress && (
+              <div className="refresh-progress">
+                <div className="refresh-progress-bar">
+                  <div
+                    style={{
+                      width: `${
+                        (refreshProgress.done / refreshProgress.total) * 100
+                      }%`,
+                    }}
+                  />
+                </div>
+                <span className="refresh-progress-label">
+                  {refreshProgress.done} / {refreshProgress.total}
                 </span>
               </div>
-            ))}
-            {refreshingAll && (
-              <div className="refresh-log-entry refresh-log-pending">
-                <span className="refresh-log-icon">⋯</span>
-                <span className="refresh-log-title">Working…</span>
-              </div>
             )}
-          </div>
-          {!refreshingAll && (
-            <div className="modal-actions">
-              <button className="btn btn-sm" onClick={() => setShowRefreshLog(false)}>Close</button>
+            <div className="refresh-log">
+              {refreshLog.map((entry, i) => (
+                <div
+                  key={i}
+                  className={`refresh-log-entry ${
+                    entry.ok ? "refresh-log-ok" : "refresh-log-error"
+                  }`}
+                >
+                  <span className="refresh-log-icon">
+                    {entry.ok ? "✓" : "✗"}
+                  </span>
+                  <span className="refresh-log-title">{entry.title}</span>
+                  <span className="refresh-log-details">
+                    {entry.ok
+                      ? entry.loaded.length > 0
+                        ? entry.loaded.join(", ")
+                        : "no data found"
+                      : "failed"}
+                  </span>
+                </div>
+              ))}
+              {(refreshingAll || refreshingBookId) &&
+                refreshLog.length === 0 && (
+                  <div className="refresh-log-entry refresh-log-pending">
+                    <span className="refresh-log-icon">⋯</span>
+                    <span className="refresh-log-title">Working…</span>
+                  </div>
+                )}
             </div>
-          )}
-        </Modal>
+            {!refreshingAll &&
+              !refreshingBookId &&
+              refreshBookId &&
+              refreshLog.length > 0 &&
+              (() => {
+                const loaded = refreshLog[0]?.loaded || [];
+                const missingDesc = !loaded.includes("description");
+                const missingBio = !loaded.includes("author bio");
+                const missingCover = !loaded.includes("cover");
+                if (!missingDesc && !missingBio && !missingCover) return null;
+                return (
+                  <div className="refresh-fill-section">
+                    <div className="refresh-fill-label">Fill missing</div>
+                    <div className="refresh-fill-actions">
+                      {missingDesc && (
+                        <button
+                          className="btn btn-sm btn-outline"
+                          onClick={() =>
+                            openAiGen(refreshBookId, "description")
+                          }
+                        >
+                          ✨ Description
+                        </button>
+                      )}
+                      {missingBio && (
+                        <button
+                          className="btn btn-sm btn-outline"
+                          onClick={() =>
+                            openAiGen(refreshBookId, "author_bio")
+                          }
+                        >
+                          ✨ Author bio
+                        </button>
+                      )}
+                      {missingCover && (
+                        <button
+                          className="btn btn-sm btn-outline"
+                          onClick={() => openCoverUpload(refreshBookId)}
+                        >
+                          Upload cover
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+          </div>
+        </div>
       )}
 
       {/* ── Re-auth Modal ── */}
       {reAuthFor && (
-        <Modal
-          title="Confirm Your Identity"
-          onClose={() => setReAuthFor(null)}
-        >
-          <p style={{ marginBottom: 16, fontSize: '0.9rem', color: 'var(--text-secondary, #555)' }}>
+        <Modal title="Confirm Your Identity" onClose={() => setReAuthFor(null)}>
+          <p
+            style={{
+              marginBottom: 16,
+              fontSize: "0.9rem",
+              color: "var(--text-secondary, #555)",
+            }}
+          >
             This action requires you to re-enter your password to continue.
           </p>
-          {reAuthError && <div className="error" style={{ marginBottom: 12 }}>{reAuthError}</div>}
+          {reAuthError && (
+            <div className="error" style={{ marginBottom: 12 }}>
+              {reAuthError}
+            </div>
+          )}
           <div className="form-group">
             <label>Password</label>
             <input
               type="password"
               value={reAuthPassword}
-              onChange={e => setReAuthPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && confirmReAuth()}
+              onChange={(e) => setReAuthPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && confirmReAuth()}
               autoFocus
               placeholder="Enter your password"
             />
           </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-            <button className="btn btn-sm" onClick={confirmReAuth} disabled={reAuthLoading || !reAuthPassword}>
-              {reAuthLoading ? 'Verifying…' : 'Confirm'}
+          <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+            <button
+              className="btn btn-sm"
+              onClick={confirmReAuth}
+              disabled={reAuthLoading || !reAuthPassword}
+            >
+              {reAuthLoading ? "Verifying…" : "Confirm"}
             </button>
-            <button className="btn btn-sm btn-outline" onClick={() => setReAuthFor(null)}>Cancel</button>
+            <button
+              className="btn btn-sm btn-outline"
+              onClick={() => setReAuthFor(null)}
+            >
+              Cancel
+            </button>
           </div>
         </Modal>
       )}
 
       {/* ── Approve Community Modal ── */}
       {approvingCommunity && (
-        <Modal title="Approve Community" onClose={() => setApprovingCommunity(null)}>
-          <p style={{ marginBottom: 16, fontSize: '0.9rem', color: '#555' }}>
-            Approving <strong>{approvingCommunity.name}</strong> created by <strong>{approvingCommunity.creator_username}</strong>.
-            The creator will automatically be added as a moderator.
+        <Modal
+          title="Approve Community"
+          onClose={() => setApprovingCommunity(null)}
+        >
+          <p style={{ marginBottom: 16, fontSize: "0.9rem", color: "#555" }}>
+            Approving <strong>{approvingCommunity.name}</strong> created by{" "}
+            <strong>{approvingCommunity.creator_username}</strong>. The creator
+            will automatically be added as a moderator.
           </p>
           <form onSubmit={submitApproveCommunity}>
-            {communityApproveError && <div className="error">{communityApproveError}</div>}
+            {communityApproveError && (
+              <div className="error">{communityApproveError}</div>
+            )}
             <div className="form-group">
-              <label>Admin notes <span className="muted" style={{ textTransform: 'none', fontSize: '0.75rem' }}>(optional)</span></label>
+              <label>
+                Admin notes{" "}
+                <span
+                  className="muted"
+                  style={{ textTransform: "none", fontSize: "0.75rem" }}
+                >
+                  (optional)
+                </span>
+              </label>
               <input
                 value={communityApproveNotes}
-                onChange={e => setCommunityApproveNotes(e.target.value)}
+                onChange={(e) => setCommunityApproveNotes(e.target.value)}
                 placeholder="Any notes for the community creator…"
               />
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn btn-sm btn-outline" onClick={() => setApprovingCommunity(null)}>Cancel</button>
-              <button type="submit" className="btn btn-sm">Confirm Approval</button>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                onClick={() => setApprovingCommunity(null)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-sm">
+                Confirm Approval
+              </button>
             </div>
           </form>
         </Modal>
@@ -1033,23 +1761,45 @@ function AdminDashboard() {
 
       {/* ── Reject Community Modal ── */}
       {rejectingCommunity && (
-        <Modal title="Reject Community" onClose={() => setRejectingCommunity(null)}>
-          <p style={{ marginBottom: 16, fontSize: '0.9rem', color: '#555' }}>
-            Rejecting <strong>{rejectingCommunity.name}</strong> submitted by <strong>{rejectingCommunity.creator_username}</strong>.
+        <Modal
+          title="Reject Community"
+          onClose={() => setRejectingCommunity(null)}
+        >
+          <p style={{ marginBottom: 16, fontSize: "0.9rem", color: "#555" }}>
+            Rejecting <strong>{rejectingCommunity.name}</strong> submitted by{" "}
+            <strong>{rejectingCommunity.creator_username}</strong>.
           </p>
           <form onSubmit={submitRejectCommunity}>
-            {communityRejectError && <div className="error">{communityRejectError}</div>}
+            {communityRejectError && (
+              <div className="error">{communityRejectError}</div>
+            )}
             <div className="form-group">
-              <label>Reason <span className="muted" style={{ textTransform: 'none', fontSize: '0.75rem' }}>(optional — shown to creator)</span></label>
+              <label>
+                Reason{" "}
+                <span
+                  className="muted"
+                  style={{ textTransform: "none", fontSize: "0.75rem" }}
+                >
+                  (optional — shown to creator)
+                </span>
+              </label>
               <input
                 value={communityRejectNotes}
-                onChange={e => setCommunityRejectNotes(e.target.value)}
+                onChange={(e) => setCommunityRejectNotes(e.target.value)}
                 placeholder="e.g. Duplicate community, inappropriate name…"
               />
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn btn-sm btn-outline" onClick={() => setRejectingCommunity(null)}>Cancel</button>
-              <button type="submit" className="btn btn-sm btn-outline">Confirm Rejection</button>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                onClick={() => setRejectingCommunity(null)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-sm btn-outline">
+                Confirm Rejection
+              </button>
             </div>
           </form>
         </Modal>
@@ -1057,10 +1807,15 @@ function AdminDashboard() {
 
       {/* ── Approve Donation Modal ── */}
       {approvingDonation && (
-        <Modal title="Approve Donation" onClose={() => setApprovingDonation(null)}>
-          <p style={{ marginBottom: 16, fontSize: '0.9rem', color: '#555' }}>
-            Approving <strong>{approvingDonation.title}</strong> by {approvingDonation.author} donated by <strong>{approvingDonation.username}</strong>.
-            The book will be added to the catalogue with 1 copy.
+        <Modal
+          title="Approve Donation"
+          onClose={() => setApprovingDonation(null)}
+        >
+          <p style={{ marginBottom: 16, fontSize: "0.9rem", color: "#555" }}>
+            Approving <strong>{approvingDonation.title}</strong> by{" "}
+            {approvingDonation.author} donated by{" "}
+            <strong>{approvingDonation.username}</strong>. The book will be
+            added to the catalogue with 1 copy.
           </p>
           <form onSubmit={submitApprove}>
             {approveError && <div className="error">{approveError}</div>}
@@ -1071,24 +1826,42 @@ function AdminDashboard() {
                 min="0"
                 step="0.01"
                 value={approveCredit}
-                onChange={e => setApproveCredit(e.target.value)}
+                onChange={(e) => setApproveCredit(e.target.value)}
                 required
               />
               <p className="field-hint">
-                Default is 1/4 of estimated value (${(approvingDonation.estimated_price / 4).toFixed(2)}). You can adjust this.
+                Default is 1/4 of estimated value ($
+                {(approvingDonation.estimated_price / 4).toFixed(2)}). You can
+                adjust this.
               </p>
             </div>
             <div className="form-group">
-              <label>Admin notes <span className="muted" style={{ textTransform: 'none', fontSize: '0.75rem' }}>(optional)</span></label>
+              <label>
+                Admin notes{" "}
+                <span
+                  className="muted"
+                  style={{ textTransform: "none", fontSize: "0.75rem" }}
+                >
+                  (optional)
+                </span>
+              </label>
               <input
                 value={approveNotes}
-                onChange={e => setApproveNotes(e.target.value)}
+                onChange={(e) => setApproveNotes(e.target.value)}
                 placeholder="Any notes for the member…"
               />
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn btn-sm btn-outline" onClick={() => setApprovingDonation(null)}>Cancel</button>
-              <button type="submit" className="btn btn-sm">Confirm Approval</button>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                onClick={() => setApprovingDonation(null)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-sm">
+                Confirm Approval
+              </button>
             </div>
           </form>
         </Modal>
@@ -1096,60 +1869,145 @@ function AdminDashboard() {
 
       {/* ── Reject Donation Modal ── */}
       {rejectingDonation && (
-        <Modal title="Reject Donation" onClose={() => setRejectingDonation(null)}>
-          <p style={{ marginBottom: 16, fontSize: '0.9rem', color: '#555' }}>
-            Rejecting <strong>{rejectingDonation.title}</strong> donated by <strong>{rejectingDonation.username}</strong>.
+        <Modal
+          title="Reject Donation"
+          onClose={() => setRejectingDonation(null)}
+        >
+          <p style={{ marginBottom: 16, fontSize: "0.9rem", color: "#555" }}>
+            Rejecting <strong>{rejectingDonation.title}</strong> donated by{" "}
+            <strong>{rejectingDonation.username}</strong>.
           </p>
           <form onSubmit={submitReject}>
             {rejectError && <div className="error">{rejectError}</div>}
             <div className="form-group">
-              <label>Reason <span className="muted" style={{ textTransform: 'none', fontSize: '0.75rem' }}>(optional — shown to member)</span></label>
+              <label>
+                Reason{" "}
+                <span
+                  className="muted"
+                  style={{ textTransform: "none", fontSize: "0.75rem" }}
+                >
+                  (optional — shown to member)
+                </span>
+              </label>
               <input
                 value={rejectNotes}
-                onChange={e => setRejectNotes(e.target.value)}
+                onChange={(e) => setRejectNotes(e.target.value)}
                 placeholder="e.g. Duplicate, poor condition, not in our catalogue…"
               />
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn btn-sm btn-outline" onClick={() => setRejectingDonation(null)}>Cancel</button>
-              <button type="submit" className="btn btn-sm btn-outline">Confirm Rejection</button>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                onClick={() => setRejectingDonation(null)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-sm btn-outline">
+                Confirm Rejection
+              </button>
             </div>
           </form>
         </Modal>
       )}
 
       {/* ── Add Book Modal ── */}
+      {showAddGenre && (
+        <Modal
+          title="Add Genre"
+          onClose={() => setShowAddGenre(false)}
+        >
+          <form onSubmit={addGenre}>
+            {genreError && <div className="error">{genreError}</div>}
+            <div className="form-group">
+              <label>Genre name</label>
+              <input
+                value={newGenreName}
+                onChange={(e) => setNewGenreName(e.target.value)}
+                placeholder="e.g. Fantasy"
+                autoFocus
+                required
+              />
+              <div style={{ fontSize: "0.78rem", color: "var(--text-4)", marginTop: 4 }}>
+                Letters only (a–z). First letter will be capitalised automatically.
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setShowAddGenre(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-sm"
+                disabled={genreSaving}
+              >
+                {genreSaving ? "Saving…" : "Add Genre"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
       {showAdd && (
-        <Modal title="Add Book" onClose={() => { setShowAdd(false); setBookError(''); }}>
+        <Modal
+          title="Add Book"
+          onClose={() => {
+            setShowAdd(false);
+            setBookError("");
+          }}
+        >
           <form onSubmit={addBook}>
             {bookError && <div className="error">{bookError}</div>}
             <div className="form-group">
               <label>Title</label>
-              <input {...bookField('title')} required />
+              <input {...bookField("title")} required />
             </div>
             <div className="form-group">
               <label>Author</label>
-              <input {...bookField('author')} required />
+              <input {...bookField("author")} required />
             </div>
             <div className="form-group">
               <label>ISBN</label>
-              <input {...bookField('isbn')} required />
+              <input {...bookField("isbn")} required />
             </div>
             <div className="form-group">
               <label>Genre</label>
-              <Select {...bookField('genre')}>
+              <Select {...bookField("genre")}>
                 <option value="">— Select genre —</option>
-                {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
+                {allGenres.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
               </Select>
             </div>
             <div className="form-group">
               <label>Copies</label>
-              <input type="number" min="1" {...bookField('total_copies')} required />
+              <input
+                type="number"
+                min="1"
+                {...bookField("total_copies")}
+                required
+              />
             </div>
             <div className="modal-actions">
-              <button type="button" className="btn btn-outline btn-sm"
-                onClick={() => { setShowAdd(false); setBookError(''); }}>Cancel</button>
-              <button type="submit" className="btn btn-sm">Add</button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => {
+                  setShowAdd(false);
+                  setBookError("");
+                }}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-sm">
+                Add
+              </button>
             </div>
           </form>
         </Modal>
@@ -1157,33 +2015,47 @@ function AdminDashboard() {
 
       {/* ── Edit Book Modal ── */}
       {editingBook && (
-        <Modal title={`Edit — ${editingBook.title}`} onClose={() => setEditingBook(null)}>
+        <Modal
+          title={`Edit — ${editingBook.title}`}
+          onClose={() => setEditingBook(null)}
+        >
           <form onSubmit={saveEdit}>
             {editError && <div className="error">{editError}</div>}
             <div className="form-group">
               <label>Title</label>
-              <input {...editField('title')} required />
+              <input {...editField("title")} required />
             </div>
             <div className="form-group">
               <label>Author</label>
-              <input {...editField('author')} required />
+              <input {...editField("author")} required />
             </div>
             <div className="form-group">
               <label>ISBN</label>
-              <input {...editField('isbn')} required />
+              <input {...editField("isbn")} required />
             </div>
             <div className="form-group">
               <label>Genre</label>
-              <Select {...editField('genre')}>
+              <Select {...editField("genre")}>
                 <option value="">— Select genre —</option>
-                {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
+                {allGenres.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
               </Select>
             </div>
             <div className="form-group">
               <label>Total Copies</label>
-              <input type="number" min="1" {...editField('total_copies')} required />
+              <input
+                type="number"
+                min="1"
+                {...editField("total_copies")}
+                required
+              />
               {borrowed > 0 && (
-                <p className="field-hint">{borrowed} currently borrowed — minimum is {borrowed}</p>
+                <p className="field-hint">
+                  {borrowed} currently borrowed — minimum is {borrowed}
+                </p>
               )}
             </div>
             {isDiscarding && (
@@ -1192,20 +2064,28 @@ function AdminDashboard() {
                   Reason for Discarding <span className="required">*</span>
                 </label>
                 <input
-                  {...editField('discard_reason')}
+                  {...editField("discard_reason")}
                   placeholder="e.g. Damaged, lost, worn out…"
                   required
                 />
                 <p className="field-hint">
-                  Discarding {editingBook.total_copies - Number(editForm.total_copies)} copy/copies —
-                  this will be logged
+                  Discarding{" "}
+                  {editingBook.total_copies - Number(editForm.total_copies)}{" "}
+                  copy/copies — this will be logged
                 </p>
               </div>
             )}
             <div className="modal-actions">
-              <button type="button" className="btn btn-outline btn-sm"
-                onClick={() => setEditingBook(null)}>Cancel</button>
-              <button type="submit" className="btn btn-sm">Save</button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setEditingBook(null)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-sm">
+                Save
+              </button>
             </div>
           </form>
         </Modal>
@@ -1213,26 +2093,42 @@ function AdminDashboard() {
 
       {/* ── Member Records Modal ── */}
       {selectedMember && (
-        <Modal title={`Records — ${selectedMember.username}`} onClose={() => setSelectedMember(null)} wide>
+        <Modal
+          title={`Records — ${selectedMember.username}`}
+          onClose={() => setSelectedMember(null)}
+          wide
+        >
           <div className="member-stats">
             <div className="member-stat">
               <span className="member-stat-label">Currently Borrowed</span>
-              <span className="member-stat-value">{selectedMember.currently_borrowed}</span>
+              <span className="member-stat-value">
+                {selectedMember.currently_borrowed}
+              </span>
             </div>
             <div className="member-stat">
               <span className="member-stat-label">Total Borrows</span>
-              <span className="member-stat-value">{selectedMember.total_borrows}</span>
+              <span className="member-stat-value">
+                {selectedMember.total_borrows}
+              </span>
             </div>
             <div className="member-stat">
               <span className="member-stat-label">Fines Pending</span>
-              <span className={`member-stat-value${selectedMember.fines_pending > 0 ? ' fine-amount' : ''}`}>
-                {selectedMember.fines_pending > 0 ? `$${selectedMember.fines_pending.toFixed(2)}` : '—'}
+              <span
+                className={`member-stat-value${
+                  selectedMember.fines_pending > 0 ? " fine-amount" : ""
+                }`}
+              >
+                {selectedMember.fines_pending > 0
+                  ? `$${selectedMember.fines_pending.toFixed(2)}`
+                  : "—"}
               </span>
             </div>
             <div className="member-stat">
               <span className="member-stat-label">Fines Paid</span>
               <span className="member-stat-value">
-                {selectedMember.fines_paid > 0 ? `$${selectedMember.fines_paid.toFixed(2)}` : '—'}
+                {selectedMember.fines_paid > 0
+                  ? `$${selectedMember.fines_paid.toFixed(2)}`
+                  : "—"}
               </span>
             </div>
           </div>
@@ -1254,25 +2150,37 @@ function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {memberBorrows.map(b => (
+                  {memberBorrows.map((b) => (
                     <tr key={b.id}>
                       <td>{b.book_title}</td>
                       <td>{new Date(b.borrow_date).toLocaleDateString()}</td>
                       <td>{new Date(b.due_date).toLocaleDateString()}</td>
                       <td>
-                        {b.return_date
-                          ? new Date(b.return_date).toLocaleDateString()
-                          : <Badge variant={b.is_overdue ? 'overdue' : 'active'}>{b.is_overdue ? 'Overdue' : 'Active'}</Badge>}
+                        {b.return_date ? (
+                          new Date(b.return_date).toLocaleDateString()
+                        ) : (
+                          <Badge variant={b.is_overdue ? "overdue" : "active"}>
+                            {b.is_overdue ? "Overdue" : "Active"}
+                          </Badge>
+                        )}
                       </td>
-                      <td className={b.fine > 0 ? 'fine-amount' : ''}>
-                        {b.fine > 0 ? `$${b.fine.toFixed(2)}` : <span className="muted">—</span>}
+                      <td className={b.fine > 0 ? "fine-amount" : ""}>
+                        {b.fine > 0 ? (
+                          `$${b.fine.toFixed(2)}`
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
                       </td>
                       <td>
-                        {b.fine > 0
-                          ? (b.fine_paid
-                            ? <Badge variant="returned">Paid</Badge>
-                            : <Badge variant="overdue">Unpaid</Badge>)
-                          : <span className="muted">—</span>}
+                        {b.fine > 0 ? (
+                          b.fine_paid ? (
+                            <Badge variant="returned">Paid</Badge>
+                          ) : (
+                            <Badge variant="overdue">Unpaid</Badge>
+                          )
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1285,9 +2193,177 @@ function AdminDashboard() {
 
       <Toast toasts={toasts} />
 
+      {/* ── AI Generate Field Modal ── */}
+      {aiGenModal && (
+        <Modal
+          title={`Generate ${aiGenModal.field === "author_bio" ? "Author Bio" : "Description"} — ${aiGenModal.bookTitle}`}
+          onClose={() => !aiGenSaving && setAiGenModal(null)}
+          wide
+        >
+          {aiGenError && (
+            <div className="error" style={{ marginBottom: 12 }}>
+              {aiGenError}
+            </div>
+          )}
+          {aiGenLoading ? (
+            <div className="empty" style={{ padding: "24px 0" }}>
+              ✨ Generating…
+            </div>
+          ) : (
+            <div className="form-group">
+              <label>
+                Generated content{" "}
+                <span
+                  className="muted"
+                  style={{ textTransform: "none", fontSize: "0.75rem" }}
+                >
+                  (editable)
+                </span>
+              </label>
+              <textarea
+                className="ai-gen-textarea"
+                value={aiGenContent}
+                onChange={(e) => setAiGenContent(e.target.value)}
+                rows={6}
+                placeholder="Generated content will appear here…"
+              />
+            </div>
+          )}
+          <div className="modal-actions">
+            <button
+              className="btn btn-sm btn-outline"
+              onClick={() => setAiGenModal(null)}
+              disabled={aiGenSaving}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn btn-sm btn-outline"
+              onClick={regenerateAiField}
+              disabled={aiGenLoading || aiGenSaving}
+            >
+              ↺ Regenerate
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={saveAiGenContent}
+              disabled={aiGenLoading || aiGenSaving || !aiGenContent.trim()}
+            >
+              {aiGenSaving ? "Saving…" : "Approve & Save"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Cover Upload Modal ── */}
+      {coverUploadBookId && (
+        <Modal
+          title="Upload Cover"
+          onClose={() => {
+            setCoverUploadBookId(null);
+            setCoverUploadPreview("");
+            setCoverUploadUrl("");
+          }}
+        >
+          <div className="cover-upload-tabs">
+            <button
+              className={`cover-upload-tab${coverUploadMode === "file" ? " active" : ""}`}
+              onClick={() => {
+                setCoverUploadMode("file");
+                setCoverUploadPreview("");
+              }}
+            >
+              Upload file
+            </button>
+            <button
+              className={`cover-upload-tab${coverUploadMode === "url" ? " active" : ""}`}
+              onClick={() => {
+                setCoverUploadMode("url");
+                setCoverUploadUrl("");
+              }}
+            >
+              From URL
+            </button>
+          </div>
+          {coverUploadError && (
+            <div className="error" style={{ marginBottom: 12 }}>
+              {coverUploadError}
+            </div>
+          )}
+          {coverUploadMode === "file" && (
+            <div className="cover-upload-file">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleCoverFileChange}
+              />
+              {coverUploadPreview && (
+                <img
+                  src={coverUploadPreview}
+                  alt="Cover preview"
+                  className="cover-upload-preview"
+                />
+              )}
+            </div>
+          )}
+          {coverUploadMode === "url" && (
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>Image URL</label>
+              <input
+                type="text"
+                value={coverUploadUrl}
+                onChange={(e) => setCoverUploadUrl(e.target.value)}
+                placeholder="https://…"
+              />
+              {coverUploadUrl && (
+                <img
+                  src={coverUploadUrl}
+                  alt="Cover preview"
+                  className="cover-upload-preview"
+                  onError={(e) => {
+                    e.target.style.display = "none";
+                  }}
+                  onLoad={(e) => {
+                    e.target.style.display = "block";
+                  }}
+                />
+              )}
+            </div>
+          )}
+          <div className="modal-actions">
+            <button
+              className="btn btn-sm btn-outline"
+              onClick={() => {
+                setCoverUploadBookId(null);
+                setCoverUploadPreview("");
+                setCoverUploadUrl("");
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={saveCoverUpload}
+              disabled={
+                coverUploadSaving ||
+                (coverUploadMode === "file"
+                  ? !coverUploadPreview
+                  : !coverUploadUrl.trim())
+              }
+            >
+              {coverUploadSaving ? "Saving…" : "Save Cover"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {/* ── Book Logs Modal ── */}
       {logsBook && (
-        <Modal title={`Inventory Logs — ${logsBook.title}`} onClose={() => setLogsBook(null)} wide>
+        <Modal
+          title={`Inventory Logs — ${logsBook.title}`}
+          onClose={() => setLogsBook(null)}
+          wide
+        >
           {logsLoading ? (
             <div className="empty">Loading…</div>
           ) : logs.length === 0 ? (
@@ -1296,15 +2372,24 @@ function AdminDashboard() {
             <div className="modal-scroll">
               <table>
                 <thead>
-                  <tr><th>Action</th><th>Details</th><th>Admin</th><th>Date</th></tr>
+                  <tr>
+                    <th>Action</th>
+                    <th>Details</th>
+                    <th>Admin</th>
+                    <th>Date</th>
+                  </tr>
                 </thead>
                 <tbody>
-                  {logs.map(l => (
+                  {logs.map((l) => (
                     <tr key={l.id}>
-                      <td><span className="log-action">{l.action}</span></td>
+                      <td>
+                        <span className="log-action">{l.action}</span>
+                      </td>
                       <td className="log-details">{l.details}</td>
                       <td>{l.admin_username}</td>
-                      <td className="log-date">{new Date(l.timestamp).toLocaleString()}</td>
+                      <td className="log-date">
+                        {new Date(l.timestamp).toLocaleString()}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

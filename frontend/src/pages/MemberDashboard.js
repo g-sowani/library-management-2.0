@@ -167,6 +167,27 @@ function wcagTextColor(r, g, b) {
   return (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? "#000000" : "#ffffff";
 }
 
+// Binary-search the minimum opacity at which rgba(fgVal, fgVal, fgVal, α) composited
+// over rgb(bgR,bgG,bgB) achieves the target contrast ratio. fgVal is 0 (black) or 255 (white).
+function minAlphaForContrast(fgVal, bgR, bgG, bgB, minRatio) {
+  const lin = (c) => {
+    c /= 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const bgL = 0.2126 * lin(bgR) + 0.7152 * lin(bgG) + 0.0722 * lin(bgB);
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 16; i++) {
+    const alpha = (lo + hi) / 2;
+    const rc = Math.round(fgVal * alpha + bgR * (1 - alpha));
+    const gc = Math.round(fgVal * alpha + bgG * (1 - alpha));
+    const bc = Math.round(fgVal * alpha + bgB * (1 - alpha));
+    const fL = 0.2126 * lin(rc) + 0.7152 * lin(gc) + 0.0722 * lin(bc);
+    const ratio = (Math.max(fL, bgL) + 0.05) / (Math.min(fL, bgL) + 0.05);
+    if (ratio >= minRatio) hi = alpha; else lo = alpha;
+  }
+  return Math.min(1, hi + 0.005);
+}
+
 const REACTIONS = [
   { key: "like", label: "Like" },
   { key: "love", label: "Love" },
@@ -561,6 +582,14 @@ function resizeImageToBase64(file, maxPx = 400) {
   });
 }
 
+function NoCoverPlaceholder({ title, className }) {
+  return (
+    <div className={`no-cover-placeholder${className ? ` ${className}` : ""}`}>
+      <span className="no-cover-title">{title}</span>
+    </div>
+  );
+}
+
 function MemberDashboard() {
   const { user, logout, updateUser } = useAuth();
   const { toasts, toast } = useToast();
@@ -622,6 +651,11 @@ function MemberDashboard() {
   const [donationError, setDonationError] = useState("");
   const [donationSuccess, setDonationSuccess] = useState(false);
 
+  // Wishlist
+  const [wishlistItems, setWishlistItems] = useState([]);
+  const [wishlistIds, setWishlistIds] = useState(new Set());
+  const [wishlistLoading, setWishlistLoading] = useState(false);
+
   // Community
   const [communityView, setCommunityView] = useState("list"); // 'list' | 'community' | 'post'
   const [communities, setCommunities] = useState([]);
@@ -678,6 +712,13 @@ function MemberDashboard() {
       api
         .get("/trending")
         .then((r) => setTrending(r.data))
+        .catch(() => {}),
+      api
+        .get("/my-wishlist")
+        .then((r) => {
+          setWishlistItems(r.data);
+          setWishlistIds(new Set(r.data.map((i) => i.book_id)));
+        })
         .catch(() => {}),
     ])
       .catch(() => setError("Failed to load data. Is the server running?"))
@@ -1010,6 +1051,31 @@ function MemberDashboard() {
     }
   };
 
+  const toggleWishlist = async (bookId) => {
+    const inList = wishlistIds.has(bookId);
+    setWishlistLoading(true);
+    try {
+      if (inList) {
+        await api.delete(`/wishlist/${bookId}`);
+        setWishlistItems((prev) => prev.filter((i) => i.book_id !== bookId));
+        setWishlistIds((prev) => {
+          const next = new Set(prev);
+          next.delete(bookId);
+          return next;
+        });
+      } else {
+        const { data } = await api.post(`/wishlist/${bookId}`);
+        setWishlistItems((prev) => [data, ...prev]);
+        setWishlistIds((prev) => new Set([...prev, bookId]));
+        toast("Added to wishlist");
+      }
+    } catch (err) {
+      toast(err.response?.data?.error || "Wishlist update failed");
+    } finally {
+      setWishlistLoading(false);
+    }
+  };
+
   const activeBorrows = borrows.filter((b) => !b.return_date);
   const borrowedBookIds = new Set(activeBorrows.map((b) => b.book_id));
 
@@ -1147,14 +1213,14 @@ function MemberDashboard() {
 
     if (isBorrowed) {
       return (
-        <button className="btn btn-sm" disabled>
+        <button className="btn" disabled>
           Borrowed
         </button>
       );
     }
     if (book.available_copies > 0) {
       return (
-        <button className="btn btn-sm" onClick={() => borrow(book.id)}>
+        <button className="btn" onClick={() => borrow(book.id)}>
           Borrow
         </button>
       );
@@ -1162,22 +1228,19 @@ function MemberDashboard() {
     if (res) {
       if (res.status === "ready") {
         return (
-          <button className="btn btn-sm" onClick={() => borrow(book.id)}>
+          <button className="btn" onClick={() => borrow(book.id)}>
             Borrow (Ready)
           </button>
         );
       }
       return (
-        <button className="btn btn-sm" disabled>
+        <button className="btn" disabled>
           Reserved #{res.queue_position}
         </button>
       );
     }
     return (
-      <button
-        className="btn btn-sm btn-outline"
-        onClick={() => reserve(book.id)}
-      >
+      <button className="btn btn-outline" onClick={() => reserve(book.id)}>
         Reserve
       </button>
     );
@@ -1192,33 +1255,42 @@ function MemberDashboard() {
     }
   };
 
-  // Derive palette instantly from server-stored cover_color (no async canvas needed)
+  // Derive palette instantly from server-stored cover_color (no async canvas needed).
+  // Each text tier's opacity is the max of the desired visual alpha and the minimum
+  // alpha required to achieve WCAG AA (4.5:1) against this specific background.
   const coverPalette = useMemo(() => {
     const hex = selectedBook?.cover_color;
     if (!hex) return null;
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
-    return { bg: `rgb(${r}, ${g}, ${b})`, text: wcagTextColor(r, g, b) };
+    const text = wcagTextColor(r, g, b);
+    const fgVal = text === "#ffffff" ? 255 : 0;
+    const αMin = minAlphaForContrast(fgVal, r, g, b, 4.5);
+    const isLight = fgVal === 255;
+    const mk = (desired) => {
+      const a = Math.max(desired, αMin).toFixed(2);
+      return isLight ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
+    };
+    return {
+      bg: `rgb(${r}, ${g}, ${b})`,
+      text,
+      labelColor:  mk(isLight ? 0.65 : 0.5),
+      subtleColor: mk(isLight ? 0.78 : 0.65),
+      faintColor:  mk(isLight ? 0.5  : 0.38),
+    };
   }, [selectedBook]); // eslint-disable-line
 
-  // Inline styles that adapt to the cover's dominant color for WCAG compliance
   const heroIsLight = coverPalette?.text === "#ffffff";
-  const heroLabelStyle = coverPalette
-    ? { color: heroIsLight ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.5)" }
-    : {};
+  const heroLabelStyle  = coverPalette ? { color: coverPalette.labelColor  } : {};
+  const heroSubtleStyle = coverPalette ? { color: coverPalette.subtleColor } : {};
+  const heroFaintStyle  = coverPalette ? { color: coverPalette.faintColor  } : {};
   const heroRowStyle = coverPalette
     ? {
         borderBottomColor: heroIsLight
           ? "rgba(255,255,255,0.18)"
           : "rgba(0,0,0,0.1)",
       }
-    : {};
-  const heroSubtleStyle = coverPalette
-    ? { color: heroIsLight ? "rgba(255,255,255,0.78)" : "rgba(0,0,0,0.65)" }
-    : {};
-  const heroFaintStyle = coverPalette
-    ? { color: heroIsLight ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.38)" }
     : {};
 
   if (loading) return <BookLoader />;
@@ -1371,7 +1443,7 @@ function MemberDashboard() {
                               className="home-book-cover"
                             />
                           ) : (
-                            <div className="home-book-cover-placeholder" />
+                            <NoCoverPlaceholder title={book.title} />
                           )}
                         </div>
                         <div className="home-book-info">
@@ -1591,12 +1663,14 @@ function MemberDashboard() {
                         className="rec-card"
                         onClick={() => openBook(b.id)}
                       >
-                        {b.cover_url && (
+                        {b.cover_url ? (
                           <img
                             src={b.cover_url}
                             alt=""
                             className="rec-card-cover"
                           />
+                        ) : (
+                          <NoCoverPlaceholder title={b.title} className="rec-card-cover" />
                         )}
                         <div className="rec-card-reason ai-reason">
                           {b.reason}
@@ -1659,12 +1733,14 @@ function MemberDashboard() {
                       className="rec-card"
                       onClick={() => openBook(b.id)}
                     >
-                      {b.cover_url && (
+                      {b.cover_url ? (
                         <img
                           src={b.cover_url}
                           alt=""
                           className="rec-card-cover"
                         />
+                      ) : (
+                        <NoCoverPlaceholder title={b.title} className="rec-card-cover" />
                       )}
                       <div className="rec-card-title">
                         {b.title}
@@ -1737,12 +1813,14 @@ function MemberDashboard() {
                               className="rec-card"
                               onClick={() => openBook(book.id)}
                             >
-                              {book.cover_url && (
+                              {book.cover_url ? (
                                 <img
                                   src={book.cover_url}
                                   alt=""
                                   className="rec-card-cover"
                                 />
+                              ) : (
+                                <NoCoverPlaceholder title={book.title} className="rec-card-cover" />
                               )}
                               <div className="rec-card-reason">
                                 {n} borrow{n !== 1 ? "s" : ""} this week
@@ -1797,12 +1875,14 @@ function MemberDashboard() {
                               className="rec-card"
                               onClick={() => openBook(book.id)}
                             >
-                              {book.cover_url && (
+                              {book.cover_url ? (
                                 <img
                                   src={book.cover_url}
                                   alt=""
                                   className="rec-card-cover"
                                 />
+                              ) : (
+                                <NoCoverPlaceholder title={book.title} className="rec-card-cover" />
                               )}
                               <div className="rec-card-reason">
                                 {book.reason}
@@ -1859,12 +1939,14 @@ function MemberDashboard() {
                               className="rec-card rec-card-collab"
                               onClick={() => openBook(book.id)}
                             >
-                              {book.cover_url && (
+                              {book.cover_url ? (
                                 <img
                                   src={book.cover_url}
                                   alt=""
                                   className="rec-card-cover"
                                 />
+                              ) : (
+                                <NoCoverPlaceholder title={book.title} className="rec-card-cover" />
                               )}
                               <div className="rec-card-reason">
                                 {book.reason}
@@ -1925,12 +2007,14 @@ function MemberDashboard() {
                             className="rec-card"
                             onClick={() => openBook(book.id)}
                           >
-                            {book.cover_url && (
+                            {book.cover_url ? (
                               <img
                                 src={book.cover_url}
                                 alt=""
                                 className="rec-card-cover"
                               />
+                            ) : (
+                              <NoCoverPlaceholder title={book.title} className="rec-card-cover" />
                             )}
                             <div className="rec-card-title">
                               {book.title}
@@ -2196,6 +2280,57 @@ function MemberDashboard() {
                   ))}
                 </tbody>
               </table>
+            )}
+
+            {/* My Wishlist */}
+            <div className="section-header" style={{ marginTop: 32 }}>
+              <h3>My Wishlist</h3>
+            </div>
+            {wishlistItems.length === 0 ? (
+              <div className="empty">No books in your wishlist yet</div>
+            ) : (
+              <div className="wishlist-grid">
+                {wishlistItems.map((item) => (
+                  <div key={item.id} className="wishlist-card">
+                    <button
+                      className="wishlist-card-cover-btn"
+                      onClick={() => setSelectedBookId(item.book_id)}
+                    >
+                      {item.book_cover ? (
+                        <img
+                          src={item.book_cover}
+                          alt={item.book_title}
+                          className="wishlist-card-cover"
+                        />
+                      ) : (
+                        <NoCoverPlaceholder title={item.book_title} />
+                      )}
+                    </button>
+                    <div className="wishlist-card-info">
+                      <div className="wishlist-card-title">{item.book_title}</div>
+                      <div className="wishlist-card-author">{item.book_author}</div>
+                      {item.book_available && (
+                        <span className="wishlist-available-badge">Available</span>
+                      )}
+                      <div className="wishlist-card-actions">
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => setSelectedBookId(item.book_id)}
+                        >
+                          View
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline"
+                          onClick={() => toggleWishlist(item.book_id)}
+                          disabled={wishlistLoading}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
 
             {/* Donate a Book */}
@@ -2624,19 +2759,17 @@ function MemberDashboard() {
           title={selectedBook.title}
           onClose={closeBook}
           wide
-          heroBg={coverPalette?.bg}
-          heroTextColor={coverPalette?.text}
+          heroBg={coverPalette?.bg ?? "var(--bg-raised)"}
+          heroTextColor={coverPalette?.text ?? "var(--text)"}
           heroContent={
             <>
               <div className="book-detail-header">
-                {selectedBook.cover_url ? (
+                {selectedBook.cover_url && (
                   <img
                     src={selectedBook.cover_url}
                     alt={`Cover of ${selectedBook.title}`}
                     className="book-cover-img"
                   />
-                ) : (
-                  <div className="book-cover-placeholder">📖</div>
                 )}
                 <div className="book-detail book-detail-meta">
                   <div className="book-detail-row" style={heroRowStyle}>
@@ -2712,17 +2845,27 @@ function MemberDashboard() {
                       )}
                     </span>
                   </div>
+                  <div className="book-detail-action">
+                    <BookActionButton book={selectedBook} />
+                    {!borrowedBookIds.has(selectedBook.id) && (
+                      <button
+                        className={`btn${wishlistIds.has(selectedBook.id) ? "" : " btn-outline"}`}
+                        onClick={() => toggleWishlist(selectedBook.id)}
+                        disabled={wishlistLoading}
+                        title={wishlistIds.has(selectedBook.id) ? "Remove from wishlist" : "Add to wishlist"}
+                      >
+                        {wishlistIds.has(selectedBook.id) ? "♥ Wishlisted" : "♡ Wishlist"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
               {actionError && (
-                <div className="error" style={{ marginTop: 16 }}>
+                <div className="error" style={{ marginTop: 12 }}>
                   {actionError}
                 </div>
               )}
-              <div className="book-detail-action">
-                <BookActionButton book={selectedBook} />
-              </div>
             </>
           }
         >

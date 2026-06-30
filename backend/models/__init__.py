@@ -9,6 +9,8 @@ from models.membership import Membership
 from models.donation import Donation
 from models.community import (Community, CommunityMembership, CommunityPost,
                                CommunityComment, PostReaction, CommentReaction)
+from models.wishlist import Wishlist
+from models.genre import Genre
 
 
 def seed_data():
@@ -33,6 +35,7 @@ def seed_data():
     ]
     db.session.add_all(books)
     _seed_settings(db)
+    _seed_genres(db)
     db.session.commit()
     _seed_memberships(db)
 
@@ -48,6 +51,18 @@ def _seed_settings(db):
     for key, value in defaults.items():
         if not db.session.get(Setting, key):
             db.session.add(Setting(key=key, value=value))
+    db.session.commit()
+
+
+def _seed_genres(db):
+    defaults = [
+        'Fiction', 'Fantasy', 'Mystery', 'Thriller', 'Romance',
+        'Biography', 'History', 'Science', 'Horror', 'Other',
+        'Nonfiction', 'Selfhelp', 'Scifi',
+    ]
+    for name in defaults:
+        if not Genre.query.filter_by(name=name).first():
+            db.session.add(Genre(name=name))
     db.session.commit()
 
 

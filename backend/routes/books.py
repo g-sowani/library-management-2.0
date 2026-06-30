@@ -133,13 +133,17 @@ def _scrape_book_data(isbn, title, author):
 
 
 def _extract_dominant_color(cover_url):
-    """Download cover image and return the dominant mid-tone color as '#rrggbb'."""
+    """Download cover image (URL or base64 data URI) and return the dominant mid-tone color as '#rrggbb'."""
     try:
         from PIL import Image
         import io
-        req = urllib.request.Request(cover_url, headers={'User-Agent': 'LibraryApp/1.0'})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            img_data = resp.read()
+        if cover_url.startswith('data:image'):
+            import base64 as _b64
+            img_data = _b64.b64decode(cover_url.split(',', 1)[1])
+        else:
+            req = urllib.request.Request(cover_url, headers={'User-Agent': 'LibraryApp/1.0'})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                img_data = resp.read()
         img = Image.open(io.BytesIO(img_data)).convert('RGB')
         img = img.resize((64, 64), Image.LANCZOS)
         bins = {}
@@ -745,6 +749,94 @@ Return ONLY the raw JSON array with no markdown, no code fences, no extra text."
         result.append(d)
 
     return jsonify(result)
+
+
+@books_bp.route('/books/<int:book_id>/generate-field', methods=['POST'])
+@admin_required
+def generate_field(book_id):
+    """Use Groq to generate a description or author_bio for a book."""
+    from groq import Groq
+
+    book = db.session.get(Book, book_id)
+    if not book:
+        return jsonify({'error': 'Book not found'}), 404
+
+    field = (request.json or {}).get('field', '')
+    if field not in ('description', 'author_bio'):
+        return jsonify({'error': 'field must be description or author_bio'}), 400
+
+    if field == 'description':
+        prompt = (
+            f'Write a 2-3 sentence synopsis for the book "{book.title}" by {book.author}'
+        )
+        if book.genre:
+            prompt += f' (Genre: {book.genre})'
+        prompt += '. Return only the synopsis text with no labels or extra formatting.'
+    else:
+        prompt = f'Write a 2-3 sentence biography for the author {book.author}'
+        if book.genre:
+            prompt += f', known for {book.genre} books'
+        prompt += '. Return only the biography text with no labels or extra formatting.'
+
+    try:
+        client = Groq(api_key=current_app.config['GROQ_API_KEY'])
+        response = client.chat.completions.create(
+            model='llama-3.1-8b-instant',
+            messages=[{'role': 'user', 'content': prompt}],
+            temperature=0.7,
+            max_tokens=200,
+        )
+        content = response.choices[0].message.content.strip()
+        return jsonify({'field': field, 'content': content})
+    except Exception as e:
+        return jsonify({'error': f'Generation failed: {str(e)}'}), 500
+
+
+@books_bp.route('/books/<int:book_id>/patch-metadata', methods=['PUT'])
+@admin_required
+def patch_metadata(book_id):
+    """Save admin-provided or AI-generated description, author_bio, or cover_url."""
+    book = db.session.get(Book, book_id)
+    if not book:
+        return jsonify({'error': 'Book not found'}), 404
+
+    data = request.json or {}
+    admin = db.session.get(User, session['user_id'])
+
+    allowed = ('description', 'author_bio', 'cover_url')
+    changes = []
+    for f in allowed:
+        if f in data:
+            setattr(book, f, data[f])
+            changes.append(f.replace('_', ' '))
+
+    if not changes:
+        return jsonify({'error': 'No fields to update'}), 400
+
+    if 'cover_url' in data and data['cover_url']:
+        color = _extract_dominant_color(data['cover_url'])
+        if color:
+            book.cover_color = color
+
+    db.session.add(BookLog(
+        book_id=book.id,
+        action='Metadata Updated',
+        details=f'Admin set: {", ".join(changes)}',
+        admin_username=admin.username,
+    ))
+    try:
+        db.session.commit()
+        db.session.refresh(book)
+    except Exception:
+        db.session.rollback()
+        return jsonify({'error': 'Failed to save'}), 500
+
+    return jsonify({
+        'description': book.description or '',
+        'author_bio': book.author_bio or '',
+        'cover_url': book.cover_url or '',
+        'cover_color': book.cover_color or '',
+    })
 
 
 @books_bp.route('/books/<int:book_id>/logs')

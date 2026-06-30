@@ -1176,10 +1176,13 @@ td {
 }
 
 .book-detail-action {
-  margin-top: 16px;
+  margin-top: 14px;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
+
 
 .modal.modal-wide {
   width: 640px;
@@ -1274,16 +1277,43 @@ td {
 
 .book-cover-placeholder {
   width: 110px;
-  min-height: 160px;
+  aspect-ratio: 2 / 3;
   flex-shrink: 0;
-  background: var(--bg-raised);
+  align-self: flex-start;
   border: 1px solid var(--border-subtle);
+  display: flex;
+}
+
+.no-cover-placeholder {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  background: #6D4C41;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 2.2rem;
-  color: var(--text-4);
-  align-self: flex-start;
+  padding: 12px 10px;
+  box-sizing: border-box;
+}
+
+.no-cover-placeholder.rec-card-cover {
+  display: flex;
+  background: #6D4C41;
+}
+
+.no-cover-title {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.4;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-family: inherit;
 }
 
 .book-detail-meta {
@@ -1546,6 +1576,16 @@ td {
 
 .genre-card.active .genre-card-count {
   color: var(--text-muted);
+}
+
+.genre-card-add {
+  border-style: dashed;
+  color: var(--text-4);
+}
+.genre-card-add:hover {
+  color: var(--text);
+  border-color: var(--text-3);
+  border-style: dashed;
 }
 
 /* ── Search trigger + collapsible panel ──────────────────────────────────────── */
@@ -2253,6 +2293,7 @@ td {
   overflow: hidden;
   background: var(--bg-muted);
   border-bottom: 1px solid var(--border-subtle);
+  display: flex;
 }
 
 .home-book-cover {
@@ -2266,7 +2307,6 @@ td {
 .home-book-cover-placeholder {
   width: 100%;
   height: 100%;
-  background: var(--bg-muted);
 }
 
 .home-book-info {
@@ -2930,13 +2970,49 @@ td {
   text-align: center;
 }
 
-/* ── Refresh All log modal ──────────────────────────────────────────────────── */
+/* ── Refresh log panel (bottom-right corner) ────────────────────────────────── */
+
+.refresh-panel {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 360px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.13);
+  z-index: 200;
+  overflow: hidden;
+}
+
+.refresh-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 10px 9px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.refresh-panel-title {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: 8px;
+}
+
+.refresh-panel-body {
+  padding: 12px 14px 14px;
+}
 
 .refresh-progress {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .refresh-progress-bar {
@@ -2962,7 +3038,7 @@ td {
 }
 
 .refresh-log {
-  max-height: 380px;
+  max-height: 220px;
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -2974,7 +3050,7 @@ td {
   grid-template-columns: 18px 1fr auto;
   align-items: baseline;
   gap: 8px;
-  padding: 7px 12px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -3007,3 +3083,185 @@ td {
 }
 
 .refresh-log-error .refresh-log-details { color: #c62828; }
+
+/* ── Fill missing section (inside refresh panel) ────────────────────────────── */
+
+.refresh-fill-section {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.refresh-fill-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-5);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 7px;
+}
+
+.refresh-fill-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ── AI generate field textarea ─────────────────────────────────────────────── */
+
+.ai-gen-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 120px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+.ai-gen-textarea:focus {
+  outline: none;
+  border-color: var(--text-4);
+}
+
+/* ── Cover upload modal ──────────────────────────────────────────────────────── */
+
+.cover-upload-tabs {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.cover-upload-tab {
+  flex: 1;
+  padding: 7px 12px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--text-4);
+  cursor: pointer;
+  transition: background 0.13s, color 0.13s;
+}
+
+.cover-upload-tab + .cover-upload-tab {
+  border-left: 1px solid var(--border);
+}
+
+.cover-upload-tab.active {
+  background: var(--text);
+  color: var(--bg);
+}
+
+.cover-upload-tab:hover:not(.active) {
+  background: var(--border-subtle, rgba(0,0,0,0.04));
+}
+
+.cover-upload-file {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.cover-upload-preview {
+  display: block;
+  max-width: 140px;
+  max-height: 180px;
+  object-fit: contain;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  margin-top: 12px;
+}
+
+/* ── Wishlist grid (My Profile tab) ── */
+.wishlist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.wishlist-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.wishlist-card-cover-btn {
+  display: flex;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+}
+
+.wishlist-card-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+  transition: opacity 0.15s;
+}
+
+.wishlist-card-cover-btn:hover .wishlist-card-cover {
+  opacity: 0.88;
+}
+
+
+.wishlist-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  flex: 1;
+}
+
+.wishlist-card-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.wishlist-card-author {
+  font-size: 0.72rem;
+  color: var(--text-4);
+}
+
+.wishlist-available-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 4px;
+  padding: 2px 6px;
+  align-self: flex-start;
+}
+
+.wishlist-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 4px;
+}

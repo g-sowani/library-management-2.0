@@ -6,6 +6,8 @@ from routes.reservations import reservations_bp
 from routes.membership import membership_bp
 from routes.donations import donations_bp
 from routes.communities import communities_bp
+from routes.wishlist import wishlist_bp
+from routes.genres import genres_bp
 
 
 def register_blueprints(app):
@@ -17,3 +19,5 @@ def register_blueprints(app):
     app.register_blueprint(membership_bp)
     app.register_blueprint(donations_bp)
     app.register_blueprint(communities_bp)
+    app.register_blueprint(wishlist_bp)
+    app.register_blueprint(genres_bp)

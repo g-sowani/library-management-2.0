@@ -6,6 +6,9 @@ import NavTabs from '../components/NavTabs';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import SearchBar from '../components/SearchBar';
+import Select from '../components/Select';
+import Toast from '../components/Toast';
+import { useToast } from '../hooks/useToast';
 import { GENRES } from '../constants';
 
 const TABS = [
@@ -51,12 +54,7 @@ function AdminDashboard() {
   const [memberBorrows, setMemberBorrows] = useState([]);
   const [memberBorrowsLoading, setMemberBorrowsLoading] = useState(false);
 
-  // Toast
-  const [toastMsg, setToastMsg] = useState('');
-  const showToast = (msg) => {
-    setToastMsg(msg);
-    setTimeout(() => setToastMsg(''), 2500);
-  };
+  const { toasts, toast } = useToast();
 
   // Re-auth modal (for sensitive admin actions)
   const [reAuthFor, setReAuthFor] = useState(null); // 'policy' | 'pricing'
@@ -68,14 +66,12 @@ function AdminDashboard() {
   const [policy, setPolicy] = useState(null);
   const [policyForm, setPolicyForm] = useState({ fine_per_day: '', borrow_days: '' });
   const [policyError, setPolicyError] = useState('');
-  const [policySaved, setPolicySaved] = useState(false);
   const [markingPaidId, setMarkingPaidId] = useState(null);
 
   // Memberships
   const [membershipPricing, setMembershipPricing] = useState(null);
   const [membershipPricingForm, setMembershipPricingForm] = useState({ silver_rate: '', gold_rate: '', family_rate: '' });
   const [membershipPricingError, setMembershipPricingError] = useState('');
-  const [membershipPricingSaved, setMembershipPricingSaved] = useState(false);
   const [membershipsLoaded, setMembershipsLoaded] = useState(false);
 
   // Donations
@@ -176,8 +172,7 @@ function AdminDashboard() {
 
   const handleTabChange = (t) => {
     setTab(t);
-    setPolicySaved(false);
-    setMembershipPricingSaved(false);
+
     if (t === 'members') {
       if (!membersLoaded) loadMembers();
       if (!membershipsLoaded) {
@@ -198,6 +193,7 @@ function AdminDashboard() {
       });
       setApprovingCommunity(null);
       loadAdminCommunities(adminCommunitiesFilter);
+      toast('Community approved');
     } catch (err) {
       setCommunityApproveError(err.response?.data?.error || 'Failed to approve');
     }
@@ -212,6 +208,7 @@ function AdminDashboard() {
       });
       setRejectingCommunity(null);
       loadAdminCommunities(adminCommunitiesFilter);
+      toast('Community rejected');
     } catch (err) {
       setCommunityRejectError(err.response?.data?.error || 'Failed to reject');
     }
@@ -238,6 +235,7 @@ function AdminDashboard() {
       setShowAdd(false);
       setBookForm(EMPTY_BOOK_FORM);
       load();
+      toast('Book added');
     } catch (err) {
       setBookError(err.response?.data?.error || 'Failed to add book');
     }
@@ -247,8 +245,9 @@ function AdminDashboard() {
     try {
       await api.delete(`/books/${id}`);
       load();
+      toast('Book deleted');
     } catch (err) {
-      alert(err.response?.data?.error || 'Cannot delete');
+      toast(err.response?.data?.error || 'Cannot delete book', 'error');
     }
   };
 
@@ -260,9 +259,9 @@ function AdminDashboard() {
           ? { ...b, description: res.data.description, author_bio: res.data.author_bio, cover_url: res.data.cover_url || b.cover_url }
           : b
       ));
-      showToast('Metadata refreshed');
+      toast('Metadata refreshed');
     } catch {
-      alert('Failed to refresh metadata');
+      toast('Failed to refresh metadata', 'error');
     }
   };
 
@@ -290,6 +289,7 @@ function AdminDashboard() {
       });
       setEditingBook(null);
       load();
+      toast('Book updated');
     } catch (err) {
       setEditError(err.response?.data?.error || 'Failed to update book');
     }
@@ -339,9 +339,9 @@ function AdminDashboard() {
     try {
       await api.put(`/admin/fines/${borrowId}/mark-paid`);
       setFines(prev => prev.filter(f => f.id !== borrowId));
-      showToast('Fine marked as paid');
+      toast('Fine marked as paid');
     } catch {
-      showToast('Failed to mark fine as paid');
+      toast('Failed to mark fine as paid', 'error');
     } finally {
       setMarkingPaidId(null);
     }
@@ -350,11 +350,10 @@ function AdminDashboard() {
   // ── Fine policy ───────────────────────────────────────────────
   const doSavePolicy = async () => {
     setPolicyError('');
-    setPolicySaved(false);
     try {
       const res = await api.put('/admin/policy', policyForm);
       setPolicy(res.data);
-      setPolicySaved(true);
+      toast('Policy saved');
     } catch (err) {
       const errs = err.response?.data?.errors;
       setPolicyError(errs ? Object.values(errs).join(', ') : 'Failed to save policy');
@@ -366,11 +365,10 @@ function AdminDashboard() {
   // ── Membership ────────────────────────────────────────────────
   const doSaveMembershipPricing = async () => {
     setMembershipPricingError('');
-    setMembershipPricingSaved(false);
     try {
       const res = await api.put('/admin/memberships/pricing', membershipPricingForm);
       setMembershipPricing(res.data);
-      setMembershipPricingSaved(true);
+      toast('Pricing saved');
     } catch (err) {
       const errs = err.response?.data?.errors;
       setMembershipPricingError(errs ? Object.values(errs).join(', ') : 'Failed to save pricing');
@@ -383,8 +381,9 @@ function AdminDashboard() {
     try {
       await api.put(`/admin/members/${memberId}/membership`, { tier: tier || null });
       loadMembers();
+      toast('Tier updated');
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to update tier');
+      toast(err.response?.data?.error || 'Failed to update tier', 'error');
     }
   };
 
@@ -405,6 +404,7 @@ function AdminDashboard() {
       });
       setApprovingDonation(null);
       loadDonations(donationStatusFilter);
+      toast('Donation approved');
     } catch (err) {
       setApproveError(err.response?.data?.error || 'Failed to approve donation');
     }
@@ -425,6 +425,7 @@ function AdminDashboard() {
       });
       setRejectingDonation(null);
       loadDonations(donationStatusFilter);
+      toast('Donation rejected');
     } catch (err) {
       setRejectError(err.response?.data?.error || 'Failed to reject donation');
     }
@@ -646,7 +647,6 @@ function AdminDashboard() {
             {policy && (
               <form className="policy-form" onSubmit={savePolicy}>
                 {policyError && <div className="error">{policyError}</div>}
-                {policySaved && <div className="success">Policy saved successfully</div>}
                 <div className="form-group">
                   <label>Fine Per Day ($)</label>
                   <input type="number" min="0" step="0.01"
@@ -676,7 +676,6 @@ function AdminDashboard() {
             {membershipPricing && (
               <form className="membership-pricing-form" onSubmit={saveMembershipPricing}>
                 {membershipPricingError && <div className="error">{membershipPricingError}</div>}
-                {membershipPricingSaved && <div className="success">Pricing saved successfully</div>}
                 <div className="tier-pricing-grid">
                   <div className="tier-pricing-card">
                     <div className="tier-pricing-name">Silver</div>
@@ -757,7 +756,7 @@ function AdminDashboard() {
                       </td>
                       <td>{m.fines_paid > 0 ? `$${m.fines_paid.toFixed(2)}` : <span className="muted">—</span>}</td>
                       <td>
-                        <select
+                        <Select
                           className="filter-select"
                           value={m.membership_tier || ''}
                           onChange={e => changeMemberTier(m.id, e.target.value)}
@@ -766,7 +765,7 @@ function AdminDashboard() {
                           <option value="silver">Silver</option>
                           <option value="gold">Gold</option>
                           <option value="family">Family</option>
-                        </select>
+                        </Select>
                       </td>
                       <td>
                         <button className="btn btn-sm btn-outline" onClick={() => openMember(m)}>View Records</button>
@@ -1138,10 +1137,10 @@ function AdminDashboard() {
             </div>
             <div className="form-group">
               <label>Genre</label>
-              <select {...bookField('genre')}>
+              <Select {...bookField('genre')}>
                 <option value="">— Select genre —</option>
                 {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
-              </select>
+              </Select>
             </div>
             <div className="form-group">
               <label>Copies</label>
@@ -1175,10 +1174,10 @@ function AdminDashboard() {
             </div>
             <div className="form-group">
               <label>Genre</label>
-              <select {...editField('genre')}>
+              <Select {...editField('genre')}>
                 <option value="">— Select genre —</option>
                 {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
-              </select>
+              </Select>
             </div>
             <div className="form-group">
               <label>Total Copies</label>
@@ -1284,8 +1283,7 @@ function AdminDashboard() {
         </Modal>
       )}
 
-      {/* ── Toast ── */}
-      {toastMsg && <div className="toast">{toastMsg}</div>}
+      <Toast toasts={toasts} />
 
       {/* ── Book Logs Modal ── */}
       {logsBook && (

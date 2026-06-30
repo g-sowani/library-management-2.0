@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
+import Select from '../components/Select';
 
 function Login() {
   const { login } = useAuth();
@@ -39,10 +40,10 @@ function Login() {
         {isRegister && (
           <div className="form-group">
             <label>Role</label>
-            <select value={role} onChange={e => setRole(e.target.value)}>
+            <Select value={role} onChange={e => setRole(e.target.value)}>
               <option value="member">Member</option>
               <option value="admin">Admin</option>
-            </select>
+            </Select>
           </div>
         )}
         <button className="btn btn-full" type="submit">

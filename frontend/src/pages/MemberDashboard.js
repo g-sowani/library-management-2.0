@@ -13,6 +13,9 @@ import NavTabs from "../components/NavTabs";
 import Badge from "../components/Badge";
 import Modal from "../components/Modal";
 import SearchBar from "../components/SearchBar";
+import Select from "../components/Select";
+import Toast from "../components/Toast";
+import { useToast } from "../hooks/useToast";
 import { GENRES } from "../constants";
 
 const TABS = [
@@ -496,12 +499,26 @@ function BookStrip({ children }) {
 
   return (
     <div
-      className={`book-strip-wrapper${active && overflows ? " arrows-active" : ""}`}
-      onMouseEnter={() => { if (overflows) { clearTimeout(timerRef.current); setActive(true); } }}
-      onMouseLeave={() => { clearTimeout(timerRef.current); setActive(false); }}
+      className={`book-strip-wrapper${
+        active && overflows ? " arrows-active" : ""
+      }`}
+      onMouseEnter={() => {
+        if (overflows) {
+          clearTimeout(timerRef.current);
+          setActive(true);
+        }
+      }}
+      onMouseLeave={() => {
+        clearTimeout(timerRef.current);
+        setActive(false);
+      }}
     >
       {overflows && (
-        <button className="strip-arrow strip-arrow-left" onClick={() => scroll(-1)} aria-label="Scroll left">
+        <button
+          className="strip-arrow strip-arrow-left"
+          onClick={() => scroll(-1)}
+          aria-label="Scroll left"
+        >
           <ChevronLeft />
         </button>
       )}
@@ -509,7 +526,11 @@ function BookStrip({ children }) {
         {children}
       </div>
       {overflows && (
-        <button className="strip-arrow strip-arrow-right" onClick={() => scroll(1)} aria-label="Scroll right">
+        <button
+          className="strip-arrow strip-arrow-right"
+          onClick={() => scroll(1)}
+          aria-label="Scroll right"
+        >
           <ChevronRight />
         </button>
       )}
@@ -542,6 +563,7 @@ function resizeImageToBase64(file, maxPx = 400) {
 
 function MemberDashboard() {
   const { user, logout, updateUser } = useAuth();
+  const { toasts, toast } = useToast();
   const [tab, setTab] = useState("home");
   const [books, setBooks] = useState([]);
   const [borrows, setBorrows] = useState([]);
@@ -717,6 +739,7 @@ function MemberDashboard() {
     try {
       await api.post(`/borrow/${bookId}`);
       load();
+      toast("Book borrowed!");
     } catch (e) {
       setActionError(e.response?.data?.error || "Failed to borrow book");
     }
@@ -748,9 +771,12 @@ function MemberDashboard() {
       );
       setReturnModal(null);
       load();
+      toast(
+        reviewRating > 0 ? "Returned & review submitted!" : "Book returned!"
+      );
     } catch (e) {
-      setError(e.response?.data?.error || "Failed to return book");
       setReturnModal(null);
+      toast(e.response?.data?.error || "Failed to return book", "error");
     }
   };
 
@@ -759,6 +785,7 @@ function MemberDashboard() {
     try {
       await api.post(`/reserve/${bookId}`);
       load();
+      toast("Book reserved!");
     } catch (e) {
       setActionError(e.response?.data?.error || "Failed to reserve book");
     }
@@ -768,8 +795,9 @@ function MemberDashboard() {
     try {
       await api.delete(`/cancel-reservation/${reservationId}`);
       load();
+      toast("Reservation cancelled");
     } catch (e) {
-      setError(e.response?.data?.error || "Failed to cancel reservation");
+      toast(e.response?.data?.error || "Failed to cancel reservation", "error");
     }
   };
 
@@ -824,8 +852,9 @@ function MemberDashboard() {
       const r = await api.post(`/communities/${community.id}/join`);
       await loadCommunities();
       openCommunity(r.data);
+      toast("Joined community!");
     } catch (e) {
-      alert(e.response?.data?.error || "Failed to join community");
+      toast(e.response?.data?.error || "Failed to join community", "error");
     }
   };
 
@@ -834,8 +863,9 @@ function MemberDashboard() {
       await api.delete(`/communities/${cid}/leave`);
       setCommunityView("list");
       loadCommunities();
+      toast("Left community");
     } catch (e) {
-      alert(e.response?.data?.error || "Failed to leave community");
+      toast(e.response?.data?.error || "Failed to leave community", "error");
     }
   };
 
@@ -847,6 +877,7 @@ function MemberDashboard() {
       setShowCreateCommunity(false);
       setCommunityForm({ name: "", description: "" });
       loadCommunities();
+      toast("Community submitted for review");
     } catch (err) {
       setCommunityFormError(
         err.response?.data?.error || "Failed to create community"
@@ -863,6 +894,7 @@ function MemberDashboard() {
       setPostForm({ title: "", content: "" });
       const r = await api.get(`/communities/${selectedCommunity.id}/posts`);
       setCommunityPosts(r.data);
+      toast("Post published!");
     } catch (err) {
       setPostFormError(err.response?.data?.error || "Failed to create post");
     }
@@ -946,6 +978,7 @@ function MemberDashboard() {
       const base64 = await resizeImageToBase64(file);
       const res = await api.put("/auth/avatar", { avatar: base64 });
       updateUser(res.data);
+      toast("Photo updated");
     } catch {
       setAvatarError("Failed to update profile image");
     }
@@ -969,6 +1002,7 @@ function MemberDashboard() {
       setDonationSuccess(true);
       setDonationForm(EMPTY_DONATION);
       load();
+      toast("Donation submitted!");
     } catch (err) {
       setDonationError(
         err.response?.data?.error || "Failed to submit donation"
@@ -1088,13 +1122,21 @@ function MemberDashboard() {
     setAiLoading(true);
     setAiError("");
     setAiResults(null);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
     try {
-      const r = await api.post("/books/ai-search", { query: aiQuery.trim() });
+      const r = await api.post(
+        "/books/ai-search",
+        { query: aiQuery.trim() },
+        { signal: controller.signal }
+      );
       setAiResults(r.data);
     } catch (e) {
-      setAiError(e.response?.data?.error || "AI search failed");
+      const timedOut = e.name === "CanceledError" || e.code === "ERR_CANCELED";
+      setAiError(timedOut ? null : (e.response?.data?.error || null));
       setAiResults([]);
     } finally {
+      clearTimeout(timer);
       setAiLoading(false);
     }
   };
@@ -1230,7 +1272,9 @@ function MemberDashboard() {
             <div className="home-section">
               <div className="home-section-heading">What we offer</div>
               <div
-                className={`home-services-strip-wrapper${servicesActive ? " arrows-active" : ""}`}
+                className={`home-services-strip-wrapper${
+                  servicesActive ? " arrows-active" : ""
+                }`}
                 onMouseEnter={() => {
                   clearTimeout(servicesTimerRef.current);
                   setServicesActive(true);
@@ -1243,9 +1287,15 @@ function MemberDashboard() {
                 <button
                   className="services-arrow services-arrow-left"
                   onClick={() => {
-                    servicesRef.current?.scrollBy({ left: -380, behavior: "smooth" });
+                    servicesRef.current?.scrollBy({
+                      left: -380,
+                      behavior: "smooth",
+                    });
                     clearTimeout(servicesTimerRef.current);
-                    servicesTimerRef.current = setTimeout(() => setServicesActive(false), 2000);
+                    servicesTimerRef.current = setTimeout(
+                      () => setServicesActive(false),
+                      2000
+                    );
                   }}
                   aria-label="Scroll left"
                 >
@@ -1271,9 +1321,15 @@ function MemberDashboard() {
                 <button
                   className="services-arrow services-arrow-right"
                   onClick={() => {
-                    servicesRef.current?.scrollBy({ left: 380, behavior: "smooth" });
+                    servicesRef.current?.scrollBy({
+                      left: 380,
+                      behavior: "smooth",
+                    });
                     clearTimeout(servicesTimerRef.current);
-                    servicesTimerRef.current = setTimeout(() => setServicesActive(false), 2000);
+                    servicesTimerRef.current = setTimeout(
+                      () => setServicesActive(false),
+                      2000
+                    );
                   }}
                   aria-label="Scroll right"
                 >
@@ -1395,18 +1451,11 @@ function MemberDashboard() {
                         className="ai-search-input"
                         value={aiQuery}
                         onChange={(e) => setAiQuery(e.target.value)}
-                        placeholder="Describe what you're looking for…"
+                        placeholder="Describe what you're looking for… (press Enter)"
                         onKeyDown={(e) => e.key === "Enter" && runAiSearch()}
                         autoFocus
                         disabled={aiLoading}
                       />
-                      <button
-                        className="btn btn-sm"
-                        onClick={runAiSearch}
-                        disabled={!aiQuery.trim() || aiLoading}
-                      >
-                        {aiLoading ? "Searching…" : "Search"}
-                      </button>
                     </div>
                   ) : (
                     <SearchBar
@@ -1433,7 +1482,7 @@ function MemberDashboard() {
                 </div>
                 {!aiMode && (
                   <div className="search-panel-filters">
-                    <select
+                    {/* <Select
                       className="filter-select"
                       value={selectedGenre}
                       onChange={(e) => setSelectedGenre(e.target.value)}
@@ -1444,8 +1493,8 @@ function MemberDashboard() {
                           {g}
                         </option>
                       ))}
-                    </select>
-                    <select
+                    </Select> */}
+                    <Select
                       className="filter-select"
                       value={availFilter}
                       onChange={(e) => setAvailFilter(e.target.value)}
@@ -1453,8 +1502,8 @@ function MemberDashboard() {
                       <option value="all">All copies</option>
                       <option value="available">Available now</option>
                       <option value="unavailable">Unavailable</option>
-                    </select>
-                    <select
+                    </Select>
+                    <Select
                       className="filter-select"
                       value={ratingFilter}
                       onChange={(e) => setRatingFilter(Number(e.target.value))}
@@ -1463,7 +1512,7 @@ function MemberDashboard() {
                       <option value={4}>4+ stars</option>
                       <option value={3}>3+ stars</option>
                       <option value={2}>2+ stars</option>
-                    </select>
+                    </Select>
                     {hasActiveFilters && (
                       <button
                         className="btn btn-sm btn-outline"
@@ -1497,7 +1546,7 @@ function MemberDashboard() {
                   onClick={() => setSelectedGenre("")}
                 >
                   <span className="genre-card-name">All</span>
-                  <span className="genre-card-count">{books.length}</span>
+                  {/* <span className="genre-card-count">{books.length}</span> */}
                 </button>
                 {availableGenres.map((g) => (
                   <button
@@ -1505,26 +1554,27 @@ function MemberDashboard() {
                     className={`genre-card${
                       selectedGenre === g ? " active" : ""
                     }`}
-                    onClick={() => setSelectedGenre(g)}
+                    onClick={() =>
+                      setSelectedGenre(selectedGenre === g ? "" : g)
+                    }
                   >
                     <span className="genre-card-name">{g}</span>
-                    <span className="genre-card-count">{genreCounts[g]}</span>
+                    {/* <span className="genre-card-count">{genreCounts[g]}</span> */}
                   </button>
                 ))}
               </div>
             )}
 
             {/* AI search results */}
-            {aiMode && aiError && <div className="error">{aiError}</div>}
             {aiMode && aiLoading && (
               <div className="empty ai-searching-msg">Searching with AI…</div>
             )}
-            {aiMode &&
-              !aiLoading &&
-              aiResults !== null &&
-              aiResults.length === 0 && (
-                <div className="empty">No books match your description</div>
-              )}
+            {aiMode && !aiLoading && aiResults !== null && aiResults.length === 0 && (
+              <div className="empty search-no-results">
+                No results found for this search.{" "}
+                <button className="btn-link" onClick={clearFilters}>Try again</button>
+              </div>
+            )}
             {aiMode &&
               !aiLoading &&
               aiResults !== null &&
@@ -1591,7 +1641,10 @@ function MemberDashboard() {
 
             {/* Normal keyword search results */}
             {!aiMode && hasActiveFilters && filteredBooks.length === 0 && (
-              <div className="empty">No books match your filters</div>
+              <div className="empty search-no-results">
+                No results found for this search.{" "}
+                <button className="btn-link" onClick={clearFilters}>Try again</button>
+              </div>
             )}
             {!aiMode && hasActiveFilters && filteredBooks.length > 0 && (
               <div className="books-grid">
@@ -2801,7 +2854,7 @@ function MemberDashboard() {
                     (optional)
                   </span>
                 </label>
-                <select
+                <Select
                   value={donationForm.genre}
                   onChange={(e) =>
                     setDonationForm({ ...donationForm, genre: e.target.value })
@@ -2813,11 +2866,11 @@ function MemberDashboard() {
                       {g}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div className="form-group">
                 <label>Condition *</label>
-                <select
+                <Select
                   value={donationForm.condition}
                   onChange={(e) =>
                     setDonationForm({
@@ -2825,13 +2878,12 @@ function MemberDashboard() {
                       condition: e.target.value,
                     })
                   }
-                  required
                 >
                   <option value="new">New</option>
                   <option value="good">Good</option>
                   <option value="fair">Fair</option>
                   <option value="poor">Poor</option>
-                </select>
+                </Select>
               </div>
               <div className="form-group">
                 <label>Estimated Value ($) *</label>
@@ -3062,6 +3114,7 @@ function MemberDashboard() {
           </div>
         </Modal>
       )}
+      <Toast toasts={toasts} />
     </div>
   );
 }

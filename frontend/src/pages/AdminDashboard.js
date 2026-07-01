@@ -27,6 +27,46 @@ const EMPTY_BOOK_FORM = {
   genre: "",
 };
 
+function wcagTextColor(r, g, b) {
+  const lin = (c) => {
+    c /= 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? "#000000" : "#ffffff";
+}
+
+// Binary-search the minimum opacity at which rgba(fgVal, fgVal, fgVal, α) composited
+// over rgb(bgR,bgG,bgB) achieves the target contrast ratio. fgVal is 0 (black) or 255 (white).
+function minAlphaForContrast(fgVal, bgR, bgG, bgB, minRatio) {
+  const lin = (c) => {
+    c /= 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const bgL = 0.2126 * lin(bgR) + 0.7152 * lin(bgG) + 0.0722 * lin(bgB);
+  let lo = 0,
+    hi = 1;
+  for (let i = 0; i < 16; i++) {
+    const alpha = (lo + hi) / 2;
+    const rc = Math.round(fgVal * alpha + bgR * (1 - alpha));
+    const gc = Math.round(fgVal * alpha + bgG * (1 - alpha));
+    const bc = Math.round(fgVal * alpha + bgB * (1 - alpha));
+    const fL = 0.2126 * lin(rc) + 0.7152 * lin(gc) + 0.0722 * lin(bc);
+    const ratio = (Math.max(fL, bgL) + 0.05) / (Math.min(fL, bgL) + 0.05);
+    if (ratio >= minRatio) hi = alpha;
+    else lo = alpha;
+  }
+  return Math.min(1, hi + 0.005);
+}
+
+function NoCoverPlaceholder({ title, className }) {
+  return (
+    <div className={`no-cover-placeholder${className ? ` ${className}` : ""}`}>
+      <span className="no-cover-title">{title}</span>
+    </div>
+  );
+}
+
 function AdminDashboard() {
   const { user, logout } = useAuth();
   const [tab, setTab] = useState("books");
@@ -51,6 +91,10 @@ function AdminDashboard() {
   const [logsBook, setLogsBook] = useState(null);
   const [logs, setLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(false);
+
+  // Book detail modal
+  const [selectedBookId, setSelectedBookId] = useState(null);
+  const [bookReviews, setBookReviews] = useState(null);
 
   // Members
   const [members, setMembers] = useState([]);
@@ -163,6 +207,26 @@ function AdminDashboard() {
       setLoadError("Failed to load data. Is the server running?")
     );
   }, [load]);
+
+  const selectedBook = books.find((b) => b.id === selectedBookId) || null;
+
+  // Fetch reviews whenever a book detail is opened
+  useEffect(() => {
+    if (!selectedBookId) {
+      setBookReviews(null);
+      return;
+    }
+    setBookReviews(null);
+    api
+      .get(`/books/${selectedBookId}/reviews`)
+      .then((r) => setBookReviews(r.data))
+      .catch(() =>
+        setBookReviews({ avg_rating: null, rating_count: 0, reviews: [] })
+      );
+  }, [selectedBookId]);
+
+  const openBookDetail = (bookId) => setSelectedBookId(bookId);
+  const closeBookDetail = () => setSelectedBookId(null);
 
   const handleRefreshAll = async () => {
     setRefreshingAll(true);
@@ -754,6 +818,44 @@ function AdminDashboard() {
     ? editingBook.total_copies - editingBook.available_copies
     : 0;
 
+  // Derive palette instantly from server-stored cover_color (no async canvas needed).
+  const coverPalette = useMemo(() => {
+    const hex = selectedBook?.cover_color;
+    if (!hex) return null;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    const text = wcagTextColor(r, g, b);
+    const fgVal = text === "#ffffff" ? 255 : 0;
+    const αMin = minAlphaForContrast(fgVal, r, g, b, 4.5);
+    const isLight = fgVal === 255;
+    const mk = (desired) => {
+      const a = Math.max(desired, αMin).toFixed(2);
+      return isLight ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
+    };
+    return {
+      bg: `rgb(${r}, ${g}, ${b})`,
+      text,
+      labelColor: mk(isLight ? 0.65 : 0.5),
+      subtleColor: mk(isLight ? 0.78 : 0.65),
+      faintColor: mk(isLight ? 0.5 : 0.38),
+    };
+  }, [selectedBook]);
+
+  const heroIsLight = coverPalette?.text === "#ffffff";
+  const heroLabelStyle = coverPalette ? { color: coverPalette.labelColor } : {};
+  const heroSubtleStyle = coverPalette
+    ? { color: coverPalette.subtleColor }
+    : {};
+  const heroFaintStyle = coverPalette ? { color: coverPalette.faintColor } : {};
+  const heroRowStyle = coverPalette
+    ? {
+        borderBottomColor: heroIsLight
+          ? "rgba(255,255,255,0.18)"
+          : "rgba(0,0,0,0.1)",
+      }
+    : {};
+
   const bookField = (key) => ({
     value: bookForm[key],
     onChange: (e) => setBookForm({ ...bookForm, [key]: e.target.value }),
@@ -871,101 +973,133 @@ function AdminDashboard() {
               </div>
             )}
             {filteredBooks.length > 0 && (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th>Author</th>
-                    <th>Genre</th>
-                    <th>ISBN</th>
-                    <th>Copies</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredBooks.map((b) => (
-                    <tr key={b.id}>
-                      <td>{b.title}</td>
-                      <td>{b.author}</td>
-                      <td>{b.genre || <span className="muted">—</span>}</td>
-                      <td>{b.isbn}</td>
-                      <td>
-                        {b.available_copies} / {b.total_copies}
-                      </td>
-                      <td>
-                        <div className="btn-row">
-                          <div className="btn-group">
-                            <button
-                              className="btn btn-sm"
-                              onClick={() => openEdit(b)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              className="btn btn-sm btn-group-danger btn-icon"
-                              onClick={() => deleteBook(b.id)}
-                              title="Delete book"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="13"
-                                height="13"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <polyline points="3 6 5 6 21 6" />
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                              </svg>
-                            </button>
-                          </div>
-                          <button
-                            className="btn btn-sm btn-outline"
-                            onClick={() => openLogs(b)}
-                          >
-                            Logs
-                          </button>
-                          <button
-                            className="btn btn-sm btn-outline btn-icon"
-                            onClick={() =>
-                              refreshingBookId === b.id
-                                ? setShowRefreshLog(true)
-                                : refreshMeta(b.id)
-                            }
-                            disabled={refreshingAll}
-                            title={
-                              refreshingBookId === b.id
-                                ? "Show refresh progress"
-                                : "Re-fetch description, author bio, and cover from Open Library"
-                            }
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="13"
-                              height="13"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <polyline points="23 4 23 10 17 10" />
-                              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-                            </svg>
-                            {refreshingBookId === b.id && (
-                              <span style={{ marginLeft: 4 }}>…</span>
-                            )}
-                          </button>
+              <div className="books-grid">
+                {filteredBooks.map((b) => {
+                  const stars = b.avg_rating ? Math.round(b.avg_rating) : 0;
+                  const missing = [
+                    !b.description && "description",
+                    !b.author_bio && "author bio",
+                    !b.cover_url && "cover",
+                  ].filter(Boolean);
+                  return (
+                    <div
+                      key={b.id}
+                      className="rec-card admin-book-card"
+                      onClick={() => openBookDetail(b.id)}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      {b.cover_url ? (
+                        <img
+                          src={b.cover_url}
+                          alt=""
+                          className="rec-card-cover"
+                        />
+                      ) : (
+                        <NoCoverPlaceholder
+                          title={b.title}
+                          className="rec-card-cover"
+                        />
+                      )}
+                      <div className="rec-card-title">{b.title}</div>
+                      <div className="rec-card-author">{b.author}</div>
+                      <div className="rec-card-meta">
+                        {b.genre && (
+                          <span className="rec-card-genre">{b.genre}</span>
+                        )}
+                        {b.rating_count > 0 && (
+                          <span className="rec-card-rating">
+                            <span className="rec-stars">
+                              {"★".repeat(stars)}
+                              {"☆".repeat(5 - stars)}
+                            </span>
+                            <span className="rec-rating-val">
+                              {b.avg_rating}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                      <div className="rec-card-avail">
+                        {b.available_copies} / {b.total_copies} available
+                      </div>
+                      {missing.length > 0 && (
+                        <div className="admin-missing-tag">
+                          Missing: {missing.join(", ")}
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      )}
+                      <div
+                        className="admin-card-actions"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => openEdit(b)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline"
+                          onClick={() => openLogs(b)}
+                        >
+                          Logs
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline btn-icon"
+                          onClick={() =>
+                            refreshingBookId === b.id
+                              ? setShowRefreshLog(true)
+                              : refreshMeta(b.id)
+                          }
+                          disabled={refreshingAll}
+                          title={
+                            refreshingBookId === b.id
+                              ? "Show refresh progress"
+                              : "Re-fetch description, author bio, and cover from Open Library"
+                          }
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="13"
+                            height="13"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="23 4 23 10 17 10" />
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                          </svg>
+                          {refreshingBookId === b.id && (
+                            <span style={{ marginLeft: 4 }}>…</span>
+                          )}
+                        </button>
+                        <button
+                          className="btn btn-sm btn-group-danger btn-icon"
+                          onClick={() => deleteBook(b.id)}
+                          title="Delete book"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="13"
+                            height="13"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </>
         )}
@@ -2010,6 +2144,224 @@ function AdminDashboard() {
               </button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* ── Book Detail Modal ── */}
+      {selectedBook && (
+        <Modal
+          title={selectedBook.title}
+          onClose={closeBookDetail}
+          wide
+          heroBg={coverPalette?.bg ?? "var(--bg-raised)"}
+          heroTextColor={coverPalette?.text ?? "var(--text)"}
+          heroContent={
+            <div className="book-detail-header">
+              {selectedBook.cover_url ? (
+                <img
+                  src={selectedBook.cover_url}
+                  alt={`Cover of ${selectedBook.title}`}
+                  className="book-cover-img"
+                />
+              ) : (
+                <div className="admin-cover-slot">
+                  <div className="book-cover-placeholder">
+                    <NoCoverPlaceholder title={selectedBook.title} />
+                  </div>
+                  <button
+                    className="btn btn-sm btn-outline"
+                    onClick={() => openCoverUpload(selectedBook.id)}
+                  >
+                    + Add cover
+                  </button>
+                </div>
+              )}
+              <div className="book-detail book-detail-meta">
+                <div className="book-detail-row" style={heroRowStyle}>
+                  <span className="book-detail-label" style={heroLabelStyle}>
+                    Author
+                  </span>
+                  <span>{selectedBook.author}</span>
+                </div>
+                <div className="book-detail-row" style={heroRowStyle}>
+                  <span className="book-detail-label" style={heroLabelStyle}>
+                    Genre
+                  </span>
+                  <span>
+                    {selectedBook.genre || (
+                      <span style={heroFaintStyle}>—</span>
+                    )}
+                  </span>
+                </div>
+                <div className="book-detail-row" style={heroRowStyle}>
+                  <span className="book-detail-label" style={heroLabelStyle}>
+                    ISBN
+                  </span>
+                  <span>{selectedBook.isbn}</span>
+                </div>
+                <div className="book-detail-row" style={heroRowStyle}>
+                  <span className="book-detail-label" style={heroLabelStyle}>
+                    Copies
+                  </span>
+                  <span>
+                    {selectedBook.available_copies} /{" "}
+                    {selectedBook.total_copies} available
+                    {selectedBook.available_copies === 0 &&
+                      selectedBook.reservation_count > 0 && (
+                        <span
+                          style={{
+                            ...heroFaintStyle,
+                            marginLeft: 6,
+                            fontSize: "0.8em",
+                          }}
+                        >
+                          ({selectedBook.reservation_count} waiting)
+                        </span>
+                      )}
+                  </span>
+                </div>
+                <div
+                  className="book-detail-row"
+                  style={{ ...heroRowStyle, borderBottom: "none" }}
+                >
+                  <span className="book-detail-label" style={heroLabelStyle}>
+                    Rating
+                  </span>
+                  <span>
+                    {bookReviews && bookReviews.rating_count > 0 ? (
+                      <span
+                        style={{ display: "flex", alignItems: "center", gap: 8 }}
+                      >
+                        <span className="star-display">
+                          {"★".repeat(Math.round(bookReviews.avg_rating))}
+                          {"☆".repeat(5 - Math.round(bookReviews.avg_rating))}
+                        </span>
+                        <span
+                          style={{ fontSize: "0.85rem", ...heroSubtleStyle }}
+                        >
+                          {bookReviews.avg_rating} / 5
+                        </span>
+                        <span style={{ fontSize: "0.8rem", ...heroFaintStyle }}>
+                          · {bookReviews.rating_count}{" "}
+                          {bookReviews.rating_count === 1 ? "rating" : "ratings"}
+                        </span>
+                      </span>
+                    ) : (
+                      <span style={heroFaintStyle}>No ratings yet</span>
+                    )}
+                  </span>
+                </div>
+                <div className="book-detail-action">
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => {
+                      closeBookDetail();
+                      openEdit(selectedBook);
+                    }}
+                  >
+                    Edit Book
+                  </button>
+                  <button
+                    className="btn btn-sm btn-outline"
+                    onClick={() => {
+                      closeBookDetail();
+                      openLogs(selectedBook);
+                    }}
+                  >
+                    Logs
+                  </button>
+                  <button
+                    className="btn btn-sm btn-outline"
+                    onClick={() =>
+                      refreshingBookId === selectedBook.id
+                        ? setShowRefreshLog(true)
+                        : refreshMeta(selectedBook.id)
+                    }
+                    disabled={refreshingAll}
+                  >
+                    {refreshingBookId === selectedBook.id
+                      ? "Refreshing…"
+                      : "Refresh metadata"}
+                  </button>
+                  <button
+                    className="btn btn-sm btn-group-danger"
+                    onClick={() => {
+                      closeBookDetail();
+                      deleteBook(selectedBook.id);
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+        >
+          {selectedBook.description ? (
+            <div className="enrichment-section">
+              <div className="enrichment-label">About this book</div>
+              <p className="enrichment-text">{selectedBook.description}</p>
+            </div>
+          ) : (
+            <div className="enrichment-section">
+              <div className="enrichment-label">About this book</div>
+              <p className="enrichment-text muted">No description yet.</p>
+              <button
+                className="btn btn-sm btn-outline"
+                onClick={() => openAiGen(selectedBook.id, "description")}
+              >
+                ✨ Generate description
+              </button>
+            </div>
+          )}
+          {selectedBook.author_bio ? (
+            <div className="enrichment-section">
+              <div className="enrichment-label">About the author</div>
+              <p className="enrichment-text">{selectedBook.author_bio}</p>
+            </div>
+          ) : (
+            <div className="enrichment-section">
+              <div className="enrichment-label">About the author</div>
+              <p className="enrichment-text muted">No author bio yet.</p>
+              <button
+                className="btn btn-sm btn-outline"
+                onClick={() => openAiGen(selectedBook.id, "author_bio")}
+              >
+                ✨ Generate author bio
+              </button>
+            </div>
+          )}
+
+          {bookReviews && bookReviews.reviews.length > 0 && (
+            <div className="reviews-section">
+              <div className="reviews-header">Reviews</div>
+              {bookReviews.reviews.map((r) => (
+                <div key={r.id} className="review-item">
+                  <div className="review-meta">
+                    <span className="review-author">{r.reviewer}</span>
+                    <span className="review-stars">
+                      {"★".repeat(r.rating)}
+                      {"☆".repeat(5 - r.rating)}
+                    </span>
+                    <span className="review-date">
+                      {new Date(r.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  {r.review_text && (
+                    <p className="review-text">{r.review_text}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {bookReviews && bookReviews.reviews.length === 0 && (
+            <div className="reviews-section">
+              <div className="reviews-header">Reviews</div>
+              <div className="empty" style={{ padding: "20px 0" }}>
+                No reviews yet.
+              </div>
+            </div>
+          )}
         </Modal>
       )}
 

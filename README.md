@@ -81,6 +81,8 @@ Created automatically on first run — no setup needed.
 - **Toast notifications** — brief bottom-right confirmations appear after every key action (borrow, return, reserve, cancel, donate, avatar upload, community actions)
 
 **Admin**
+- **Books tab** shows the catalogue as a card grid (cover, title, author, genre, rating, availability — same card style as the member Books tab); a "Missing: …" tag flags any book lacking description, author bio, or cover
+- Clicking a card opens a Book Detail modal (cover-colour-tinted hero, author/genre/ISBN/copies/rating, description, author bio, reviews) with Edit / Logs / Refresh metadata / Delete actions; missing description, author bio, or cover show a **+ Add** / **✨ Generate** action right in the modal so gaps can be filled without leaving the view
 - Add / edit / delete books; ISBN uniqueness enforced
 - Inventory change log per book with reason tracking
 - Monitor all active borrows and overdue items

@@ -355,13 +355,37 @@ frontend/src/
                             #   Reaction icons: stroke-based inline SVGs (no icon library),
                             #     keys: like | love | haha | wow | sad | angry
     AdminDashboard.js       # Books · Borrowed · Fines · Members · Communities · Donations tabs
-                            # + Edit book modal + Inventory Logs modal + Member Records modal
-                            # + Approve Donation modal + Reject Donation modal
+                            # + Book Detail modal + Edit book modal + Inventory Logs modal
+                            # + Member Records modal + Approve Donation modal + Reject Donation modal
                             # + Approve Community modal + Reject Community modal
+                            # + AI Generate Field modal + Cover Upload modal
                             # + Refresh All Log modal — opens on "Refresh All"; calls
                             #   POST /books/:id/scrape for each book sequentially; appends
                             #   a log entry per book (✓ title — description, cover, author bio,
                             #   color  |  ✗ title — failed) with a live progress bar
+                            #
+                            # Books tab:
+                            #   Card grid (same rec-card style as the member Books tab) — cover,
+                            #     title, author, genre, rating, availability per book; a card
+                            #     shows "Missing: description, author bio, cover" when any of
+                            #     those enrichment fields are absent
+                            #   Each card has an inline action row (stopPropagation'd so it
+                            #     doesn't open the detail modal): Edit / Logs / Refresh / Delete
+                            #   Clicking the card body opens the Book Detail modal — a
+                            #     cover-colour-tinted hero (same wcagTextColor/coverPalette
+                            #     derivation as MemberDashboard) with author/genre/ISBN/copies/
+                            #     rating rows, description, author bio, and read-only reviews
+                            #     (GET /books/:id/reviews)
+                            #   Missing description/author bio show a "✨ Generate…" button in
+                            #     the detail modal that opens the AI Generate Field modal
+                            #     (POST /books/:id/generate-field, PUT .../patch-metadata);
+                            #     missing cover shows "+ Add cover" opening the Cover Upload
+                            #     modal (file or URL, PUT .../patch-metadata) — both modals
+                            #     previously only reachable via the Refresh Log's "Fill missing"
+                            #     section, now also directly accessible from the detail view
+                            #   Detail modal's action row: Edit Book / Logs / Refresh metadata /
+                            #     Delete — Edit, Logs, and Delete close the detail modal first;
+                            #     Refresh keeps it open since `books` state updates reactively
                             #
                             # Fines tab (merged):
                             #   Pending Fines table — all unpaid fines with Status badge

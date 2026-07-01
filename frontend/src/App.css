@@ -2049,6 +2049,40 @@ td {
   color: var(--text-3);
 }
 
+/* ── Admin book cards ───────────────────────────────────────────────────────── */
+.admin-book-card {
+  width: 210px;
+}
+
+.admin-missing-tag {
+  font-size: 0.68rem;
+  color: var(--warning, #b45309);
+  margin-top: -2px;
+}
+
+.admin-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  cursor: default;
+}
+
+.admin-cover-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  width: 110px;
+  flex-shrink: 0;
+}
+
+.admin-cover-slot .book-cover-placeholder {
+  width: 100%;
+}
+
 /* ── Trending strip ─────────────────────────────────────────────────────────── */
 
 .trending-heading::before {

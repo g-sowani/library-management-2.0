@@ -1654,6 +1654,10 @@ td {
   flex-wrap: wrap;
 }
 
+.search-panel-filters .btn-outline {
+  border-color: var(--border-input);
+}
+
 .search-panel-top {
   display: flex;
   gap: 8px;

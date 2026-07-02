@@ -21,6 +21,7 @@ import { GENRES } from "../constants";
 const TABS = [
   { id: "home", label: "Home" },
   { id: "books", label: "Available Books" },
+  { id: "library", label: "My Library" },
   { id: "community", label: "Community" },
   { id: "profile", label: "My Profile" },
 ];
@@ -165,6 +166,45 @@ function wcagTextColor(r, g, b) {
   };
   const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
   return (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? "#000000" : "#ffffff";
+}
+
+// Derive a hero palette instantly from a server-stored cover_color hex string (no async
+// canvas needed). Each text tier's opacity is the max of the desired visual alpha and the
+// minimum alpha required to achieve WCAG AA (4.5:1) against this specific background.
+function computeCoverPalette(hex) {
+  if (!hex) return null;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const text = wcagTextColor(r, g, b);
+  const fgVal = text === "#ffffff" ? 255 : 0;
+  const αMin = minAlphaForContrast(fgVal, r, g, b, 4.5);
+  const isLight = fgVal === 255;
+  const mk = (desired) => {
+    const a = Math.max(desired, αMin).toFixed(2);
+    return isLight ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
+  };
+  return {
+    bg: `rgb(${r}, ${g}, ${b})`,
+    text,
+    labelColor: mk(isLight ? 0.65 : 0.5),
+    subtleColor: mk(isLight ? 0.78 : 0.65),
+    faintColor: mk(isLight ? 0.5 : 0.38),
+  };
+}
+
+// Derive the label/subtle/faint/row inline styles used to render text on top of a hero palette.
+function heroStylesFor(palette) {
+  const isLight = palette?.text === "#ffffff";
+  return {
+    isLight,
+    labelStyle: palette ? { color: palette.labelColor } : {},
+    subtleStyle: palette ? { color: palette.subtleColor } : {},
+    faintStyle: palette ? { color: palette.faintColor } : {},
+    rowStyle: palette
+      ? { borderBottomColor: isLight ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.1)" }
+      : {},
+  };
 }
 
 // Binary-search the minimum opacity at which rgba(fgVal, fgVal, fgVal, α) composited
@@ -398,7 +438,7 @@ function MembershipBadge({ tier }) {
   );
 }
 
-function SearchIcon() {
+function FilterIcon() {
   return (
     <svg
       width="16"
@@ -410,26 +450,69 @@ function SearchIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <circle cx="11" cy="11" r="8" />
-      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      <line x1="4" y1="6" x2="20" y2="6" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <line x1="4" y1="18" x2="20" y2="18" />
+      <circle cx="9" cy="6" r="2" fill="var(--bg)" />
+      <circle cx="16" cy="12" r="2" fill="var(--bg)" />
+      <circle cx="10" cy="18" r="2" fill="var(--bg)" />
     </svg>
   );
 }
 
-function XIcon() {
+function CompactGridIcon() {
   return (
     <svg
-      width="15"
-      height="15"
+      width="16"
+      height="16"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.5"
+      strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
+      <rect x="3" y="3" width="7" height="7" />
+      <rect x="14" y="3" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
+    </svg>
+  );
+}
+
+function LargeGridIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="3" width="8" height="18" />
+      <rect x="13" y="3" width="8" height="18" />
+    </svg>
+  );
+}
+
+function StripIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="1" y="5" width="6" height="14" />
+      <rect x="9" y="5" width="6" height="14" />
+      <rect x="17" y="5" width="6" height="14" />
     </svg>
   );
 }
@@ -602,7 +685,13 @@ function MemberDashboard() {
   const [selectedGenre, setSelectedGenre] = useState("");
   const [availFilter, setAvailFilter] = useState("all");
   const [ratingFilter, setRatingFilter] = useState(0);
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [cardView, setCardView] = useState(
+    () => localStorage.getItem("booksCardView") || "compact"
+  );
+  const [libraryView, setLibraryView] = useState(
+    () => localStorage.getItem("libraryCardView") || "grid"
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [recommendations, setRecommendations] = useState([]);
@@ -628,6 +717,14 @@ function MemberDashboard() {
   const [reviewHover, setReviewHover] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [reviewAnonymous, setReviewAnonymous] = useState(false);
+
+  // Borrowed book card (My Profile) + Gutenberg online reader
+  const [selectedBorrowId, setSelectedBorrowId] = useState(null);
+  const [readerBook, setReaderBook] = useState(null); // { id, title, author }
+  const [readerText, setReaderText] = useState("");
+  const [readerLoading, setReaderLoading] = useState(false);
+  const [readerError, setReaderError] = useState("");
+  const [readerFontSize, setReaderFontSize] = useState("md"); // sm | md | lg
 
   // Avatar
   const avatarInputRef = useRef(null);
@@ -686,6 +783,14 @@ function MemberDashboard() {
 
   const selectedBook = books.find((b) => b.id === selectedBookId) || null;
 
+  const selectedBorrow = borrows.find((b) => b.id === selectedBorrowId) || null;
+  const selectedBorrowBook =
+    books.find((b) => b.id === selectedBorrow?.book_id) || null;
+  const borrowedCoverPalette = useMemo(
+    () => computeCoverPalette(selectedBorrowBook?.cover_color),
+    [selectedBorrowBook]
+  );
+
   const load = useCallback(() => {
     setError("");
     Promise.all([
@@ -729,6 +834,14 @@ function MemberDashboard() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    localStorage.setItem("booksCardView", cardView);
+  }, [cardView]);
+
+  useEffect(() => {
+    localStorage.setItem("libraryCardView", libraryView);
+  }, [libraryView]);
+
   // Fetch reviews whenever a book detail is opened
   useEffect(() => {
     if (!selectedBookId) {
@@ -743,6 +856,23 @@ function MemberDashboard() {
         setBookReviews({ avg_rating: null, rating_count: 0, reviews: [] })
       );
   }, [selectedBookId]);
+
+  // Lazily resolve Gutenberg availability the first time a borrowed book's card is opened
+  useEffect(() => {
+    if (!selectedBorrowBook) return;
+    if (selectedBorrowBook.gutenberg_id !== null && selectedBorrowBook.gutenberg_id !== undefined) return;
+    const bookId = selectedBorrowBook.id;
+    api
+      .get(`/books/${bookId}/gutenberg`)
+      .then((r) =>
+        setBooks((prev) =>
+          prev.map((bk) =>
+            bk.id === bookId ? { ...bk, gutenberg_id: r.data.gutenberg_id || 0 } : bk
+          )
+        )
+      )
+      .catch(() => {});
+  }, [selectedBorrowBook]);
 
   // Poll for community activity badge when not on the community tab
   useEffect(() => {
@@ -775,12 +905,44 @@ function MemberDashboard() {
     setActionError("");
   };
 
+  const openBorrowCard = (borrowId) => setSelectedBorrowId(borrowId);
+  const closeBorrowCard = () => setSelectedBorrowId(null);
+
+  const openReader = async (book) => {
+    setReaderBook({ id: book.id, title: book.title, author: book.author });
+    setReaderText("");
+    setReaderError("");
+    setReaderLoading(true);
+    try {
+      const r = await api.get(`/books/${book.id}/read`);
+      setReaderText(r.data.text);
+    } catch (e) {
+      setReaderError(
+        e.response?.data?.error || "Couldn't load this book for reading."
+      );
+    } finally {
+      setReaderLoading(false);
+    }
+  };
+
+  const closeReader = () => {
+    setReaderBook(null);
+    setReaderText("");
+    setReaderError("");
+  };
+
   const borrow = async (bookId) => {
     setActionError("");
     try {
       await api.post(`/borrow/${bookId}`);
       load();
-      toast("Book borrowed!");
+      toast("Book borrowed!", "success", {
+        label: "View in My Library",
+        onClick: () => {
+          closeBook();
+          setTab("library");
+        },
+      });
     } catch (e) {
       setActionError(e.response?.data?.error || "Failed to borrow book");
     }
@@ -1159,6 +1321,8 @@ function MemberDashboard() {
     availFilter !== "all" ||
     ratingFilter > 0;
 
+  const hasHiddenFilters = availFilter !== "all" || ratingFilter > 0;
+
   const clearFilters = () => {
     setSearch("");
     setSelectedGenre("");
@@ -1207,14 +1371,215 @@ function MemberDashboard() {
     }
   };
 
+  const renderBookCard = (book, { reason, variant, hideGenre } = {}) => {
+    const stars = book.avg_rating ? Math.round(book.avg_rating) : 0;
+    const isTrending = trendingIds.has(book.id);
+    return (
+      <button
+        key={book.id}
+        className={`rec-card${cardView === "large" ? " rec-card-large" : ""}${
+          variant === "collab" ? " rec-card-collab" : ""
+        }`}
+        onClick={() => openBook(book.id)}
+      >
+        {book.cover_url ? (
+          <img src={book.cover_url} alt="" className="rec-card-cover" />
+        ) : (
+          <NoCoverPlaceholder title={book.title} className="rec-card-cover" />
+        )}
+        {reason && (
+          <div
+            className={`rec-card-reason${
+              variant === "ai" ? " ai-reason" : ""
+            }`}
+          >
+            {reason}
+          </div>
+        )}
+        <div className="rec-card-title">
+          {book.title}
+          {isTrending && (
+            <span className="trending-tag" style={{ marginLeft: 6 }}>
+              Trending
+            </span>
+          )}
+        </div>
+        <div className="rec-card-author">{book.author}</div>
+        <div className="rec-card-meta">
+          {!hideGenre && book.genre && (
+            <span className="rec-card-genre">{book.genre}</span>
+          )}
+          {book.rating_count > 0 && (
+            <span className="rec-card-rating">
+              <span className="rec-stars">
+                {"★".repeat(stars)}
+                {"☆".repeat(5 - stars)}
+              </span>
+              <span className="rec-rating-val">{book.avg_rating}</span>
+            </span>
+          )}
+        </div>
+        <div className="rec-card-avail">
+          {book.available_copies > 0 ? (
+            `${book.available_copies} available`
+          ) : (
+            <span className="muted">Unavailable</span>
+          )}
+        </div>
+      </button>
+    );
+  };
+
+  const renderBorrowCard = (b) => {
+    const cover = books.find((bk) => bk.id === b.book_id)?.cover_url;
+    return (
+      <div
+        key={b.id}
+        className={`library-card${
+          libraryView === "strip" ? " library-card-strip" : ""
+        }`}
+      >
+        <button
+          className="library-card-cover-btn"
+          onClick={() => openBorrowCard(b.id)}
+        >
+          {cover ? (
+            <img src={cover} alt={b.book_title} className="library-card-cover" />
+          ) : (
+            <NoCoverPlaceholder title={b.book_title} />
+          )}
+        </button>
+        <div className="library-card-info">
+          <div className="library-card-title">{b.book_title}</div>
+          <div className="library-card-meta">
+            Due {new Date(b.due_date).toLocaleDateString()}
+          </div>
+          <Badge variant={b.is_overdue ? "overdue" : "active"}>
+            {b.is_overdue ? "Overdue" : "Active"}
+          </Badge>
+          <div className="library-card-actions">
+            <button className="btn btn-sm" onClick={() => openBorrowCard(b.id)}>
+              View
+            </button>
+            <button
+              className="btn btn-sm btn-outline"
+              onClick={() => openReturnModal(b.id, b.book_title)}
+            >
+              Return
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderReservationCard = (r) => {
+    const cover = books.find((bk) => bk.id === r.book_id)?.cover_url;
+    return (
+      <div
+        key={r.id}
+        className={`library-card${
+          libraryView === "strip" ? " library-card-strip" : ""
+        }`}
+      >
+        <button
+          className="library-card-cover-btn"
+          onClick={() => setSelectedBookId(r.book_id)}
+        >
+          {cover ? (
+            <img src={cover} alt={r.book_title} className="library-card-cover" />
+          ) : (
+            <NoCoverPlaceholder title={r.book_title} />
+          )}
+        </button>
+        <div className="library-card-info">
+          <div className="library-card-title">{r.book_title}</div>
+          <div className="library-card-author">{r.book_author}</div>
+          {r.status === "ready" ? (
+            <Badge variant="active">Ready — go borrow!</Badge>
+          ) : (
+            <Badge variant="queue">Queue #{r.queue_position}</Badge>
+          )}
+          <div className="library-card-actions">
+            <button
+              className="btn btn-sm"
+              onClick={() => setSelectedBookId(r.book_id)}
+            >
+              View
+            </button>
+            <button
+              className="btn btn-sm btn-outline"
+              onClick={() => cancelReservation(r.id)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderWishlistCard = (item) => (
+    <div
+      key={item.id}
+      className={`library-card${
+        libraryView === "strip" ? " library-card-strip" : ""
+      }`}
+    >
+      <button
+        className="library-card-cover-btn"
+        onClick={() => setSelectedBookId(item.book_id)}
+      >
+        {item.book_cover ? (
+          <img
+            src={item.book_cover}
+            alt={item.book_title}
+            className="library-card-cover"
+          />
+        ) : (
+          <NoCoverPlaceholder title={item.book_title} />
+        )}
+      </button>
+      <div className="library-card-info">
+        <div className="library-card-title">{item.book_title}</div>
+        <div className="library-card-author">{item.book_author}</div>
+        {item.book_available && (
+          <span className="wishlist-available-badge">Available</span>
+        )}
+        <div className="library-card-actions">
+          <button
+            className="btn btn-sm"
+            onClick={() => setSelectedBookId(item.book_id)}
+          >
+            View
+          </button>
+          <button
+            className="btn btn-sm btn-outline"
+            onClick={() => toggleWishlist(item.book_id)}
+            disabled={wishlistLoading}
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   function BookActionButton({ book }) {
     const res = reservedBooks[book.id];
     const isBorrowed = borrowedBookIds.has(book.id);
 
     if (isBorrowed) {
+      const activeBorrow = activeBorrows.find((b) => b.book_id === book.id);
       return (
-        <button className="btn" disabled>
-          Borrowed
+        <button
+          className="btn btn-outline"
+          onClick={() => {
+            closeBook();
+            openReturnModal(activeBorrow.id, book.title);
+          }}
+        >
+          Return
         </button>
       );
     }
@@ -1255,43 +1620,23 @@ function MemberDashboard() {
     }
   };
 
-  // Derive palette instantly from server-stored cover_color (no async canvas needed).
-  // Each text tier's opacity is the max of the desired visual alpha and the minimum
-  // alpha required to achieve WCAG AA (4.5:1) against this specific background.
-  const coverPalette = useMemo(() => {
-    const hex = selectedBook?.cover_color;
-    if (!hex) return null;
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    const text = wcagTextColor(r, g, b);
-    const fgVal = text === "#ffffff" ? 255 : 0;
-    const αMin = minAlphaForContrast(fgVal, r, g, b, 4.5);
-    const isLight = fgVal === 255;
-    const mk = (desired) => {
-      const a = Math.max(desired, αMin).toFixed(2);
-      return isLight ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
-    };
-    return {
-      bg: `rgb(${r}, ${g}, ${b})`,
-      text,
-      labelColor:  mk(isLight ? 0.65 : 0.5),
-      subtleColor: mk(isLight ? 0.78 : 0.65),
-      faintColor:  mk(isLight ? 0.5  : 0.38),
-    };
-  }, [selectedBook]); // eslint-disable-line
+  const coverPalette = useMemo(
+    () => computeCoverPalette(selectedBook?.cover_color),
+    [selectedBook]
+  );
 
-  const heroIsLight = coverPalette?.text === "#ffffff";
-  const heroLabelStyle  = coverPalette ? { color: coverPalette.labelColor  } : {};
-  const heroSubtleStyle = coverPalette ? { color: coverPalette.subtleColor } : {};
-  const heroFaintStyle  = coverPalette ? { color: coverPalette.faintColor  } : {};
-  const heroRowStyle = coverPalette
-    ? {
-        borderBottomColor: heroIsLight
-          ? "rgba(255,255,255,0.18)"
-          : "rgba(0,0,0,0.1)",
-      }
-    : {};
+  const {
+    labelStyle: heroLabelStyle,
+    subtleStyle: heroSubtleStyle,
+    faintStyle: heroFaintStyle,
+    rowStyle: heroRowStyle,
+  } = heroStylesFor(coverPalette);
+
+  const {
+    labelStyle: borrowedHeroLabelStyle,
+    faintStyle: borrowedHeroFaintStyle,
+    rowStyle: borrowedHeroRowStyle,
+  } = heroStylesFor(borrowedCoverPalette);
 
   if (loading) return <BookLoader />;
 
@@ -1486,37 +1831,10 @@ function MemberDashboard() {
 
         {tab === "books" && (
           <>
-            {/* Search trigger row */}
-            <div className="search-trigger-row">
-              <button
-                className={`search-icon-btn${
-                  hasActiveFilters ? " has-filters" : ""
-                }`}
-                onClick={() => setSearchOpen((o) => !o)}
-                aria-label={searchOpen ? "Close search" : "Open search"}
-              >
-                {searchOpen ? <XIcon /> : <SearchIcon />}
-                {hasActiveFilters && !searchOpen && (
-                  <span className="search-active-dot" />
-                )}
-              </button>
-              {books.length > 0 && (
-                <span className="book-count-label">
-                  {aiMode && aiResults !== null
-                    ? `${aiResults.length} AI match${
-                        aiResults.length !== 1 ? "es" : ""
-                      }`
-                    : filteredBooks.length === books.length
-                    ? `${books.length} books`
-                    : `${filteredBooks.length} of ${books.length} books`}
-                </span>
-              )}
-            </div>
-
-            {/* Expandable search + filter panel */}
-            {searchOpen && (
-              <div className="search-panel">
-                <div className="search-panel-top">
+            {/* Persistent search bar */}
+            <div className="search-panel">
+              <div className="search-trigger-row">
+                <div className="search-panel-top" style={{ flex: 1 }}>
                   {aiMode ? (
                     <div className="ai-search-row">
                       <input
@@ -1525,7 +1843,6 @@ function MemberDashboard() {
                         onChange={(e) => setAiQuery(e.target.value)}
                         placeholder="Describe what you're looking for… (press Enter)"
                         onKeyDown={(e) => e.key === "Enter" && runAiSearch()}
-                        autoFocus
                         disabled={aiLoading}
                       />
                     </div>
@@ -1535,7 +1852,6 @@ function MemberDashboard() {
                       onChange={setSearch}
                       placeholder="Search by title, author, genre…"
                       className="search-bar-wide"
-                      autoFocus
                     />
                   )}
                   <button
@@ -1553,60 +1869,96 @@ function MemberDashboard() {
                   </button>
                 </div>
                 {!aiMode && (
-                  <div className="search-panel-filters">
-                    {/* <Select
-                      className="filter-select"
-                      value={selectedGenre}
-                      onChange={(e) => setSelectedGenre(e.target.value)}
-                    >
-                      <option value="">All genres</option>
-                      {availableGenres.map((g) => (
-                        <option key={g} value={g}>
-                          {g}
-                        </option>
-                      ))}
-                    </Select> */}
-                    <Select
-                      className="filter-select"
-                      value={availFilter}
-                      onChange={(e) => setAvailFilter(e.target.value)}
-                    >
-                      <option value="all">All copies</option>
-                      <option value="available">Available now</option>
-                      <option value="unavailable">Unavailable</option>
-                    </Select>
-                    <Select
-                      className="filter-select"
-                      value={ratingFilter}
-                      onChange={(e) => setRatingFilter(Number(e.target.value))}
-                    >
-                      <option value={0}>Any rating</option>
-                      <option value={4}>4+ stars</option>
-                      <option value={3}>3+ stars</option>
-                      <option value={2}>2+ stars</option>
-                    </Select>
-                    {hasActiveFilters && (
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={clearFilters}
-                      >
-                        Clear
-                      </button>
+                  <button
+                    className={`search-icon-btn${
+                      hasHiddenFilters ? " has-filters" : ""
+                    }`}
+                    onClick={() => setFiltersOpen((o) => !o)}
+                    aria-label={filtersOpen ? "Hide filters" : "Show filters"}
+                    title={filtersOpen ? "Hide filters" : "Show filters"}
+                  >
+                    <FilterIcon />
+                    {hasHiddenFilters && !filtersOpen && (
+                      <span className="search-active-dot" />
                     )}
-                  </div>
+                  </button>
                 )}
-                {aiMode && (aiResults !== null || aiError) && (
-                  <div className="search-panel-filters">
+                <button
+                  className="search-icon-btn"
+                  onClick={() =>
+                    setCardView((v) => (v === "large" ? "compact" : "large"))
+                  }
+                  aria-label={
+                    cardView === "large"
+                      ? "Switch to compact cards"
+                      : "Switch to large cards"
+                  }
+                  title={
+                    cardView === "large"
+                      ? "Switch to compact cards"
+                      : "Switch to large cards"
+                  }
+                >
+                  {cardView === "large" ? (
+                    <CompactGridIcon />
+                  ) : (
+                    <LargeGridIcon />
+                  )}
+                </button>
+              </div>
+              {books.length > 0 && (
+                <span className="book-count-label">
+                  {aiMode && aiResults !== null
+                    ? `${aiResults.length} AI match${
+                        aiResults.length !== 1 ? "es" : ""
+                      }`
+                    : filteredBooks.length === books.length
+                    ? `${books.length} books`
+                    : `${filteredBooks.length} of ${books.length} books`}
+                </span>
+              )}
+              {!aiMode && filtersOpen && (
+                <div className="search-panel-filters">
+                  <Select
+                    className="filter-select"
+                    value={availFilter}
+                    onChange={(e) => setAvailFilter(e.target.value)}
+                  >
+                    <option value="all">All copies</option>
+                    <option value="available">Available now</option>
+                    <option value="unavailable">Unavailable</option>
+                  </Select>
+                  <Select
+                    className="filter-select"
+                    value={ratingFilter}
+                    onChange={(e) => setRatingFilter(Number(e.target.value))}
+                  >
+                    <option value={0}>Any rating</option>
+                    <option value={4}>4+ stars</option>
+                    <option value={3}>3+ stars</option>
+                    <option value={2}>2+ stars</option>
+                  </Select>
+                  {hasActiveFilters && (
                     <button
                       className="btn btn-sm btn-outline"
                       onClick={clearFilters}
                     >
                       Clear
                     </button>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
+              {aiMode && (aiResults !== null || aiError) && (
+                <div className="search-panel-filters">
+                  <button
+                    className="btn btn-sm btn-outline"
+                    onClick={clearFilters}
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Genre pills */}
             {!aiMode && availableGenres.length > 0 && (
@@ -1654,65 +2006,14 @@ function MemberDashboard() {
               !aiLoading &&
               aiResults !== null &&
               aiResults.length > 0 && (
-                <div className="books-grid">
-                  {aiResults.map((b) => {
-                    const stars = b.avg_rating ? Math.round(b.avg_rating) : 0;
-                    return (
-                      <button
-                        key={b.id}
-                        className="rec-card"
-                        onClick={() => openBook(b.id)}
-                      >
-                        {b.cover_url ? (
-                          <img
-                            src={b.cover_url}
-                            alt=""
-                            className="rec-card-cover"
-                          />
-                        ) : (
-                          <NoCoverPlaceholder title={b.title} className="rec-card-cover" />
-                        )}
-                        <div className="rec-card-reason ai-reason">
-                          {b.reason}
-                        </div>
-                        <div className="rec-card-title">
-                          {b.title}
-                          {trendingIds.has(b.id) && (
-                            <span
-                              className="trending-tag"
-                              style={{ marginLeft: 6 }}
-                            >
-                              Trending
-                            </span>
-                          )}
-                        </div>
-                        <div className="rec-card-author">{b.author}</div>
-                        <div className="rec-card-meta">
-                          {b.genre && (
-                            <span className="rec-card-genre">{b.genre}</span>
-                          )}
-                          {b.rating_count > 0 && (
-                            <span className="rec-card-rating">
-                              <span className="rec-stars">
-                                {"★".repeat(stars)}
-                                {"☆".repeat(5 - stars)}
-                              </span>
-                              <span className="rec-rating-val">
-                                {b.avg_rating}
-                              </span>
-                            </span>
-                          )}
-                        </div>
-                        <div className="rec-card-avail">
-                          {b.available_copies > 0 ? (
-                            `${b.available_copies} available`
-                          ) : (
-                            <span className="muted">Unavailable</span>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
+                <div
+                  className={
+                    cardView === "large" ? "library-grid" : "books-grid"
+                  }
+                >
+                  {aiResults.map((b) =>
+                    renderBookCard(b, { reason: b.reason, variant: "ai" })
+                  )}
                 </div>
               )}
 
@@ -1724,62 +2025,12 @@ function MemberDashboard() {
               </div>
             )}
             {!aiMode && hasActiveFilters && filteredBooks.length > 0 && (
-              <div className="books-grid">
-                {filteredBooks.map((b) => {
-                  const stars = b.avg_rating ? Math.round(b.avg_rating) : 0;
-                  return (
-                    <button
-                      key={b.id}
-                      className="rec-card"
-                      onClick={() => openBook(b.id)}
-                    >
-                      {b.cover_url ? (
-                        <img
-                          src={b.cover_url}
-                          alt=""
-                          className="rec-card-cover"
-                        />
-                      ) : (
-                        <NoCoverPlaceholder title={b.title} className="rec-card-cover" />
-                      )}
-                      <div className="rec-card-title">
-                        {b.title}
-                        {trendingIds.has(b.id) && (
-                          <span
-                            className="trending-tag"
-                            style={{ marginLeft: 6 }}
-                          >
-                            Trending
-                          </span>
-                        )}
-                      </div>
-                      <div className="rec-card-author">{b.author}</div>
-                      <div className="rec-card-meta">
-                        {b.genre && (
-                          <span className="rec-card-genre">{b.genre}</span>
-                        )}
-                        {b.rating_count > 0 && (
-                          <span className="rec-card-rating">
-                            <span className="rec-stars">
-                              {"★".repeat(stars)}
-                              {"☆".repeat(5 - stars)}
-                            </span>
-                            <span className="rec-rating-val">
-                              {b.avg_rating}
-                            </span>
-                          </span>
-                        )}
-                      </div>
-                      <div className="rec-card-avail">
-                        {b.available_copies > 0 ? (
-                          `${b.available_copies} available`
-                        ) : (
-                          <span className="muted">Unavailable</span>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
+              <div
+                className={
+                  cardView === "large" ? "library-grid" : "books-grid"
+                }
+              >
+                {filteredBooks.map((b) => renderBookCard(b))}
               </div>
             )}
 
@@ -1801,125 +2052,46 @@ function MemberDashboard() {
                       <div className="rec-heading trending-heading">
                         Trending This Week
                       </div>
-                      <BookStrip>
-                        {trending.map((book) => {
-                          const stars = book.avg_rating
-                            ? Math.round(book.avg_rating)
-                            : 0;
-                          const n = book.borrow_count_week;
-                          return (
-                            <button
-                              key={book.id}
-                              className="rec-card"
-                              onClick={() => openBook(book.id)}
-                            >
-                              {book.cover_url ? (
-                                <img
-                                  src={book.cover_url}
-                                  alt=""
-                                  className="rec-card-cover"
-                                />
-                              ) : (
-                                <NoCoverPlaceholder title={book.title} className="rec-card-cover" />
-                              )}
-                              <div className="rec-card-reason">
-                                {n} borrow{n !== 1 ? "s" : ""} this week
-                              </div>
-                              <div className="rec-card-title">{book.title}</div>
-                              <div className="rec-card-author">
-                                {book.author}
-                              </div>
-                              <div className="rec-card-meta">
-                                {book.genre && (
-                                  <span className="rec-card-genre">
-                                    {book.genre}
-                                  </span>
-                                )}
-                                {book.avg_rating && (
-                                  <span className="rec-card-rating">
-                                    <span className="rec-stars">
-                                      {"★".repeat(stars)}
-                                      {"☆".repeat(5 - stars)}
-                                    </span>
-                                    <span className="rec-rating-val">
-                                      {book.avg_rating}
-                                    </span>
-                                  </span>
-                                )}
-                              </div>
-                              <div className="rec-card-avail">
-                                {book.available_copies > 0 ? (
-                                  `${book.available_copies} available`
-                                ) : (
-                                  <span className="muted">Unavailable</span>
-                                )}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </BookStrip>
+                      {cardView === "large" ? (
+                        <div className="library-grid">
+                          {trending.map((book) =>
+                            renderBookCard(book, {
+                              reason: `${book.borrow_count_week} borrow${
+                                book.borrow_count_week !== 1 ? "s" : ""
+                              } this week`,
+                            })
+                          )}
+                        </div>
+                      ) : (
+                        <BookStrip>
+                          {trending.map((book) =>
+                            renderBookCard(book, {
+                              reason: `${book.borrow_count_week} borrow${
+                                book.borrow_count_week !== 1 ? "s" : ""
+                              } this week`,
+                            })
+                          )}
+                        </BookStrip>
+                      )}
                     </div>
                   )}
 
                   {recommendations.length > 0 && (
                     <div className="rec-section">
                       <div className="rec-heading">Recommended for you</div>
-                      <BookStrip>
-                        {recommendations.map((book) => {
-                          const stars = book.avg_rating
-                            ? Math.round(book.avg_rating)
-                            : 0;
-                          return (
-                            <button
-                              key={book.id}
-                              className="rec-card"
-                              onClick={() => openBook(book.id)}
-                            >
-                              {book.cover_url ? (
-                                <img
-                                  src={book.cover_url}
-                                  alt=""
-                                  className="rec-card-cover"
-                                />
-                              ) : (
-                                <NoCoverPlaceholder title={book.title} className="rec-card-cover" />
-                              )}
-                              <div className="rec-card-reason">
-                                {book.reason}
-                              </div>
-                              <div className="rec-card-title">{book.title}</div>
-                              <div className="rec-card-author">
-                                {book.author}
-                              </div>
-                              <div className="rec-card-meta">
-                                {book.genre && (
-                                  <span className="rec-card-genre">
-                                    {book.genre}
-                                  </span>
-                                )}
-                                {book.avg_rating && (
-                                  <span className="rec-card-rating">
-                                    <span className="rec-stars">
-                                      {"★".repeat(stars)}
-                                      {"☆".repeat(5 - stars)}
-                                    </span>
-                                    <span className="rec-rating-val">
-                                      {book.avg_rating}
-                                    </span>
-                                  </span>
-                                )}
-                              </div>
-                              <div className="rec-card-avail">
-                                {book.available_copies > 0 ? (
-                                  `${book.available_copies} available`
-                                ) : (
-                                  <span className="muted">Unavailable</span>
-                                )}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </BookStrip>
+                      {cardView === "large" ? (
+                        <div className="library-grid">
+                          {recommendations.map((book) =>
+                            renderBookCard(book, { reason: book.reason })
+                          )}
+                        </div>
+                      ) : (
+                        <BookStrip>
+                          {recommendations.map((book) =>
+                            renderBookCard(book, { reason: book.reason })
+                          )}
+                        </BookStrip>
+                      )}
                     </div>
                   )}
 
@@ -1928,62 +2100,25 @@ function MemberDashboard() {
                       <div className="rec-heading">
                         Readers like you also enjoyed
                       </div>
-                      <BookStrip>
-                        {dedupedCollab.map((book) => {
-                          const stars = book.avg_rating
-                            ? Math.round(book.avg_rating)
-                            : 0;
-                          return (
-                            <button
-                              key={book.id}
-                              className="rec-card rec-card-collab"
-                              onClick={() => openBook(book.id)}
-                            >
-                              {book.cover_url ? (
-                                <img
-                                  src={book.cover_url}
-                                  alt=""
-                                  className="rec-card-cover"
-                                />
-                              ) : (
-                                <NoCoverPlaceholder title={book.title} className="rec-card-cover" />
-                              )}
-                              <div className="rec-card-reason">
-                                {book.reason}
-                              </div>
-                              <div className="rec-card-title">{book.title}</div>
-                              <div className="rec-card-author">
-                                {book.author}
-                              </div>
-                              <div className="rec-card-meta">
-                                {book.genre && (
-                                  <span className="rec-card-genre">
-                                    {book.genre}
-                                  </span>
-                                )}
-                                {book.avg_rating && (
-                                  <span className="rec-card-rating">
-                                    <span className="rec-stars">
-                                      {"★".repeat(stars)}
-                                      {"☆".repeat(5 - stars)}
-                                    </span>
-                                    <span className="rec-rating-val">
-                                      {book.avg_rating}
-                                    </span>
-                                  </span>
-                                )}
-                              </div>
-                              <div className="rec-card-avail">
-                                {book.available_copies > 0 ? (
-                                  `${book.available_copies} available`
-                                ) : (
-                                  <span className="muted">Unavailable</span>
-                                )}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </BookStrip>
+                      {cardView === "large" ? (
+                        <div className="library-grid">
+                          {dedupedCollab.map((book) =>
+                            renderBookCard(book, {
+                              reason: book.reason,
+                              variant: "collab",
+                            })
+                          )}
+                        </div>
+                      ) : (
+                        <BookStrip>
+                          {dedupedCollab.map((book) =>
+                            renderBookCard(book, {
+                              reason: book.reason,
+                              variant: "collab",
+                            })
+                          )}
+                        </BookStrip>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1996,64 +2131,85 @@ function MemberDashboard() {
                 {availableGenres.map((genre) => (
                   <div key={genre} className="genre-section">
                     <div className="genre-section-heading">{genre}</div>
-                    <BookStrip>
-                      {booksByGenre[genre].map((book) => {
-                        const stars = book.avg_rating
-                          ? Math.round(book.avg_rating)
-                          : 0;
-                        return (
-                          <button
-                            key={book.id}
-                            className="rec-card"
-                            onClick={() => openBook(book.id)}
-                          >
-                            {book.cover_url ? (
-                              <img
-                                src={book.cover_url}
-                                alt=""
-                                className="rec-card-cover"
-                              />
-                            ) : (
-                              <NoCoverPlaceholder title={book.title} className="rec-card-cover" />
-                            )}
-                            <div className="rec-card-title">
-                              {book.title}
-                              {trendingIds.has(book.id) && (
-                                <span
-                                  className="trending-tag"
-                                  style={{ marginLeft: 6 }}
-                                >
-                                  Trending
-                                </span>
-                              )}
-                            </div>
-                            <div className="rec-card-author">{book.author}</div>
-                            {book.rating_count > 0 && (
-                              <div className="rec-card-meta">
-                                <span className="rec-card-rating">
-                                  <span className="rec-stars">
-                                    {"★".repeat(stars)}
-                                    {"☆".repeat(5 - stars)}
-                                  </span>
-                                  <span className="rec-rating-val">
-                                    {book.avg_rating}
-                                  </span>
-                                </span>
-                              </div>
-                            )}
-                            <div className="rec-card-avail">
-                              {book.available_copies > 0 ? (
-                                `${book.available_copies} available`
-                              ) : (
-                                <span className="muted">Unavailable</span>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </BookStrip>
+                    {cardView === "large" ? (
+                      <div className="library-grid">
+                        {booksByGenre[genre].map((book) =>
+                          renderBookCard(book, { hideGenre: true })
+                        )}
+                      </div>
+                    ) : (
+                      <BookStrip>
+                        {booksByGenre[genre].map((book) =>
+                          renderBookCard(book, { hideGenre: true })
+                        )}
+                      </BookStrip>
+                    )}
                   </div>
                 ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {tab === "library" && (
+          <>
+            <div className="search-trigger-row" style={{ justifyContent: "flex-end" }}>
+              <button
+                className="search-icon-btn"
+                onClick={() =>
+                  setLibraryView((v) => (v === "strip" ? "grid" : "strip"))
+                }
+                aria-label={
+                  libraryView === "strip"
+                    ? "Switch to grid view"
+                    : "Switch to strip view"
+                }
+                title={
+                  libraryView === "strip"
+                    ? "Switch to grid view"
+                    : "Switch to strip view"
+                }
+              >
+                {libraryView === "strip" ? <CompactGridIcon /> : <StripIcon />}
+              </button>
+            </div>
+
+            <div className="section-header">
+              <h3>My Borrowed Books</h3>
+            </div>
+            {activeBorrows.length === 0 ? (
+              <div className="empty">No active borrows</div>
+            ) : libraryView === "strip" ? (
+              <BookStrip>{activeBorrows.map(renderBorrowCard)}</BookStrip>
+            ) : (
+              <div className="library-grid">
+                {activeBorrows.map(renderBorrowCard)}
+              </div>
+            )}
+
+            <div className="section-header" style={{ marginTop: 32 }}>
+              <h3>My Reservations</h3>
+            </div>
+            {reservations.length === 0 ? (
+              <div className="empty">No reservations</div>
+            ) : libraryView === "strip" ? (
+              <BookStrip>{reservations.map(renderReservationCard)}</BookStrip>
+            ) : (
+              <div className="library-grid">
+                {reservations.map(renderReservationCard)}
+              </div>
+            )}
+
+            <div className="section-header" style={{ marginTop: 32 }}>
+              <h3>My Wishlist</h3>
+            </div>
+            {wishlistItems.length === 0 ? (
+              <div className="empty">No books in your wishlist yet</div>
+            ) : libraryView === "strip" ? (
+              <BookStrip>{wishlistItems.map(renderWishlistCard)}</BookStrip>
+            ) : (
+              <div className="library-grid">
+                {wishlistItems.map(renderWishlistCard)}
               </div>
             )}
           </>
@@ -2169,88 +2325,6 @@ function MemberDashboard() {
             )}
 
             <div className="section-header">
-              <h3>My Borrowed Books</h3>
-            </div>
-            {activeBorrows.length === 0 ? (
-              <div className="empty">No active borrows</div>
-            ) : (
-              <table className="profile-table">
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th>Due Date</th>
-                    <th>Status</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeBorrows.map((b) => (
-                    <tr key={b.id}>
-                      <td>{b.book_title}</td>
-                      <td>{new Date(b.due_date).toLocaleDateString()}</td>
-                      <td>
-                        <Badge variant={b.is_overdue ? "overdue" : "active"}>
-                          {b.is_overdue ? "Overdue" : "Active"}
-                        </Badge>
-                      </td>
-                      <td>
-                        <button
-                          className="btn btn-sm btn-outline"
-                          onClick={() => openReturnModal(b.id, b.book_title)}
-                        >
-                          Return
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            <div className="section-header" style={{ marginTop: 32 }}>
-              <h3>My Reservations</h3>
-            </div>
-            {reservations.length === 0 ? (
-              <div className="empty">No reservations</div>
-            ) : (
-              <table className="profile-table">
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th>Author</th>
-                    <th>Status</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reservations.map((r) => (
-                    <tr key={r.id}>
-                      <td>{r.book_title}</td>
-                      <td>{r.book_author}</td>
-                      <td>
-                        {r.status === "ready" ? (
-                          <Badge variant="active">Ready — go borrow!</Badge>
-                        ) : (
-                          <Badge variant="queue">
-                            Queue #{r.queue_position}
-                          </Badge>
-                        )}
-                      </td>
-                      <td>
-                        <button
-                          className="btn btn-sm btn-outline"
-                          onClick={() => cancelReservation(r.id)}
-                        >
-                          Cancel
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            <div className="section-header" style={{ marginTop: 32 }}>
               <h3>My Fines</h3>
             </div>
             {fines.length === 0 ? (
@@ -2280,57 +2354,6 @@ function MemberDashboard() {
                   ))}
                 </tbody>
               </table>
-            )}
-
-            {/* My Wishlist */}
-            <div className="section-header" style={{ marginTop: 32 }}>
-              <h3>My Wishlist</h3>
-            </div>
-            {wishlistItems.length === 0 ? (
-              <div className="empty">No books in your wishlist yet</div>
-            ) : (
-              <div className="wishlist-grid">
-                {wishlistItems.map((item) => (
-                  <div key={item.id} className="wishlist-card">
-                    <button
-                      className="wishlist-card-cover-btn"
-                      onClick={() => setSelectedBookId(item.book_id)}
-                    >
-                      {item.book_cover ? (
-                        <img
-                          src={item.book_cover}
-                          alt={item.book_title}
-                          className="wishlist-card-cover"
-                        />
-                      ) : (
-                        <NoCoverPlaceholder title={item.book_title} />
-                      )}
-                    </button>
-                    <div className="wishlist-card-info">
-                      <div className="wishlist-card-title">{item.book_title}</div>
-                      <div className="wishlist-card-author">{item.book_author}</div>
-                      {item.book_available && (
-                        <span className="wishlist-available-badge">Available</span>
-                      )}
-                      <div className="wishlist-card-actions">
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => setSelectedBookId(item.book_id)}
-                        >
-                          View
-                        </button>
-                        <button
-                          className="btn btn-sm btn-outline"
-                          onClick={() => toggleWishlist(item.book_id)}
-                          disabled={wishlistLoading}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
             )}
 
             {/* Donate a Book */}
@@ -2916,6 +2939,178 @@ function MemberDashboard() {
             </div>
           )}
         </Modal>
+      )}
+
+      {/* Borrowed book card — opens from a row in My Borrowed Books */}
+      {selectedBorrow && selectedBorrowBook && (
+        <Modal
+          title={selectedBorrowBook.title}
+          onClose={closeBorrowCard}
+          wide
+          heroBg={borrowedCoverPalette?.bg ?? "var(--bg-raised)"}
+          heroTextColor={borrowedCoverPalette?.text ?? "var(--text)"}
+          heroContent={
+            <div className="book-detail-header">
+              {selectedBorrowBook.cover_url && (
+                <img
+                  src={selectedBorrowBook.cover_url}
+                  alt={`Cover of ${selectedBorrowBook.title}`}
+                  className="book-cover-img"
+                />
+              )}
+              <div className="book-detail book-detail-meta">
+                <div className="book-detail-row" style={borrowedHeroRowStyle}>
+                  <span className="book-detail-label" style={borrowedHeroLabelStyle}>
+                    Author
+                  </span>
+                  <span>{selectedBorrowBook.author}</span>
+                </div>
+                <div className="book-detail-row" style={borrowedHeroRowStyle}>
+                  <span className="book-detail-label" style={borrowedHeroLabelStyle}>
+                    Genre
+                  </span>
+                  <span>
+                    {selectedBorrowBook.genre || (
+                      <span style={borrowedHeroFaintStyle}>—</span>
+                    )}
+                  </span>
+                </div>
+                <div className="book-detail-row" style={borrowedHeroRowStyle}>
+                  <span className="book-detail-label" style={borrowedHeroLabelStyle}>
+                    Borrowed on
+                  </span>
+                  <span>
+                    {new Date(selectedBorrow.borrow_date).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="book-detail-row" style={borrowedHeroRowStyle}>
+                  <span className="book-detail-label" style={borrowedHeroLabelStyle}>
+                    Due date
+                  </span>
+                  <span>
+                    {new Date(selectedBorrow.due_date).toLocaleDateString()}
+                  </span>
+                </div>
+                <div
+                  className="book-detail-row"
+                  style={
+                    selectedBorrow.is_overdue
+                      ? borrowedHeroRowStyle
+                      : { ...borrowedHeroRowStyle, borderBottom: "none" }
+                  }
+                >
+                  <span className="book-detail-label" style={borrowedHeroLabelStyle}>
+                    Status
+                  </span>
+                  <span>
+                    <Badge variant={selectedBorrow.is_overdue ? "overdue" : "active"}>
+                      {selectedBorrow.is_overdue ? "Overdue" : "Active"}
+                    </Badge>
+                  </span>
+                </div>
+                {selectedBorrow.is_overdue && (
+                  <div
+                    className="book-detail-row"
+                    style={{ ...borrowedHeroRowStyle, borderBottom: "none" }}
+                  >
+                    <span className="book-detail-label" style={borrowedHeroLabelStyle}>
+                      Fine so far
+                    </span>
+                    <span>${selectedBorrow.fine.toFixed(2)}</span>
+                  </div>
+                )}
+
+                <div className="book-detail-action">
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => {
+                      closeBorrowCard();
+                      openReturnModal(selectedBorrow.id, selectedBorrow.book_title);
+                    }}
+                  >
+                    Return
+                  </button>
+                  {selectedBorrowBook.gutenberg_id > 0 && (
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        const book = selectedBorrowBook;
+                        closeBorrowCard();
+                        openReader(book);
+                      }}
+                    >
+                      Read Online
+                    </button>
+                  )}
+                </div>
+                {selectedBorrowBook.gutenberg_id === 0 && (
+                  <p style={{ ...borrowedHeroFaintStyle, fontSize: "0.8rem", marginTop: 8 }}>
+                    Not available for online reading.
+                  </p>
+                )}
+              </div>
+            </div>
+          }
+        >
+          {selectedBorrowBook.description && (
+            <div className="enrichment-section">
+              <div className="enrichment-label">About this book</div>
+              <p className="enrichment-text">{selectedBorrowBook.description}</p>
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {/* Online reader — full Gutenberg text for a borrowed public-domain book */}
+      {readerBook && (
+        <div className="reader-overlay" onClick={closeReader}>
+          <div className="reader-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="reader-header">
+              <div>
+                <h3>{readerBook.title}</h3>
+                <span className="reader-author">{readerBook.author}</span>
+              </div>
+              <div className="reader-controls">
+                <button
+                  className="reader-font-btn"
+                  disabled={readerFontSize === "sm"}
+                  onClick={() => setReaderFontSize("sm")}
+                  aria-label="Smaller text"
+                >
+                  A
+                </button>
+                <button
+                  className="reader-font-btn reader-font-btn-lg"
+                  disabled={readerFontSize === "md"}
+                  onClick={() => setReaderFontSize("md")}
+                  aria-label="Medium text"
+                >
+                  A
+                </button>
+                <button
+                  className="reader-font-btn reader-font-btn-xl"
+                  disabled={readerFontSize === "lg"}
+                  onClick={() => setReaderFontSize("lg")}
+                  aria-label="Larger text"
+                >
+                  A
+                </button>
+                <button className="modal-close-btn" onClick={closeReader} aria-label="Close">
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="reader-body">
+              {readerLoading && <div className="empty">Loading book…</div>}
+              {readerError && <div className="error">{readerError}</div>}
+              {!readerLoading && !readerError && (
+                <pre className={`reader-text reader-text-${readerFontSize}`}>
+                  {readerText}
+                </pre>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Donate a Book modal */}

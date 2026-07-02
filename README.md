@@ -57,6 +57,7 @@ Created automatically on first run — no setup needed.
 | Auth     | Flask session cookies (`withCredentials`) |
 | Metadata | Open Library API (scraping) · Pillow (image processing) |
 | AI Search | Groq API · `llama-3.1-8b-instant` |
+| Online Reading | Project Gutenberg (via the Gutendex API) |
 
 ---
 
@@ -75,10 +76,11 @@ Created automatically on first run — no setup needed.
 - Personalised recommendations — content-based (genre/author preference profile)
 - Collaborative recommendations — users with similar reading history
 - **My Profile tab** — membership info card, active borrows, reservations, fines, and donation history in one place; borrow/reservation/fines tables are center-aligned
+- **Read Online** *(public-domain titles)* — click a book in "My Borrowed Books" to open its Borrowed Book Card (cover, author, genre, dates, status); if the book has a free full text on Project Gutenberg, a **Read Online** button opens a full-screen reader with the real book text in a serif reading pane and adjustable font size; classics already in the catalogue (Pride and Prejudice, Dracula, Anna Karenina, Jane Eyre, Wuthering Heights, Crime and Punishment, The Great Gatsby, …) are auto-detected — no admin setup required
 - **Profile photo** — upload and change a profile avatar from the My Profile tab; avatar shown in the top-bar dropdown and resized/compressed client-side before upload
 - **Donate a Book** — submit a physical book for the library; earn 1/4 of its estimated value as library credit upon admin approval
 - **Community tab** *(Gold members only)* — create and join member communities, make posts, comment with unlimited reply threading, and react with SVG reaction icons (like / love / haha / wow / sad / angry); red badge on the tab title shows new activity since your last visit
-- **Toast notifications** — brief bottom-right confirmations appear after every key action (borrow, return, reserve, cancel, donate, avatar upload, community actions)
+- **Toast notifications** — brief bottom-right confirmations appear after every key action (borrow, return, reserve, cancel, donate, avatar upload, community actions); the "Book borrowed!" toast includes a **View in My Profile** link that jumps straight to the My Profile tab
 
 **Admin**
 - **Books tab** shows the catalogue as a card grid (cover, title, author, genre, rating, availability — same card style as the member Books tab); a "Missing: …" tag flags any book lacking description, author bio, or cover
@@ -119,6 +121,7 @@ Rates are admin-configurable at runtime (defaults: Silver $9.99 · Gold $19.99 �
 - **Animated book loader** — an open-book CSS animation (two page halves with text lines and a turning page) is shown while initial data is loading, replacing a plain spinner
 - **Custom dropdowns** — all `<select>` elements are replaced by a theme-aware `Select` component; chevron rotates on open, closes on outside click, fully styled with CSS custom properties across all 10 theme combinations
 - **Placeholder text** — all input and textarea placeholders use `--text-5` so they adapt to every theme rather than using browser-default grey
+- **Rounded, shadcn-style corners** — buttons, inputs, cards, modals, badges, and dropdowns all use a shared `--radius` CSS custom property scale (`sm`/`md`/`lg`/`xl`) instead of sharp edges, for a softer, more modern look consistent across every theme
 
 ## Seed Data Script
 

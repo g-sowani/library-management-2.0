@@ -40,6 +40,8 @@ def _migrate_db():
         'author_bio': 'TEXT',
         'cover_url': 'VARCHAR(500)',
         'cover_color': 'VARCHAR(7)',
+        'gutenberg_id': 'INTEGER',
+        'gutenberg_text': 'TEXT',
     })
     add_missing_cols('user', {'avatar': 'TEXT'})
     add_missing_cols('post_reaction', {'created_at': 'DATETIME'})

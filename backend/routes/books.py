@@ -190,6 +190,94 @@ def _spawn_scrape(book):
     t.start()
 
 
+def _normalize_title(s):
+    return re.sub(r'[^a-z0-9]+', ' ', (s or '').lower()).strip()
+
+
+def _strip_accents(s):
+    import unicodedata
+    return ''.join(c for c in unicodedata.normalize('NFKD', s) if not unicodedata.combining(c))
+
+
+def _gutendex_lookup(title, author):
+    """Search Project Gutenberg (via the Gutendex API) for a free full-text match.
+
+    Searches by title only (Gutendex's search does poorly on combined
+    title+author strings) and confirms the result client-side: an exact
+    normalized title match is trusted on its own; a partial title match also
+    requires the author's surname to appear in the result's author list, so a
+    similarly (but not identically) titled, still-copyrighted book is never
+    mistaken for a public-domain one.
+    """
+    try:
+        q = urllib.parse.urlencode({'search': title})
+        url = f'https://gutendex.com/books?{q}'
+        req = urllib.request.Request(url, headers={'User-Agent': 'LibraryApp/1.0'})
+        with urllib.request.urlopen(req, timeout=7) as resp:
+            data = _json.loads(resp.read())
+    except Exception:
+        return None
+
+    norm_title = _normalize_title(title)
+    if not norm_title:
+        return None
+    author_surname = _strip_accents(author.strip().split()[-1]).lower() if author and author.strip() else ''
+
+    for result in data.get('results', []):
+        result_title = _normalize_title(result.get('title', ''))
+        if not result_title:
+            continue
+        if result_title == norm_title:
+            return result
+        authors_blob = _strip_accents(' '.join(a.get('name', '') for a in result.get('authors', []))).lower()
+        if author_surname and (norm_title in result_title or result_title in norm_title) and author_surname in authors_blob:
+            return result
+    return None
+
+
+def _gutenberg_text_url(formats):
+    for key in ('text/plain; charset=utf-8', 'text/plain; charset=us-ascii', 'text/plain'):
+        if key in formats:
+            return formats[key]
+    for k, v in formats.items():
+        if k.startswith('text/plain'):
+            return v
+    return None
+
+
+def _strip_gutenberg_boilerplate(text):
+    """Remove the standard Project Gutenberg license header/footer, keeping only the book body."""
+    start_re = re.compile(r'\*\*\*\s*START OF (?:THE|THIS) PROJECT GUTENBERG EBOOK.*?\*\*\*', re.IGNORECASE | re.DOTALL)
+    end_re = re.compile(r'\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG EBOOK.*?\*\*\*', re.IGNORECASE | re.DOTALL)
+    start_m = start_re.search(text)
+    end_m = end_re.search(text)
+    start = start_m.end() if start_m else 0
+    end = end_m.start() if end_m else len(text)
+    return text[start:end].strip()
+
+
+def _fetch_gutenberg_text(formats):
+    url = _gutenberg_text_url(formats)
+    if not url:
+        return None
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'LibraryApp/1.0'})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read().decode('utf-8', errors='ignore')
+    except Exception:
+        return None
+    return _strip_gutenberg_boilerplate(raw)
+
+
+def _ensure_gutenberg_checked(book):
+    """Lazily resolve and cache whether a book is available on Project Gutenberg."""
+    if book.gutenberg_id is not None:
+        return
+    match = _gutendex_lookup(book.title, book.author)
+    book.gutenberg_id = match['id'] if match else 0
+    db.session.commit()
+
+
 @books_bp.route('/books')
 @login_required
 def get_books():
@@ -259,6 +347,58 @@ def book_enrichment(book_id):
         'description': book.description or '',
         'author_bio': book.author_bio or '',
         'cover_url': book.cover_url or '',
+    })
+
+
+@books_bp.route('/books/<int:book_id>/gutenberg')
+@login_required
+def book_gutenberg(book_id):
+    """Lazily resolve (and cache) whether this book has a free full text on Project Gutenberg."""
+    book = db.session.get(Book, book_id)
+    if not book:
+        return jsonify({'error': 'Book not found'}), 404
+    _ensure_gutenberg_checked(book)
+    return jsonify({
+        'available': bool(book.gutenberg_id),
+        'gutenberg_id': book.gutenberg_id or None,
+    })
+
+
+@books_bp.route('/books/<int:book_id>/read')
+@login_required
+def book_read(book_id):
+    """Return the full Gutenberg text for a book the caller has borrowed."""
+    book = db.session.get(Book, book_id)
+    if not book:
+        return jsonify({'error': 'Book not found'}), 404
+
+    has_borrowed = Borrow.query.filter_by(user_id=session['user_id'], book_id=book_id).first()
+    if not has_borrowed:
+        return jsonify({'error': 'You must borrow this book to read it online'}), 403
+
+    _ensure_gutenberg_checked(book)
+    if not book.gutenberg_id:
+        return jsonify({'error': 'This book is not available for online reading'}), 404
+
+    if book.gutenberg_text is None:
+        try:
+            url = f'https://gutendex.com/books/{book.gutenberg_id}'
+            req = urllib.request.Request(url, headers={'User-Agent': 'LibraryApp/1.0'})
+            with urllib.request.urlopen(req, timeout=7) as resp:
+                detail = _json.loads(resp.read())
+            text = _fetch_gutenberg_text(detail.get('formats', {}))
+        except Exception:
+            text = None
+        book.gutenberg_text = text or ''
+        db.session.commit()
+
+    if not book.gutenberg_text:
+        return jsonify({'error': 'This book is not available for online reading'}), 404
+
+    return jsonify({
+        'text': book.gutenberg_text,
+        'title': book.title,
+        'author': book.author,
     })
 
 

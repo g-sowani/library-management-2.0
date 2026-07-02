@@ -61,10 +61,14 @@ backend/
                       #   avatar: TEXT nullable — base64 data-URL stored in DB; NULL = no photo
                       #   has a joined-load `membership` relationship → Membership
     book.py           # Book (id, title, author, isbn, genre, total/available_copies,
-                      #        description, author_bio, cover_url, cover_color)
+                      #        description, author_bio, cover_url, cover_color,
+                      #        gutenberg_id, gutenberg_text)
                       #   description/author_bio: NULL = never scraped, '' = tried/no data, text = data
                       #   cover_color: VARCHAR(7) nullable — dominant mid-tone hex colour of cover image
                       #     (e.g. '#a83c2e'); NULL = not yet extracted; set during scrape via Pillow
+                      #   gutenberg_id: NULL = never checked against Project Gutenberg, 0 = checked/
+                      #     no public-domain match, positive int = Gutenberg book id (free full text
+                      #     available); gutenberg_text: cached plain-text body once fetched (nullable)
     borrow.py         # Borrow (user↔book, borrow/due/return dates, fine, fine_paid)
     reservation.py    # Reservation (user↔book, created_at, status: pending|ready)
     book_log.py       # BookLog (audit log per book — action, details, admin, timestamp)
@@ -102,13 +106,22 @@ backend/
                       #   + GET enrichment (lazy scrape) + POST scrape (admin re-scrape)
                       #   + POST scrape-all (admin bulk re-scrape with sequential per-book processing)
                       #   + POST ai-search — natural-language book search via Groq
+                      #   + GET gutenberg (lazy Project Gutenberg match) + GET read (full text)
                       #   book list includes reservation_count, avg_rating, rating_count,
-                      #   description, author_bio, cover_url, cover_color per book
+                      #   description, author_bio, cover_url, cover_color, gutenberg_id per book
                       #   _scrape_book_data() — Open Library scraper (description, bio, cover)
                       #   _extract_dominant_color(cover_url) — downloads cover image, resizes to
                       #     64×64 via Pillow, bins mid-tone pixels (skips near-white/near-black),
                       #     returns most-frequent bin as '#rrggbb'; called after every scrape
                       #   _scrape_and_store() — background thread helper (called on add_book)
+                      #   _gutendex_lookup(title, author) — searches gutendex.com by title only
+                      #     (combined title+author queries perform poorly); trusts an exact
+                      #     normalized-title match on its own, otherwise requires the author's
+                      #     surname (accent-stripped) to appear in the result's author list —
+                      #     prevents a still-copyrighted book with a similar title (e.g. "1984",
+                      #     "Dune") from being mistaken for a public-domain match
+                      #   _fetch_gutenberg_text() / _strip_gutenberg_boilerplate() — downloads the
+                      #     plain-text format and trims the standard PG license header/footer
     borrows.py        # /api/borrow/, /api/return/, /api/my-borrows, /api/my-fines
                       #   borrow enforces per-tier active-borrow limit (Silver 1, Gold 3, Family 1)
                       #   return accepts optional JSON body with rating/review
@@ -149,7 +162,7 @@ backend/
 ### DB migrations
 `app.py` runs `_migrate_db()` on every startup. It uses a reusable `add_missing_cols(table, additions)` helper that calls `ALTER TABLE` for any column in models not yet present in the SQLite file. New tables (e.g. `community`, `community_membership`) are created automatically by `db.create_all()`. `_seed_memberships()` runs on every startup and silently no-ops when all members already have a tier.
 
-Tables currently patched by `_migrate_db()`: `book` (genre, description, author_bio, cover_url, cover_color), `user` (avatar), `post_reaction` (created_at), `comment_reaction` (created_at).
+Tables currently patched by `_migrate_db()`: `book` (genre, description, author_bio, cover_url, cover_color, gutenberg_id, gutenberg_text), `user` (avatar), `post_reaction` (created_at), `comment_reaction` (created_at).
 
 ### Fine calculation
 `Borrow.calculate_fine()` reads `fine_per_day` live from the `setting` table. `borrow_days` (loan duration) is also read from `setting` at borrow time. Both are configurable by the admin at runtime.
@@ -176,8 +189,10 @@ frontend/src/
                             #   theme combinations (2 base + 4 reader × 2 modes); combined selectors
                             #   have specificity 20 vs single-attribute 10 so reader+mode always wins
   hooks/
-    useToast.js             # Toast notification hook — returns { toasts, toast(msg, type?) }
+    useToast.js             # Toast notification hook — returns { toasts, toast(msg, type?, action?) }
                             #   toast(msg) defaults type to 'success'; pass 'error' for red variant
+                            #   optional action = { label, onClick } renders a clickable link inside
+                            #     the toast (e.g. borrow toast's "View in My Profile")
                             #   each toast auto-expires after 2.8 s; IDs are monotonic so stacked
                             #   toasts each dismiss independently
   components/
@@ -219,6 +234,9 @@ frontend/src/
                             #   Renders a .toast-stack (fixed bottom-right, flex-column, 8px gap)
                             #   .toast-success uses --text/--bg (theme-aware); .toast-error is red
                             #   Each toast animates in with toast-in (fade + translateY)
+                            #   Optional per-toast action renders a .toast-action underlined button
+                            #     (.toast-stack has pointer-events:none; .toast itself re-enables
+                            #     pointer-events:auto so the action button stays clickable)
   pages/
     (MemberDashboard.js exports one component but defines several helpers inline:)
     BookLoader              # Full-page animated CSS loader: open book with two halves
@@ -322,13 +340,40 @@ frontend/src/
                             #     PUT /api/auth/avatar; camera icon overlay on hover
                             #   Membership info card — tier badge, borrow limit, monthly rate,
                             #     family group members (family tier only)
-                            #   My Borrowed Books — active borrows with Return button → Return+Review modal
+                            #   My Borrowed Books — active borrows in a clickable .profile-table
+                            #     row (opens the Borrowed Book Card); Return button inside the row
+                            #     stopPropagation's so it doesn't also open the card
                             #   My Reservations — queue position or ready status, cancel button
                             #   My Fines — fine amount and paid/unpaid status
                             #   All three tables use .profile-table with center-aligned columns
                             #   Donate a Book section — Donate button opens modal; table of past
                             #     donations with status, estimated value, and credit earned;
                             #     total credits earned card (approved donations only)
+                            #
+                            # Borrowed Book Card (opened by clicking a row in My Borrowed Books):
+                            #   Same hero-modal styling as the catalogue Book Detail modal — cover,
+                            #     cover-colour-tinted hero via computeCoverPalette() (factored out of
+                            #     the original inline useMemo so both modals share the same palette
+                            #     derivation and WCAG-safe text/label colours)
+                            #   Hero rows: Author, Genre, Borrowed on, Due date, Status badge, and
+                            #     (if overdue) Fine so far; description below the hero as in the
+                            #     catalogue modal
+                            #   Action row: Return (closes the card, opens the Return+Review modal)
+                            #     and — only once GET /books/:id/gutenberg resolves gutenberg_id > 0 —
+                            #     a "Read Online" button; a muted note explains when a book was
+                            #     checked and found unavailable (gutenberg_id === 0)
+                            #   Gutenberg availability is resolved lazily the first time a card opens
+                            #     for a book whose gutenberg_id is still null (mirrors the description/
+                            #     cover_url lazy-scrape pattern) and is cached onto the `books` state
+                            #     entry so re-opening the same book's card never re-checks
+                            #
+                            # Online reader (Read Online button): full-screen overlay
+                            #   (.reader-overlay/.reader-panel, z-index above the standard modal)
+                            #   fetching GET /books/:id/read on open; shows the cached/cleaned
+                            #   Gutenberg plain text in a serif, pre-wrapped .reader-text pane;
+                            #   3 inline "A" buttons switch font size (sm/md/lg); relies entirely on
+                            #   existing --bg/--text CSS custom properties so it follows whatever
+                            #   appearance + reader theme is currently active, with no extra wiring
                             # Return modal: optional 5-star picker, review text, anonymous toggle
                             # Donate modal: title, author, ISBN (optional), genre (optional),
                             #   condition — all dropdowns use the custom Select component
@@ -338,6 +383,9 @@ frontend/src/
                             #   borrow, return (with/without review), reserve, cancel reservation,
                             #   avatar upload, donation submit, join/leave community,
                             #   create community, create post
+                            #   the borrow toast carries an action = { label: "View in My
+                            #     Profile", onClick } that closes the book detail modal and
+                            #     switches to the My Profile tab
                             #
                             # Community tab (Gold members only; non-gold sees a locked card):
                             #   3-level view: list → community → post
@@ -453,6 +501,8 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 | GET | `/api/recommendations` | member+ | Top 8 content-based recommendations for the caller |
 | GET | `/api/collaborative-recommendations` | member+ | Top 8 collaborative-filtered recommendations for the caller |
 | POST | `/api/books/ai-search` | member+ | Natural-language search via Groq; body `{ query }` returns up to 8 matched books with a `reason` field per book |
+| GET | `/api/books/:id/gutenberg` | member+ | Lazily resolves (and caches) whether the book has a free full text on Project Gutenberg; returns `{ available, gutenberg_id }` |
+| GET | `/api/books/:id/read` | member (must have borrowed the book) | Returns the full Gutenberg plain text for online reading — `{ text, title, author }`; 403 if never borrowed, 404 if not on Gutenberg |
 
 ### Borrows
 | Method | Path | Auth | Description |
@@ -733,4 +783,11 @@ Gold members can create communities, which go through admin approval before beco
 - **API key in `Config`, not hardcoded** — `GROQ_API_KEY` is read from the environment (`os.environ.get`) with the key as the fallback default, making it easy to rotate without a code change.
 - **Custom Select replaces all native dropdowns** — `Select.js` parses `<option>` children via `React.Children.toArray` and fires a synthetic `{ target: { value } }` event so all existing onChange handlers work without modification. Two size variants: default (form-group, full-width) and `.filter-select` (compact inline). Fully theme-aware via CSS custom properties.
 - **Toast system via `useToast` hook** — a module-level counter generates monotonic IDs so concurrent toasts each auto-dismiss independently after 2.8 s. Success toasts use `--text`/`--bg` (inverted, theme-safe); error toasts are hardcoded red. Both dashboards share the same hook; the `Toast` component is rendered once at the root of each page.
+- **Toast actions are optional, not a new component** — `toast(msg, type, { label, onClick })` keeps every existing call site (which only ever passed `msg`/`type`) working unchanged. `.toast-stack` stays `pointer-events: none` so it never blocks clicks over the page; only the individual `.toast` re-enables pointer events, so the action link is clickable without the invisible stack container intercepting clicks elsewhere.
 - **Genre pill deselect** — clicking an active genre pill toggles it off (sets `selectedGenre` to `""`) rather than requiring the user to click the "All" pill. Same behaviour as many filter UIs users already know.
+- **Shared `--radius` scale over per-component values** — `App.css` defines `--radius` (10px) plus derived `--radius-sm/md/lg/xl` (6/8/10/16px) in `:root` and every bordered surface (buttons, inputs, cards, modals, badges, dropdowns) references one of these instead of a hardcoded pixel value. Keeps corner rounding visually consistent across all 10 theme combinations and makes a future global radius change a one-line edit.
+- **Gutenberg matching is title-first, author-confirmed** — searching Gutendex with a combined "title author" query performs badly (diacritics like "Brontë" vs "Bronte", or "Dostoevsky" vs "Dostoyevsky" in the query itself return zero results), so the search call uses the title alone. A normalized exact-title match is trusted on its own; anything weaker (partial/substring title match) additionally requires the book's author surname (accent-stripped) to appear in the candidate's author list. This reliably found free texts for classics already in the catalogue (Pride and Prejudice, Dracula, Anna Karenina, Jane Eyre, Wuthering Heights, Crime and Punishment, The Great Gatsby) while correctly rejecting still-copyrighted titles (1984, Dune, The Hobbit) with no false positives observed.
+- **Gutenberg availability and text are cached on the `Book` row, not re-fetched per request** — `gutenberg_id` (None/0/id) and `gutenberg_text` follow the same nullable-sentinel lazy-fetch pattern already used for `description`/`author_bio`/`cover_url`, so Gutendex/gutenberg.org are only ever called once per book, on demand, the first time a member opens that book's Borrowed Book Card.
+- **Reading access is gated on having ever borrowed the book** — `GET /books/:id/read` checks for any `Borrow` row for `(user_id, book_id)`, not just an active one, so a member retains online-reading access to a public-domain book after returning it.
+- **Reader pane reuses the app's existing theme CSS variables** — the full-screen reader overlay (`.reader-overlay`/`.reader-panel`/`.reader-text`) is styled entirely with `var(--bg)`/`var(--text)` etc. rather than its own theme, so it automatically renders in whichever of the 10 appearance/reader-theme combinations (sepia, forest, ocean, rose, light/dark) the member currently has active, with zero extra wiring.
+- **`computeCoverPalette`/`heroStylesFor` factored out of the Book Detail modal** — the cover-colour-derived hero palette and its WCAG-safe label/subtle/faint/row style computation were originally an inline `useMemo` scoped to `selectedBook`; both were extracted to module-level functions so the new Borrowed Book Card modal (keyed on a different selected item, `selectedBorrowBook`) can produce an identical hero treatment without duplicating the contrast-ratio math.

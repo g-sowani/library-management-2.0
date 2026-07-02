@@ -37,6 +37,13 @@
   /* Misc */
   --overlay:            rgba(0, 0, 0, 0.3);
   --shadow-dropdown:    0 4px 20px rgba(0, 0, 0, 0.1);
+
+  /* Radius (shadcn-style scale) */
+  --radius:    0.625rem;                  /* 10px */
+  --radius-sm: calc(var(--radius) - 4px); /* 6px  */
+  --radius-md: calc(var(--radius) - 2px); /* 8px  */
+  --radius-lg: var(--radius);             /* 10px */
+  --radius-xl: calc(var(--radius) + 6px); /* 16px */
 }
 
 /* ── Dark base ──────────────────────────────────────────────────────────────── */
@@ -499,6 +506,7 @@ textarea::placeholder {
   width: 360px;
   padding: 48px 32px;
   border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
 .login-box h1 {
@@ -529,6 +537,7 @@ textarea::placeholder {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
   font-size: 0.95rem;
   background: var(--bg);
   color: var(--text);
@@ -550,6 +559,7 @@ textarea::placeholder {
 .btn {
   padding: 10px 20px;
   border: 1px solid var(--btn-border);
+  border-radius: var(--radius-md);
   background: var(--btn-bg);
   color: var(--btn-color);
   font-size: 0.9rem;
@@ -634,6 +644,7 @@ textarea::placeholder {
 .search-bar {
   padding: 6px 12px;
   border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
   font-size: 0.875rem;
   width: 220px;
   background: var(--bg);
@@ -822,6 +833,8 @@ textarea::placeholder {
   right: 0;
   background: var(--bg);
   border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
   min-width: 230px;
   z-index: 300;
   box-shadow: var(--shadow-dropdown);
@@ -937,7 +950,7 @@ textarea::placeholder {
   font-family: inherit;
   font-size: 0.68rem;
   color: var(--text-4);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: background 0.1s, color 0.1s, border-color 0.1s;
   line-height: 1;
 }
@@ -962,6 +975,7 @@ textarea::placeholder {
 .theme-toggle {
   display: flex;
   border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -1087,6 +1101,9 @@ td {
 .profile-table th:nth-child(4),
 .profile-table td:nth-child(4) { width: 14%; }
 
+.profile-row-clickable { cursor: pointer; }
+.profile-row-clickable:hover td { background: var(--bg-raised); }
+
 /* ── Badges ─────────────────────────────────────────────────────────────────── */
 
 .badge {
@@ -1095,6 +1112,7 @@ td {
   font-size: 0.75rem;
   font-weight: 500;
   border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 
 .badge-overdue {
@@ -1144,6 +1162,8 @@ td {
   padding: 32px;
   width: 400px;
   border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
 }
 
 .modal-header {
@@ -1244,6 +1264,97 @@ td {
   margin-top: 20px;
 }
 
+/* ── Online reader (Gutenberg) ──────────────────────────────────────────────── */
+
+.reader-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 150;
+}
+
+.reader-panel {
+  background: var(--bg);
+  width: 760px;
+  max-width: 92vw;
+  height: 88vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.reader-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 28px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.reader-header h3 {
+  margin: 0 0 2px;
+  font-size: 1.1rem;
+}
+
+.reader-author {
+  font-size: 0.85rem;
+  color: var(--text-5);
+}
+
+.reader-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reader-font-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-5);
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.reader-font-btn-lg { font-size: 0.95rem; }
+.reader-font-btn-xl { font-size: 1.15rem; }
+
+.reader-font-btn:hover { color: var(--text); }
+.reader-font-btn:disabled {
+  color: var(--text);
+  border-color: var(--text-5);
+  cursor: default;
+}
+
+.reader-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 40px 48px;
+}
+
+.reader-text {
+  max-width: 640px;
+  margin: 0 auto;
+  white-space: pre-wrap;
+  font-family: Georgia, "Times New Roman", serif;
+  color: var(--text);
+  line-height: 1.8;
+}
+
+.reader-text-sm { font-size: 0.9rem; }
+.reader-text-md { font-size: 1.05rem; }
+.reader-text-lg { font-size: 1.25rem; }
+
 /* ── Empty state ────────────────────────────────────────────────────────────── */
 
 .empty {
@@ -1272,6 +1383,7 @@ td {
   flex-shrink: 0;
   object-fit: cover;
   border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   align-self: flex-start;
 }
 
@@ -1281,6 +1393,8 @@ td {
   flex-shrink: 0;
   align-self: flex-start;
   border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
   display: flex;
 }
 
@@ -1351,7 +1465,7 @@ td {
   margin-bottom: 20px;
   padding: 16px;
   background: var(--bg-raised);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
 }
 
 .member-stat {
@@ -1433,6 +1547,7 @@ td {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
   font-family: inherit;
   font-size: 0.9rem;
   resize: vertical;
@@ -1546,6 +1661,7 @@ td {
   gap: 3px;
   padding: 10px 16px;
   border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text);
   cursor: pointer;
@@ -1601,6 +1717,7 @@ td {
   width: 34px;
   height: 34px;
   border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text-5);
   cursor: pointer;
@@ -1676,6 +1793,7 @@ td {
   flex: 1;
   padding: 10px 14px;
   border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text);
   font-size: 0.95rem;
@@ -1697,6 +1815,7 @@ td {
   align-self: stretch;
   padding: 0 12px;
   border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text-4);
   font-size: 0.8rem;
@@ -1752,6 +1871,7 @@ td {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text);
   font-size: 0.95rem;
@@ -1800,8 +1920,10 @@ td {
   right: 0;
   background: var(--bg);
   border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
   z-index: 300;
   max-height: 240px;
+  overflow-x: hidden;
   overflow-y: auto;
   box-shadow: var(--shadow-dropdown);
 }
@@ -1952,6 +2074,8 @@ td {
   width: 190px;
   padding: 14px 16px;
   border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
   background: var(--bg);
   text-align: left;
   cursor: pointer;
@@ -2049,6 +2173,31 @@ td {
   color: var(--text-3);
 }
 
+/* ── Large card view modifier ─────────────────────────────────────────────────
+   Applied instead of the default 190px rec-card when the user switches
+   Available Books to the large-card view; container also switches to
+   .library-grid (CSS grid) in that mode, so width:100% fills the grid cell. */
+.rec-card-large {
+  width: 100%;
+  flex-shrink: 1;
+}
+
+.rec-card-large .rec-card-cover {
+  height: 300px;
+}
+
+.rec-card-large .rec-card-title {
+  font-size: 1rem;
+}
+
+.rec-card-large .rec-card-author {
+  font-size: 0.85rem;
+}
+
+.rec-card-large .rec-card-reason {
+  font-size: 0.75rem;
+}
+
 /* ── Admin book cards ───────────────────────────────────────────────────────── */
 .admin-book-card {
   width: 210px;
@@ -2106,6 +2255,7 @@ td {
   letter-spacing: 0.4px;
   padding: 2px 6px;
   border: 1px solid var(--text);
+  border-radius: var(--radius-sm);
   color: var(--text);
   white-space: nowrap;
   flex-shrink: 0;
@@ -2216,6 +2366,7 @@ td {
   scroll-snap-align: start;
   position: relative;
   overflow: hidden;
+  border-radius: var(--radius-lg);
 }
 
 /*
@@ -2302,7 +2453,8 @@ td {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 1px;
-  border: 1px solid var(--border);
+  /* border: 1px solid var(--border); */
+  overflow: hidden;
 }
 
 .home-book-card {
@@ -2310,6 +2462,7 @@ td {
   flex-direction: column;
   background: var(--bg);
   border-right: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   text-align: left;
   font-family: inherit;
@@ -2400,6 +2553,7 @@ td {
   object-position: center top;
   flex-shrink: 0;
   border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
   display: block;
 }
 
@@ -2444,6 +2598,7 @@ td {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border: 1px solid;
+  border-radius: var(--radius-sm);
 }
 
 .membership-badge-silver {
@@ -2490,6 +2645,7 @@ td {
   gap: 24px;
   padding: 16px 20px;
   border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
   background: var(--bg-raised);
   margin-bottom: 28px;
   flex-wrap: wrap;
@@ -2543,6 +2699,7 @@ td {
   min-width: 180px;
   padding: 16px 18px;
   border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2601,6 +2758,7 @@ td {
 
 .community-card {
   border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
   padding: 16px 20px;
   margin-bottom: 12px;
   background: var(--bg);
@@ -2643,6 +2801,7 @@ td {
   letter-spacing: 0.4px;
   padding: 1px 6px;
   border: 1px solid #c8922a;
+  border-radius: var(--radius-sm);
   color: #8a6000;
   background: #fffbf0;
 }
@@ -2687,6 +2846,7 @@ td {
 
 .post-card {
   border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
   padding: 16px 20px;
   margin-bottom: 10px;
   cursor: pointer;
@@ -2735,6 +2895,7 @@ td {
 
 .post-detail {
   border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
   padding: 24px;
   margin-bottom: 28px;
   background: var(--bg);
@@ -2834,6 +2995,7 @@ td {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
   font-family: inherit;
   font-size: 0.9rem;
   resize: vertical;
@@ -2937,11 +3099,16 @@ td {
 }
 
 .toast {
+  display: flex;
+  align-items: center;
+  gap: 14px;
   padding: 10px 18px;
   font-size: 0.85rem;
   font-weight: 500;
   max-width: 320px;
+  border-radius: var(--radius-md);
   animation: toast-in 0.18s ease;
+  pointer-events: auto;
 }
 
 .toast-success {
@@ -2954,6 +3121,25 @@ td {
   color: #fff;
 }
 
+.toast-action {
+  flex-shrink: 0;
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  opacity: 0.9;
+}
+
+.toast-action:hover {
+  opacity: 1;
+}
+
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -2964,6 +3150,20 @@ td {
 .btn-group {
   display: inline-flex;
   gap: 0;
+}
+
+.btn-group > .btn {
+  border-radius: 0;
+}
+
+.btn-group > .btn:first-child {
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+}
+
+.btn-group > .btn:last-child {
+  border-top-right-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
 }
 
 .btn-group > .btn:not(:first-child) {
@@ -3079,7 +3279,7 @@ td {
   max-height: 220px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   font-size: 0.82rem;
 }
 
@@ -3156,7 +3356,7 @@ td {
   line-height: 1.55;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text);
   box-sizing: border-box;
@@ -3172,7 +3372,7 @@ td {
 .cover-upload-tabs {
   display: flex;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   margin-bottom: 16px;
 }
@@ -3214,28 +3414,36 @@ td {
   max-width: 140px;
   max-height: 180px;
   object-fit: contain;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   margin-top: 12px;
 }
 
-/* ── Wishlist grid (My Profile tab) ── */
-.wishlist-grid {
+/* ── Library card grid (My Library tab: borrowed books, reservations, wishlist) ── */
+.library-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 12px;
   margin-bottom: 8px;
 }
 
-.wishlist-card {
+.library-card {
   display: flex;
   flex-direction: column;
   background: var(--bg);
   border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
-.wishlist-card-cover-btn {
+/* Modifier for use inside a horizontal BookStrip (.rec-strip is display:flex,
+   so cards need an explicit width instead of the grid's 100%-of-cell sizing) */
+.library-card-strip {
+  width: 190px;
+  flex-shrink: 0;
+}
+
+.library-card-cover-btn {
   display: flex;
   width: 100%;
   aspect-ratio: 2 / 3;
@@ -3247,7 +3455,7 @@ td {
   border-bottom: 1px solid var(--border-subtle, var(--border));
 }
 
-.wishlist-card-cover {
+.library-card-cover {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -3256,12 +3464,12 @@ td {
   transition: opacity 0.15s;
 }
 
-.wishlist-card-cover-btn:hover .wishlist-card-cover {
+.library-card-cover-btn:hover .library-card-cover {
   opacity: 0.88;
 }
 
 
-.wishlist-card-info {
+.library-card-info {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -3269,7 +3477,11 @@ td {
   flex: 1;
 }
 
-.wishlist-card-title {
+.library-card-info .badge {
+  align-self: flex-start;
+}
+
+.library-card-title {
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--text);
@@ -3281,7 +3493,12 @@ td {
   overflow: hidden;
 }
 
-.wishlist-card-author {
+.library-card-author {
+  font-size: 0.72rem;
+  color: var(--text-4);
+}
+
+.library-card-meta {
   font-size: 0.72rem;
   color: var(--text-4);
 }
@@ -3292,12 +3509,12 @@ td {
   font-weight: 600;
   background: #e8f5e9;
   color: #2e7d32;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 2px 6px;
   align-self: flex-start;
 }
 
-.wishlist-card-actions {
+.library-card-actions {
   display: flex;
   gap: 6px;
   margin-top: auto;

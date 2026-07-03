@@ -10,7 +10,7 @@ A full-stack library management app. Admins manage the book catalogue, monitor b
 | Layer | Technology |
 |---|---|
 | Backend | Python 3 · Flask 3 · SQLAlchemy · SQLite |
-| Frontend | React 18 (Create React App) · Axios |
+| Frontend | React 18 (Create React App) · Axios · lucide-react (icons, dock nav only — see SidebarNav.js) |
 | Auth | Flask session cookies (signed, `withCredentials`) |
 | Metadata | Open Library API (urllib) · Pillow (dominant colour extraction) |
 | AI Search | Groq API (`groq` Python SDK) · `llama-3.1-8b-instant` |
@@ -84,11 +84,16 @@ backend/
                       #   created_at)
                       #   TIER_LIMITS = {silver:1, gold:3, family:1} (active concurrent borrows)
                       #   borrow_limit() helper reads TIER_LIMITS; to_dict() includes borrow_limit
+    wishlist.py       # Wishlist (user_id FK, book_id FK, added_at) — unique on (user_id, book_id);
+                      #   to_dict() denormalizes book_title/author/cover/cover_color/available
+                      #   so the My Library tab never needs a second lookup against `books` state
     community.py      # 6 models for the Gold-member community feature:
                       #   Community (id, name, description, creator_id FK, status: pending|approved|rejected,
-                      #     admin_notes, created_at)
+                      #     admin_notes, created_at, banner_image, icon_image)
+                      #     banner_image/icon_image: base64 data URLs, nullable — None = not set
                       #   CommunityMembership (community_id, user_id, role: member|moderator, joined_at)
-                      #   CommunityPost (community_id, author_id, title, content, created_at)
+                      #   CommunityPost (community_id, author_id, title, content, images, created_at)
+                      #     images: db.JSON column, list of up to 3 base64 data URLs; None/[] = no images
                       #   CommunityComment (post_id, author_id, parent_id FK→self, content, created_at)
                       #     — self-referential for unlimited reply depth
                       #   PostReaction (post_id, user_id, emoji VARCHAR, created_at)
@@ -126,6 +131,9 @@ backend/
                       #   borrow enforces per-tier active-borrow limit (Silver 1, Gold 3, Family 1)
                       #   return accepts optional JSON body with rating/review
     reservations.py   # /api/reserve/, /api/cancel-reservation/, /api/my-reservations
+    wishlist.py       # /api/my-wishlist GET — caller's wishlist, newest first
+                      # /api/wishlist/:bookId POST — add (409 if already in list)
+                      # /api/wishlist/:bookId DELETE — remove (404 if not in list)
     admin.py          # /api/admin/ — borrows, fines, policy GET/PUT, members GET/POST,
                       #   memberships/pricing GET/PUT, members/<id>/membership PUT
                       #   PUT /api/admin/fines/<borrow_id>/mark-paid — mark a fine as paid
@@ -141,12 +149,22 @@ backend/
     communities.py    # Gold-member community endpoints; _gold_user() enforces tier
                       # GET  /api/communities              — all approved communities
                       # POST /api/communities              — create community (Gold; status=pending)
+                      #   body may include banner_image/icon_image (base64 data URLs, validated by
+                      #   _validate_image() — same data:image/ prefix + ~2MB rules as the avatar route)
+                      # PUT  /api/communities/:id          — moderator-only; updates description/
+                      #   banner_image/icon_image (name is immutable via this endpoint)
                       # GET  /api/my-communities           — communities the caller has joined
                       # POST /api/communities/:id/join     — join an approved community
                       # DEL  /api/communities/:id/leave    — leave a community
-                      # GET  /api/communities/:id/posts    — list posts (members only)
-                      # POST /api/communities/:id/posts    — create post
+                      # GET  /api/communities/:id/posts    — list posts (members only); each post
+                      #   includes its top-level comments inline (_post_with_comments() helper,
+                      #   shared with the single-post endpoint) since the member UI renders every
+                      #   post as a full feed item, not a summary-then-detail flow
+                      # POST /api/communities/:id/posts    — create post; body may include
+                      #   images: [] (up to 3 base64 data URLs, each validated via _validate_image())
                       # GET  /api/communities/:id/posts/:pid — single post with threaded comments
+                      #   (used to refresh one feed item after a comment/reply/reaction, not for
+                      #   navigation — there is no separate post detail page)
                       # POST /api/communities/:id/posts/:pid/comments — add comment or reply
                       #   (parent_id in body = reply to that comment, any depth)
                       # POST /api/communities/:id/posts/:pid/react — toggle post reaction
@@ -156,13 +174,15 @@ backend/
                       # GET  /api/admin/communities        — all communities for admin review
                       # PUT  /api/admin/communities/:id/approve — approve + auto-join creator as moderator
                       # PUT  /api/admin/communities/:id/reject  — reject with optional reason
+                      # DEL  /api/admin/communities/:id    — permanently delete a community (cascades
+                      #   to its memberships/posts/comments/reactions via SQLAlchemy relationships)
     __init__.py       # register_blueprints()
 ```
 
 ### DB migrations
 `app.py` runs `_migrate_db()` on every startup. It uses a reusable `add_missing_cols(table, additions)` helper that calls `ALTER TABLE` for any column in models not yet present in the SQLite file. New tables (e.g. `community`, `community_membership`) are created automatically by `db.create_all()`. `_seed_memberships()` runs on every startup and silently no-ops when all members already have a tier.
 
-Tables currently patched by `_migrate_db()`: `book` (genre, description, author_bio, cover_url, cover_color, gutenberg_id, gutenberg_text), `user` (avatar), `post_reaction` (created_at), `comment_reaction` (created_at).
+Tables currently patched by `_migrate_db()`: `book` (genre, description, author_bio, cover_url, cover_color, gutenberg_id, gutenberg_text), `user` (avatar), `post_reaction` (created_at), `comment_reaction` (created_at), `community` (banner_image, icon_image), `community_post` (images).
 
 ### Fine calculation
 `Borrow.calculate_fine()` reads `fine_per_day` live from the `setting` table. `borrow_days` (loan duration) is also read from `setting` at borrow time. Both are configurable by the admin at runtime.
@@ -175,6 +195,13 @@ Tables currently patched by `_migrate_db()`: `book` (genre, description, author_
 frontend/src/
   api.js                    # Axios instance — baseURL: /api, withCredentials: true
   constants.js              # GENRES list (shared across add/edit forms and filters)
+  styles/
+    fonts.css               # @import for Instrument Serif (display) + Inter (body) from Google Fonts;
+                            #   exposes --font-display / --font-body custom properties; used only by
+                            #   the public LandingPage, not the authenticated app (which keeps the
+                            #   system font stack defined in App.css)
+    theme.css               # fade-rise / fade-rise-delay / fade-rise-delay-2 entrance-animation
+                            #   classes (opacity 0→1, translateY 20px→0) used by the landing page hero
   context/
     AuthContext.js          # AuthProvider + useAuth() — user, login(), logout(), updateUser()
                             # Axios interceptor: 401 clears user; 403 re-fetches /auth/me
@@ -192,7 +219,7 @@ frontend/src/
     useToast.js             # Toast notification hook — returns { toasts, toast(msg, type?, action?) }
                             #   toast(msg) defaults type to 'success'; pass 'error' for red variant
                             #   optional action = { label, onClick } renders a clickable link inside
-                            #     the toast (e.g. borrow toast's "View in My Profile")
+                            #     the toast (e.g. borrow toast's "View in My Library")
                             #   each toast auto-expires after 2.8 s; IDs are monotonic so stacked
                             #   toasts each dismiss independently
   components/
@@ -237,7 +264,114 @@ frontend/src/
                             #   Optional per-toast action renders a .toast-action underlined button
                             #     (.toast-stack has pointer-events:none; .toast itself re-enables
                             #     pointer-events:auto so the action button stays clickable)
+    ProfileMenu.js          # Avatar button + dropdown (appearance, reader themes, sign out);
+                            #   Props: username, avatar, tier, onLogout, wrapperClassName
+                            #   Rendered fixed top-right on both dashboards (Admin's TopBar renders
+                            #   it internally; MemberDashboard renders it directly, positioned via
+                            #   the .topbar-standalone-profile wrapperClassName) so the dropdown
+                            #   logic (icons, theme wiring, outside-click close) isn't duplicated
+    SidebarNav.js           # Primary member nav — a macOS-style floating "dock": a horizontal
+                            #   pill fixed to the bottom-center of the viewport, icons only
+                            #   (lucide-react: Home/BookOpen/Library/Users/UserCircle keyed by tab
+                            #   id), hover-lift + scale animation per item, active tab shown via a
+                            #   small dot beneath its icon (no persistent label — label appears in
+                            #   a tooltip bubble above the icon on hover/focus)
+                            #   Props: tabs, active, onChange, badges — same shape NavTabs takes;
+                            #   badges renders a small red count pill on the icon's corner
+                            #   Auto-hide: a window `mousemove` listener toggles a `visible` state
+                            #   on/off based on distance from the bottom edge (REVEAL_ZONE = 110px);
+                            #   .dock-nav slides down (translateY) and fades out when not visible.
+                            #   Starts visible on mount so first-time users see the nav immediately.
+                            #   .dock-nav:focus-within forces it visible for keyboard tabbing, and
+                            #   an `(hover: none)` media query forces it always-visible on touch
+                            #   devices, since cursor-proximity has no touch equivalent
+                            #   This is the one place in the app that uses an icon library — every
+                            #   other icon (ReactionIcon, BookStrip's chevrons, etc.) is a hand-
+                            #   rolled inline SVG; lucide-react was added specifically for this dock
   pages/
+    LandingPage.js           # Public marketing landing page, served at "/" for logged-out visitors
+                            #   (logged-in visitors hitting "/" are redirected to /dashboard, which
+                            #     the "/*" wildcard resolves into the right dashboard by role)
+                            #   Fullscreen hero with a looping fade-in/fade-out background video —
+                            #     custom useEffect + useRef + requestAnimationFrame loop (fades 0.5s
+                            #     in/out around the video's currentTime/duration, then on `ended`
+                            #     drops opacity to 0, waits 100ms, resets currentTime, plays again);
+                            #     NOT the native `loop` attribute, so the loop point is invisible
+                            #   Video layer is `position: fixed` (not absolute) so it stays pinned to
+                            #     the viewport while the hero/catalogue/about sections scroll over it —
+                            #     the "3D" parallax effect; a white→transparent→white gradient overlay
+                            #     keeps hero text legible against it
+                            #   Nav: logo "The Athenaeum", Home / About / Community / Catalogue /
+                            #     Reach Us anchor links, in the same order as the sections appear on
+                            #     the page (only Home/About/Community/Catalogue have matching sections);
+                            #     no nav CTA button (removed per design pass)
+                            #   Hero: headline + description + "Start Reading" CTA → navigate('/login')
+                            #   Section order (top to bottom): Hero → About → Community → Catalogue
+                            #   About section (#about) — a one-at-a-time "roller" carousel of the 6
+                            #     member-facing services (Borrow/Reserve/AI Search/Personalised Picks/
+                            #     Communities/Donate), reusing the existing /service_*.jpg images from
+                            #     public/ with landing-page-flavoured copy; the active card is flanked
+                            #     by full-size "peek" cards (same width/height, `flex: none` so they
+                            #     can't be squeezed, dimmed + scaled to 0.92, deliberately left to
+                            #     overflow off-screen rather than being cropped/masked) — clicking a
+                            #     peek advances/reverses, dot indicators below allow jumping directly;
+                            #     only the inner content re-keys on change (not the card shell), so the
+                            #     frame/blur/shadow never flicker — just the image+title slide in from
+                            #     whichever side triggered the change; all 6 images are preloaded on
+                            #     mount so switching never shows a blank flash
+                            #   Community section (#community) — a TOONHUB-style character carousel
+                            #     over a grain-textured overlay (SVG fractalNoise data URI, opacity 0.2)
+                            #     layered above the shared fixed video; no background of its own — the
+                            #     video shows straight through, same mechanism as the catalogue section
+                            #     "COMMUNITY" section label (top-left) replaces the original spec's
+                            #     "TOONHUB" label; the giant Instrument Serif ghost text ("THE CIRCLE")
+                            #     is implemented but currently commented out in JSX
+                            #     4 character images (COMMUNITY_IMAGES) from public/characters/1-4.png,
+                            #     preloaded via `new Image()` on mount; each rendered with a computed
+                            #     role — center/left/right/back — derived from `communityIndex` via
+                            #     communityRoleOf(i); center gets no blur + a large scale, left/right
+                            #     get a small blur + mid scale, back gets the heaviest blur; positions
+                            #     and role sizing differ between desktop and the ≤640px media query
+                            #     (not a JS isMobile flag — pure CSS, unlike the original spec, since
+                            #     every other responsive rule on this page is media-query driven)
+                            #     navigateCommunity('next'|'prev') bumps communityIndex mod 4 and locks
+                            #     via `communityAnimating` for 650ms (matches the 650ms cubic-bezier
+                            #     transition on transform/filter/opacity/left in the CSS)
+                            #     `.landing-community-item-center`'s height/scale product must stay
+                            #     ≤ 100 (of the section's 100vh) or the character gets clipped top and/
+                            #     or bottom by the section's `overflow: hidden` — current desktop values
+                            #     (height 50%, scale 1.68 ⇒ ~84%) were chosen to satisfy that, replacing
+                            #     the original spec's height 92%/scale 1.68 (~155%, guaranteed clipping)
+                            #     each COMMUNITY_IMAGES entry may carry an optional `scale` field applied
+                            #     as an extra `transform: scale()` (transform-origin: bottom center) on
+                            #     just that `<img>`, independent of and multiplied with the role's own
+                            #     scale — added because `object-fit: contain` against the carousel's
+                            #     fixed 0.6:1 box ratio renders each PNG at a different effective height
+                            #     depending on its own aspect ratio (a square image like 1.png renders at
+                            #     only ~51% of box height, a tall image at up to ~100%), so images with
+                            #     very different intrinsic proportions need a per-image correction to
+                            #     look the same size; public/characters/2.png was separately fixed by
+                            #     cropping its transparent padding down to the content bounding box
+                            #     (source-file fix) rather than a scale correction, since the mismatch
+                            #     there was from padding, not aspect ratio
+                            #     Arrow icons are hand-rolled inline SVGs (ArrowLeftIcon/ArrowRightIcon),
+                            #     not lucide-react, matching the rest of the app's icons (ReactionIcon,
+                            #     BookStrip's chevrons, …) — SidebarNav's dock is the sole exception,
+                            #     see components/SidebarNav.js above
+                            #     Bottom-left: "Find Your Circle" heading + description (hidden ≤640px)
+                            #     + two circular arrow buttons driving navigateCommunity
+                            #     Bottom-right: "Join a Community" link — like every other CTA on this
+                            #     page, it navigates to /login rather than an in-page destination, since
+                            #     actually joining a community is a gated (Gold-tier) authenticated
+                            #     feature
+                            #   Catalogue section (#catalogue) — glimpse of the real catalogue via the
+                            #     public GET /api/books/preview endpoint (no auth, ≤10 books); shows 10
+                            #     shimmering skeleton cards while the request is in flight, then swaps
+                            #     to real cards that fade/rise into view via IntersectionObserver as the
+                            #     user scrolls; the whole section renders nothing if the fetch fails or
+                            #     returns zero books (no empty shell)
+    LandingPage.css          # All landing-page styles — plain CSS custom to this page (see Key
+                            #   Design Decisions re: no Tailwind), not App.css
     (MemberDashboard.js exports one component but defines several helpers inline:)
     BookLoader              # Full-page animated CSS loader: open book with two halves
                             #   each having 5 placeholder lines, a spine div, and a
@@ -269,7 +403,7 @@ frontend/src/
                             #     --accent-text CSS vars on the layout root; WCAG-safe text
                             #     colour computed via wcagTextColor(); null if no borrow history
                             #
-                            # Home tab (new, default landing tab):
+                            # Home tab (not the default on login — see Available Books tab below):
                             #   1. Hero banner — time-aware greeting ("Good morning/afternoon/
                             #      evening/Hello night owl") + username + tagline
                             #   2. "What we offer" services strip — horizontally scrollable
@@ -290,7 +424,8 @@ frontend/src/
                             #      opens the Book Detail modal; "View all →" button navigates
                             #      to the Available Books tab
                             #
-                            # Available Books tab (top → bottom):
+                            # Available Books tab (top → bottom) — the default tab on login
+                            # (`useState("books")`; Home is reachable via the dock but isn't shown first):
                             #   1. Search trigger row — magnifying-glass icon button + book count
                             #      Active filters shown as a dot on the icon when panel is closed
                             #   2. Collapsible search panel (searchOpen state):
@@ -334,23 +469,45 @@ frontend/src/
                             #       Reviews list
                             #     ✕ close button in modal header (no bottom Close button)
                             #
+                            # My Library tab (top → bottom): My Borrowed Books, My Reservations,
+                            #   My Wishlist — each section is a card grid or horizontal strip
+                            #   (libraryView state: 'grid' default | 'strip', toggled via an icon
+                            #   button top-right of the tab, persisted in localStorage as
+                            #   'libraryCardView')
+                            #   Cards reuse the exact same .rec-card markup/classes as the
+                            #   Available Books tab (cover bleed, title/author/meta/avail rows) —
+                            #   'grid' view renders .rec-card-large inside .library-grid (the same
+                            #   grid the Available Books large-card view uses); 'strip' view renders
+                            #   compact .rec-card inside a BookStrip/.rec-strip — so cards in this
+                            #   tab are pixel-identical to the Available Books tab at each size.
+                            #   A .rec-card-actions row (View + a second contextual button) is
+                            #   appended below the card text, since these cards need actions the
+                            #   Available Books cards don't (the cover is its own clickable button
+                            #   here rather than the whole card, so nested buttons stay valid HTML)
+                            #   My Borrowed Books — Badge (Overdue/Active) + due date; View opens
+                            #     the Borrowed Book Card, Return opens the Return+Review modal
+                            #   My Reservations — Badge (Ready to borrow / Queue #N); View opens
+                            #     the Book Detail modal, Cancel deletes the reservation
+                            #   My Wishlist — "Available" badge when in stock; View opens the Book
+                            #     Detail modal, Remove calls DELETE /api/wishlist/:bookId; items are
+                            #     added via a ♡/♥ toggle button in the Book Detail modal's action
+                            #     row (POST/DELETE /api/wishlist/:bookId), independent of borrow state
+                            #
                             # My Profile tab:
                             #   Avatar editor — 80px avatar circle; click to upload image file;
                             #     resized client-side via canvas (max 400×400, JPEG 0.88) before
                             #     PUT /api/auth/avatar; camera icon overlay on hover
                             #   Membership info card — tier badge, borrow limit, monthly rate,
                             #     family group members (family tier only)
-                            #   My Borrowed Books — active borrows in a clickable .profile-table
-                            #     row (opens the Borrowed Book Card); Return button inside the row
-                            #     stopPropagation's so it doesn't also open the card
-                            #   My Reservations — queue position or ready status, cancel button
-                            #   My Fines — fine amount and paid/unpaid status
-                            #   All three tables use .profile-table with center-aligned columns
+                            #   My Fines — .profile-table, center-aligned columns; fine amount and
+                            #     paid/unpaid status (active borrows and reservations live on the
+                            #     My Library tab instead, as card grids — see above)
                             #   Donate a Book section — Donate button opens modal; table of past
                             #     donations with status, estimated value, and credit earned;
                             #     total credits earned card (approved donations only)
                             #
-                            # Borrowed Book Card (opened by clicking a row in My Borrowed Books):
+                            # Borrowed Book Card (opened from a My Borrowed Books card in the My
+                            #   Library tab):
                             #   Same hero-modal styling as the catalogue Book Detail modal — cover,
                             #     cover-colour-tinted hero via computeCoverPalette() (factored out of
                             #     the original inline useMemo so both modals share the same palette
@@ -381,22 +538,51 @@ frontend/src/
                             #   success screen after submit
                             # Toast notifications (useToast hook + Toast component) fire on:
                             #   borrow, return (with/without review), reserve, cancel reservation,
-                            #   avatar upload, donation submit, join/leave community,
-                            #   create community, create post
+                            #   avatar upload, donation submit, add to wishlist (not on remove),
+                            #   join/leave community, create community, create post
                             #   the borrow toast carries an action = { label: "View in My
-                            #     Profile", onClick } that closes the book detail modal and
-                            #     switches to the My Profile tab
+                            #     Library", onClick } that closes the book detail modal and
+                            #     switches to the My Library tab
                             #
                             # Community tab (Gold members only; non-gold sees a locked card):
-                            #   3-level view: list → community → post
-                            #   List view: Browse all approved communities + My Communities strip;
-                            #     Create Community button → modal (name, description); submitted
-                            #     as pending until admin approves
-                            #   Community view: community header, member count, Join/Leave button,
-                            #     post list with SVG reaction mini-previews; Create Post button
-                            #   Post view: full post content, SVG reaction bar (like/love/haha/wow/sad/angry),
-                            #     threaded comments at unlimited depth (visual indent capped at depth 4),
-                            #     reply-to-reply at any level
+                            #   2-level view: list → community (no separate post-detail level —
+                            #     see "Post feed" below)
+                            #   List view (communityView='list'): community cards in a responsive
+                            #     .community-grid (renderCommunityCard, shared by both the "Your
+                            #     pending requests" section and the main approved-communities grid)
+                            #     Each card: banner image (or gradient fallback) on top, the
+                            #     UserAvatar icon absolutely positioned inside the banner's bottom-
+                            #     left corner (in front of, not below, the banner — .community-card
+                            #     keeps overflow:hidden so the icon can never get clipped or become
+                            #     non-circular), name, description, member/post counts, Moderator
+                            #     tag, Join/Leave button. Cards for communities the caller has
+                            #     joined are themselves the click target (.community-card-clickable,
+                            #     onClick=openCommunity) — there's no separate "View" button; the
+                            #     Leave/Join buttons stopPropagation so they don't also navigate.
+                            #     Pending/rejected request cards and not-yet-joined approved cards
+                            #     are not clickable (nothing to view without joining first)
+                            #   Create Community button → modal (name, CommunityImageFields for
+                            #     banner_image/icon_image, description); submitted as pending until
+                            #     admin approves
+                            #   Community view (communityView='community'): banner hero image (if
+                            #     set) above a .community-nav row — Back button, icon avatar,
+                            #     name/member-count/Moderator tag, and (moderator only) an Edit
+                            #     button opening the Edit Community modal (same CommunityImageFields
+                            #     + description, PUT /api/communities/:id), plus + New Post
+                            #   Post feed: every post in communityPosts renders fully expanded
+                            #     inline (title, content, up to 3 images in a .post-detail-images
+                            #     grid, reaction bar, comment form, threaded comments) — clicking a
+                            #     post to open a detail page was removed; the backend now returns
+                            #     each post's comments inline with the list so this needs no
+                            #     per-post fetch on load. Reaction/comment state (commentDrafts,
+                            #     commentErrors) is keyed by post id since multiple posts' comment
+                            #     boxes are visible at once instead of one at a time; after a
+                            #     comment/reply/reaction, only that one post is refetched
+                            #     (GET .../posts/:pid) and patched into the communityPosts array
+                            #   Create Post modal: title, content, PostImagesField (up to 3 images,
+                            #     thumbnail grid with per-image remove + a disabled-at-3 add button)
+                            #   Threaded comments: unlimited depth (visual indent capped at depth
+                            #     4), reply-to-reply at any level
                             #   Notification badge: red number on the Community tab title showing
                             #     new posts + comments + reactions since last visit; polled every 60 s;
                             #     count stored in localStorage (communityLastSeen); badge clears on tab open
@@ -454,8 +640,12 @@ frontend/src/
                             #
                             # Communities tab:
                             #   Status filter buttons — Pending / Approved / Rejected / All
-                            #   Table: community name, description, creator, member count,
-                            #     post count, status badge, created date, Approve/Reject buttons
+                            #   Table: icon avatar + community name, description, creator, member
+                            #     count, post count, status badge, created date, action buttons —
+                            #     Approve/Reject (pending only) + Delete (always, any status);
+                            #     Delete is gated behind a window.confirm (higher blast radius than
+                            #     most admin deletes — wipes every member's posts/comments too) and
+                            #     calls DELETE /api/admin/communities/:id
                             #   Approve modal: optional admin notes; auto-joins creator as moderator
                             #   Reject modal: optional reason
                             #
@@ -471,7 +661,9 @@ frontend/src/
 ```
 
 ### Auth flow
-`AuthContext` calls `GET /api/auth/me` on mount. A 401 sets `user = null` → redirect to `/login`. Login/register calls set `user` via `login(userData)`. All protected pages use `useAuth()` — no prop drilling.
+`AuthContext` calls `GET /api/auth/me` on mount. A 401 sets `user = null`. Login/register calls set `user` via `login(userData)`. All protected pages use `useAuth()` — no prop drilling.
+
+**Routing** (`App.js`): `"/"` shows the public `LandingPage` to logged-out visitors (logged-in visitors are redirected to `/dashboard`); `"/login"` shows `Login` to logged-out visitors (logged-in visitors redirected to `/dashboard`); the `"/*"` wildcard renders `AdminDashboard`/`MemberDashboard` by role when logged in, and redirects to `"/"` (not straight to `/login`) when logged out — so the landing page, not the login form, is the actual entry point for anonymous traffic.
 
 A global Axios response interceptor handles session drift: a 401 clears the user immediately; a 403 re-fetches `/auth/me` and updates React state to match the real Flask session (prevents stale "admin" UI after switching accounts in the same browser).
 
@@ -490,6 +682,7 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 ### Books
 | Method | Path | Auth | Description |
 |---|---|---|---|
+| GET | `/api/books/preview` | — (public) | Up to 10 books (id, title, author, genre, cover_url, cover_color only — no copies/ISBN/description) for the public landing page's catalogue glimpse; no session required |
 | GET | `/api/books` | member+ | List all books; each entry includes `reservation_count`, `avg_rating`, `rating_count` |
 | POST | `/api/books` | admin | Add book (logs entry) |
 | PUT | `/api/books/:id` | admin | Edit book — metadata and/or copy count; discard reason required when reducing copies |
@@ -518,6 +711,13 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 | POST | `/api/reserve/:bookId` | member | Reserve a book (only when `available_copies == 0`) |
 | DELETE | `/api/cancel-reservation/:id` | member | Cancel a reservation |
 | GET | `/api/my-reservations` | member | Caller's active reservations with queue position |
+
+### Wishlist
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/my-wishlist` | member | Caller's wishlist, newest first; each entry denormalizes book title/author/cover/availability |
+| POST | `/api/wishlist/:bookId` | member | Add a book to the wishlist (409 if already present) |
+| DELETE | `/api/wishlist/:bookId` | member | Remove a book from the wishlist (404 if not present) |
 
 ### Admin
 | Method | Path | Auth | Description |
@@ -551,13 +751,14 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/api/communities` | gold | All approved communities with caller's membership status |
-| POST | `/api/communities` | gold | Create a community (status = pending until admin approves) |
+| POST | `/api/communities` | gold | Create a community (status = pending until admin approves); optional `banner_image`/`icon_image` (base64 data URLs) |
+| PUT | `/api/communities/:id` | gold+moderator | Update `description`/`banner_image`/`icon_image` for a community the caller moderates |
 | GET | `/api/my-communities` | gold | Communities the caller has joined |
 | POST | `/api/communities/:id/join` | gold | Join an approved community |
 | DELETE | `/api/communities/:id/leave` | gold | Leave a community |
-| GET | `/api/communities/:id/posts` | gold+member | List posts (caller must be a member) |
-| POST | `/api/communities/:id/posts` | gold+member | Create a post |
-| GET | `/api/communities/:id/posts/:pid` | gold+member | Full post with nested comment tree |
+| GET | `/api/communities/:id/posts` | gold+member | List posts (caller must be a member); each post includes its top-level comments inline |
+| POST | `/api/communities/:id/posts` | gold+member | Create a post; optional `images: []` (up to 3 base64 data URLs) |
+| GET | `/api/communities/:id/posts/:pid` | gold+member | Single post with nested comment tree (used to refresh one feed item, not for navigation) |
 | POST | `/api/communities/:id/posts/:pid/comments` | gold+member | Add top-level comment or reply (`parent_id` in body for replies at any depth) |
 | POST | `/api/communities/:id/posts/:pid/react` | gold+member | Toggle post reaction (`emoji`: like\|love\|haha\|wow\|sad\|angry) |
 | POST | `/api/communities/:id/posts/:pid/comments/:cid/react` | gold+member | Toggle comment reaction |
@@ -565,6 +766,7 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 | GET | `/api/admin/communities` | admin | All communities for admin review |
 | PUT | `/api/admin/communities/:id/approve` | admin | Approve community; auto-joins creator as moderator |
 | PUT | `/api/admin/communities/:id/reject` | admin | Reject with optional reason |
+| DELETE | `/api/admin/communities/:id` | admin | Permanently delete a community and all its posts/comments/memberships |
 
 ---
 
@@ -749,6 +951,14 @@ Gold members can create communities, which go through admin approval before beco
 
 **Notification badge:** A red number on the Community tab label showing unseen activity. Computed by `GET /api/communities/activity-count?since=<iso>` which counts new posts, comments, post reactions, and comment reactions (by others) across all communities the caller is a member of. The frontend polls every 60 seconds when not on the Community tab; `communityLastSeen` is persisted in `localStorage` and updated whenever the Community tab is opened.
 
+**Branding:** Communities may optionally have a `banner_image` and `icon_image` (base64 data URLs, same size/format validation as the user avatar route — `data:image/` prefix, ~2 MB cap). Set at creation via `CommunityImageFields` in the Create Community modal; a moderator can change either (or the description) afterward via `PUT /api/communities/:id` and the Edit Community modal. Neither is required — cards and the community header fall back to a gradient banner and initial-letter icon (`UserAvatar`) when unset.
+
+**Post images:** Posts may optionally carry up to 3 images (`CommunityPost.images`, a `db.JSON` list of base64 data URLs), validated the same way as community banners/icons. Enforced server-side in `create_post` (400 if more than 3, or if any entry fails validation).
+
+**Post feed, not detail pages:** Opening a community shows every post fully expanded in a single scrolling feed (`communityView` only has `'list'`/`'community'` — there is no third "post detail" level). `GET /communities/:id/posts` returns each post's top-level comments inline via a shared `_post_with_comments()` helper (also used by the single-post endpoint), so the whole feed renders from one request with no per-post fetch on load. After a comment, reply, or reaction, only that one post is refetched and patched into the `communityPosts` array in place.
+
+**Admin deletion:** `DELETE /api/admin/communities/:id` permanently removes a community. Cascades to its memberships, posts, comments, and reactions via SQLAlchemy `cascade='all, delete-orphan'` relationships on `Community.memberships`/`Community.posts` (and further down the chain on `CommunityPost.comments`/`.reactions`, `CommunityComment.reactions`) — no manual cleanup needed. Available for a community in any status, not just pending, since an admin may want to remove an already-approved community.
+
 ---
 
 ## Key Design Decisions
@@ -773,7 +983,7 @@ Gold members can create communities, which go through admin approval before beco
 - **Family group via integer ID, no separate table** — `family_group_id` on `Membership` is sufficient; a separate `FamilyGroup` table would add no behaviour. The backend auto-assigns groups when an admin sets tier to `family`.
 - **Membership pricing in `setting` table** — reuses the existing key/value store (same pattern as `fine_per_day`) so pricing changes take effect at request time without a server restart.
 - **Community reactions as string keys, not emoji chars** — storing `like`/`love`/etc. instead of emoji characters avoids encoding issues and makes the validation set (`VALID_REACTIONS`) unambiguous. The frontend resolves keys to SVG icons.
-- **SVG reaction icons inline, no icon library** — avoids adding a dependency; the `ReactionIcon` component renders stroke-based 24×24 viewBox SVGs sized via a `size` prop (default 13). Icons are feather-style paths for visual consistency.
+- **SVG reaction icons inline, no icon library** — avoids adding a dependency; the `ReactionIcon` component renders stroke-based 24×24 viewBox SVGs sized via a `size` prop (default 13). Icons are feather-style paths for visual consistency. (This convention holds everywhere except the member dock nav — see the `lucide-react` decision below.)
 - **Notification badge via polling, not WebSockets** — 60-second polling via `setInterval` is simple and stateless. The activity-count endpoint is a single aggregating query; polling only runs when the Community tab is not active (to avoid counting events the user is already seeing).
 - **Admin tab merging (Fines + Members)** — Pending Fines and Fine Policy share a tab; All Members, Membership Pricing, and Member Tiers share a tab. Reduces nav clutter without hiding functionality.
 - **Comment depth capped visually at 4, not structurally** — nesting in data is unlimited; only the CSS indentation class switches at depth 4. This prevents the UI from becoming too narrow on deep threads while preserving full reply history.
@@ -791,3 +1001,17 @@ Gold members can create communities, which go through admin approval before beco
 - **Reading access is gated on having ever borrowed the book** — `GET /books/:id/read` checks for any `Borrow` row for `(user_id, book_id)`, not just an active one, so a member retains online-reading access to a public-domain book after returning it.
 - **Reader pane reuses the app's existing theme CSS variables** — the full-screen reader overlay (`.reader-overlay`/`.reader-panel`/`.reader-text`) is styled entirely with `var(--bg)`/`var(--text)` etc. rather than its own theme, so it automatically renders in whichever of the 10 appearance/reader-theme combinations (sepia, forest, ocean, rose, light/dark) the member currently has active, with zero extra wiring.
 - **`computeCoverPalette`/`heroStylesFor` factored out of the Book Detail modal** — the cover-colour-derived hero palette and its WCAG-safe label/subtle/faint/row style computation were originally an inline `useMemo` scoped to `selectedBook`; both were extracted to module-level functions so the new Borrowed Book Card modal (keyed on a different selected item, `selectedBorrowBook`) can produce an identical hero treatment without duplicating the contrast-ratio math.
+- **Landing page uses plain CSS, not Tailwind** — the original design brief for the landing page was written against Vite + TypeScript + Tailwind, but this project is CRA + plain JS with hand-written CSS custom properties (`App.css`). Rather than introduce a second styling system for one page, `LandingPage.css` follows the existing project convention (BEM-ish class names, CSS custom properties for shared values like `--radius-lg`).
+- **Landing page background video is `position: fixed`, not `absolute`** — pinning the video to the viewport (rather than letting it scroll with the page) is what makes the catalogue and about sections feel like they're scrolling over a persistent backdrop instead of the video just being one more element that scrolls out of view; it's the entire mechanism behind the requested "3D"/parallax impression.
+- **`/api/books/preview` is a separate, deliberately minimal public endpoint** — rather than relaxing `@login_required` on the real `/api/books`, the landing page gets its own unauthenticated route that returns only display-safe fields (id, title, author, genre, cover_url, cover_color) for a handful of books. This keeps copy counts, ISBNs, and descriptions out of anonymous responses while still letting the marketing page show real catalogue covers.
+- **Landing "about" roller keeps the card shell mounted across transitions** — only the inner content div re-keys (and slides in from the direction of travel) on each change; the outer card (blur, border, shadow, size) never remounts, so the frame doesn't flicker. The flanking "peek" cards are full-size (`flex: none`, matching the active card's width/height) rather than cropped or masked, and are intentionally left to overflow off-screen — the containing `.landing-page` already clips horizontal overflow, so the peeks just read as the neighbouring card bleeding off the edge.
+- **Landing "community" section shares the page's video/nav/gradient rather than duplicating them** — the original design brief for this section was written as if it were a standalone page with its own copy of the video background, nav bar, and gradient overlay (as four separate "pages"). Since `LandingPage` is actually one continuously scrolling page, those elements already exist once at the top; the Community section only adds what's genuinely new to it (grain overlay, section label, character carousel, bottom copy/link). This keeps there being exactly one video element and one nav on the page, avoiding duplicate `<video>` tags fighting over playback state.
+- **Landing "community" carousel sizing is derived from `object-fit: contain` math, not eyeballed** — the four character images in `public/characters/` have different intrinsic aspect ratios, and each one renders at a different effective height inside the carousel's fixed `0.6:1` box under `object-fit: contain` (a square image is width-constrained and renders far shorter than a tall, narrow one). Rather than resizing every source image to a common canvas, mismatches are corrected per-image: `2.png` was cropped to its transparent-content bounding box (its problem was baked-in padding, not aspect ratio), while `4.png` gets a `scale` field applied as an extra `transform: scale()` on just that `<img>` (the mismatch there was purely aspect-ratio-driven letterboxing, which cropping can't fix — cropping only ever makes an image render *larger*, never smaller). The center role's own `height`/`scale` were also tuned so their product stays ≤ 100% of the section height, since anything above that is guaranteed to clip against the section's `overflow: hidden` regardless of vertical positioning.
+- **Member primary nav is a macOS-dock-style floating bar, not a collapsible sidebar** — `SidebarNav.js` was rewritten from a hamburger-triggered slide-in panel (fixed left, `transform: translateX`, pushed content via a `.content-shifted` margin) to an always-fixed bottom-center pill. This removed a piece of explicit UI state the user had to manage (open/close) in favor of a nav that's just always in the same place; `lucide-react` was added as a dependency specifically because a dock of bare icons reads far better with a consistent icon set than five more hand-rolled SVGs would.
+- **Dock auto-hide is cursor-proximity-driven, not hover-on-self** — a single `window` `mousemove` listener compares `e.clientY` against the viewport height (`REVEAL_ZONE = 110px`) rather than relying on `:hover` on the dock element itself. This is necessary because the reveal has to trigger *before* the cursor reaches the (currently off-screen, `pointer-events: none`) dock — a self-hover rule can only fire once the cursor is already over an invisible target, which never happens. `:focus-within` and an `(hover: none)` media query force it permanently visible for keyboard and touch users respectively, since neither has a meaningful "cursor near the bottom edge" signal.
+- **My Library cards reuse the Available Books tab's `.rec-card` classes verbatim** — rather than maintaining a parallel `.library-card` style that has to be kept in sync by hand, the borrowed/reservation/wishlist cards in the My Library tab render the same `rec-card`/`rec-card-cover`/`rec-card-title`/etc. markup used by `renderBookCard`, so both tabs get pixel-identical typography, glass styling, and hover behaviour automatically, including future edits to either. The one structural difference is that the cover is its own nested `<button className="rec-card-cover-btn">` instead of the whole card being a button — these cards need a second action button (Return/Cancel/Remove) alongside "View", and a `<button>` can't nest inside another `<button>`.
+- **Available Books, not Home, is the default tab on login** — `MemberDashboard`'s `tab` state initializes to `"books"` rather than `"home"`. Home is still the first item in `TABS`/the dock and fully reachable, it's just no longer what a member lands on first.
+- **Community card icon overlaps the banner via `overflow: hidden` + a bounded inset, not a protruding negative offset** — the icon (`.community-card-icon-wrap`) is positioned inside the banner's box (`bottom: 10px`, not a negative value), so `.community-card`'s `overflow: hidden` can safely clip everything to the card's `border-radius` on all four corners. An earlier version let the icon protrude below the banner edge for a more dramatic overlap, which required removing `overflow: hidden` from the card — that broke corner-rounding (nothing was left to clip the banner image's square bottom corners against the card's rounded shape) and made the icon's protruding half vulnerable to being clipped by ancestor overflow. Keeping the icon fully inside the banner's bounds gets the "icon in front of banner" look with none of that fragility.
+- **Community cards are the click target themselves, with a narrower "clickable" condition than "has a Leave/Join button"** — `clickable = !statusBadge && c.is_member`. Pending/rejected request cards and approved-but-not-yet-joined cards intentionally render with `cursor: default` and no `onClick`, because `openCommunity()` calls an endpoint (`_community_for_member`) that 403s for non-members and 404s for non-approved communities — there's genuinely nothing to navigate to yet. The Leave/Join buttons still `stopPropagation()` defensively even though only member cards are ever click-bound.
+- **Posts render as a full feed, not a list-then-detail flow** — clicking into a post used to fetch and show just that one post; now every post in `communityPosts` is rendered fully expanded (content, images, reactions, comments) directly on the community page, and `GET .../posts` returns comments inline for every post up front via a shared `_post_with_comments()` helper. This trades a heavier initial payload for zero additional round-trips as the member scrolls — appropriate here since community posts are a bounded, moderation-approved list, not an unbounded public timeline. Per-post interaction state that used to belong to a single `selectedPost` (comment drafts/errors) is now keyed by post id (`{ [postId]: value }`) since multiple posts' comment boxes coexist on screen.
+- **Community/post image fields share one `_validate_image()` helper server-side** — banner, icon, and post images are all base64 data URLs subject to the same two rules (must start with `data:image/`, ~2 MB size cap) already established by the user avatar route; centralizing the check in `routes/communities.py` instead of re-deriving it per field keeps the three call sites (`create_community`, `update_community`, `create_post`) from drifting out of sync.

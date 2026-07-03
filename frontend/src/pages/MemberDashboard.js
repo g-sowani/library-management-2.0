@@ -8,8 +8,8 @@ import React, {
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
 import UserAvatar from "../components/UserAvatar";
-import TopBar from "../components/TopBar";
-import NavTabs from "../components/NavTabs";
+import ProfileMenu from "../components/ProfileMenu";
+import SidebarNav from "../components/SidebarNav";
 import Badge from "../components/Badge";
 import Modal from "../components/Modal";
 import SearchBar from "../components/SearchBar";
@@ -17,9 +17,10 @@ import Select from "../components/Select";
 import Toast from "../components/Toast";
 import { useToast } from "../hooks/useToast";
 import { GENRES } from "../constants";
+import { getGreeting } from "../utils/greeting";
 
 const TABS = [
-  { id: "home", label: "Home" },
+  // { id: "home", label: "Home" },
   { id: "books", label: "Available Books" },
   { id: "library", label: "My Library" },
   { id: "community", label: "Community" },
@@ -202,7 +203,11 @@ function heroStylesFor(palette) {
     subtleStyle: palette ? { color: palette.subtleColor } : {},
     faintStyle: palette ? { color: palette.faintColor } : {},
     rowStyle: palette
-      ? { borderBottomColor: isLight ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.1)" }
+      ? {
+          borderBottomColor: isLight
+            ? "rgba(255,255,255,0.18)"
+            : "rgba(0,0,0,0.1)",
+        }
       : {},
   };
 }
@@ -215,7 +220,8 @@ function minAlphaForContrast(fgVal, bgR, bgG, bgB, minRatio) {
     return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
   };
   const bgL = 0.2126 * lin(bgR) + 0.7152 * lin(bgG) + 0.0722 * lin(bgB);
-  let lo = 0, hi = 1;
+  let lo = 0,
+    hi = 1;
   for (let i = 0; i < 16; i++) {
     const alpha = (lo + hi) / 2;
     const rc = Math.round(fgVal * alpha + bgR * (1 - alpha));
@@ -223,7 +229,8 @@ function minAlphaForContrast(fgVal, bgR, bgG, bgB, minRatio) {
     const bc = Math.round(fgVal * alpha + bgB * (1 - alpha));
     const fL = 0.2126 * lin(rc) + 0.7152 * lin(gc) + 0.0722 * lin(bc);
     const ratio = (Math.max(fL, bgL) + 0.05) / (Math.min(fL, bgL) + 0.05);
-    if (ratio >= minRatio) hi = alpha; else lo = alpha;
+    if (ratio >= minRatio) hi = alpha;
+    else lo = alpha;
   }
   return Math.min(1, hi + 0.005);
 }
@@ -673,10 +680,219 @@ function NoCoverPlaceholder({ title, className }) {
   );
 }
 
+function handleImageFile(e, maxPx, onLoaded, onError) {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    onError("Image must be under 5 MB");
+    return;
+  }
+  resizeImageToBase64(file, maxPx)
+    .then(onLoaded)
+    .catch(() => onError("Failed to process image"));
+}
+
+// Icon + banner upload fields shared by the Create Community and Edit Community
+// modals — `form`/`setForm` are the caller's community-form state pair.
+function CommunityImageFields({ form, setForm, onError }) {
+  const iconInputRef = useRef(null);
+  const bannerInputRef = useRef(null);
+
+  return (
+    <>
+      <div className="form-group">
+        <label>
+          Icon{" "}
+          <span
+            className="muted"
+            style={{ textTransform: "none", fontSize: "0.75rem" }}
+          >
+            (optional)
+          </span>
+        </label>
+        <div className="community-icon-upload">
+          <button
+            type="button"
+            className="community-icon-preview"
+            onClick={() => iconInputRef.current?.click()}
+          >
+            {form.icon_image ? (
+              <img src={form.icon_image} alt="" />
+            ) : (
+              <span className="community-icon-placeholder">+</span>
+            )}
+          </button>
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn btn-sm btn-outline"
+              onClick={() => iconInputRef.current?.click()}
+            >
+              {form.icon_image ? "Change" : "Upload"}
+            </button>
+            {form.icon_image && (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                onClick={() => setForm((f) => ({ ...f, icon_image: null }))}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+          <input
+            ref={iconInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={(e) =>
+              handleImageFile(
+                e,
+                300,
+                (b64) => setForm((f) => ({ ...f, icon_image: b64 })),
+                onError
+              )
+            }
+          />
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label>
+          Banner{" "}
+          <span
+            className="muted"
+            style={{ textTransform: "none", fontSize: "0.75rem" }}
+          >
+            (optional)
+          </span>
+        </label>
+        <button
+          type="button"
+          className="community-banner-upload"
+          onClick={() => bannerInputRef.current?.click()}
+        >
+          {form.banner_image ? (
+            <img src={form.banner_image} alt="" />
+          ) : (
+            <span className="community-banner-placeholder">
+              Click to upload a banner image
+            </span>
+          )}
+        </button>
+        <div className="btn-row" style={{ marginTop: 8 }}>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline"
+            onClick={() => bannerInputRef.current?.click()}
+          >
+            {form.banner_image ? "Change" : "Upload"}
+          </button>
+          {form.banner_image && (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline"
+              onClick={() => setForm((f) => ({ ...f, banner_image: null }))}
+            >
+              Remove
+            </button>
+          )}
+        </div>
+        <input
+          ref={bannerInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={(e) =>
+            handleImageFile(
+              e,
+              1200,
+              (b64) => setForm((f) => ({ ...f, banner_image: b64 })),
+              onError
+            )
+          }
+        />
+      </div>
+    </>
+  );
+}
+
+const MAX_POST_IMAGES = 3;
+
+// Up-to-3-image picker for the Create Post form — `form`/`setForm` are the
+// caller's post-form state pair (form.images is an array of base64 data URLs).
+function PostImagesField({ form, setForm, onError }) {
+  const inputRef = useRef(null);
+  const images = form.images || [];
+
+  return (
+    <div className="form-group">
+      <label>
+        Images{" "}
+        <span
+          className="muted"
+          style={{ textTransform: "none", fontSize: "0.75rem" }}
+        >
+          (optional, up to {MAX_POST_IMAGES})
+        </span>
+      </label>
+      <div className="post-images-editor">
+        {images.map((img, i) => (
+          <div className="post-image-thumb" key={i}>
+            <img src={img} alt="" />
+            <button
+              type="button"
+              className="post-image-remove"
+              onClick={() =>
+                setForm((f) => ({
+                  ...f,
+                  images: f.images.filter((_, idx) => idx !== i),
+                }))
+              }
+              aria-label="Remove image"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        {images.length < MAX_POST_IMAGES && (
+          <button
+            type="button"
+            className="post-image-add"
+            onClick={() => inputRef.current?.click()}
+            aria-label="Add image"
+          >
+            +
+          </button>
+        )}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={(e) =>
+          handleImageFile(
+            e,
+            1000,
+            (b64) =>
+              setForm((f) => ({
+                ...f,
+                images: [...(f.images || []), b64].slice(0, MAX_POST_IMAGES),
+              })),
+            onError
+          )
+        }
+      />
+    </div>
+  );
+}
+
 function MemberDashboard() {
   const { user, logout, updateUser } = useAuth();
   const { toasts, toast } = useToast();
-  const [tab, setTab] = useState("home");
+  const [tab, setTab] = useState("books");
   const [books, setBooks] = useState([]);
   const [borrows, setBorrows] = useState([]);
   const [reservations, setReservations] = useState([]);
@@ -754,26 +970,37 @@ function MemberDashboard() {
   const [wishlistLoading, setWishlistLoading] = useState(false);
 
   // Community
-  const [communityView, setCommunityView] = useState("list"); // 'list' | 'community' | 'post'
+  const [communityView, setCommunityView] = useState("list"); // 'list' | 'community'
   const [communities, setCommunities] = useState([]);
   const [myCommunities, setMyCommunities] = useState([]);
   const [communitiesLoaded, setCommunitiesLoaded] = useState(false);
   const [selectedCommunity, setSelectedCommunity] = useState(null);
   const [communityPosts, setCommunityPosts] = useState([]);
   const [postsLoading, setPostsLoading] = useState(false);
-  const [selectedPost, setSelectedPost] = useState(null);
-  const [postLoading, setPostLoading] = useState(false);
   const [showCreateCommunity, setShowCreateCommunity] = useState(false);
   const [communityForm, setCommunityForm] = useState({
     name: "",
     description: "",
+    banner_image: null,
+    icon_image: null,
   });
   const [communityFormError, setCommunityFormError] = useState("");
+  const [showEditCommunity, setShowEditCommunity] = useState(false);
+  const [editCommunityForm, setEditCommunityForm] = useState({
+    description: "",
+    banner_image: null,
+    icon_image: null,
+  });
+  const [editCommunityError, setEditCommunityError] = useState("");
   const [showCreatePost, setShowCreatePost] = useState(false);
-  const [postForm, setPostForm] = useState({ title: "", content: "" });
+  const [postForm, setPostForm] = useState({
+    title: "",
+    content: "",
+    images: [],
+  });
   const [postFormError, setPostFormError] = useState("");
-  const [commentContent, setCommentContent] = useState("");
-  const [commentError, setCommentError] = useState("");
+  const [commentDrafts, setCommentDrafts] = useState({}); // { [postId]: string }
+  const [commentErrors, setCommentErrors] = useState({}); // { [postId]: string }
   const [replyingToId, setReplyingToId] = useState(null);
   const [replyContent, setReplyContent] = useState("");
   const [communityBadge, setCommunityBadge] = useState(0);
@@ -860,14 +1087,20 @@ function MemberDashboard() {
   // Lazily resolve Gutenberg availability the first time a borrowed book's card is opened
   useEffect(() => {
     if (!selectedBorrowBook) return;
-    if (selectedBorrowBook.gutenberg_id !== null && selectedBorrowBook.gutenberg_id !== undefined) return;
+    if (
+      selectedBorrowBook.gutenberg_id !== null &&
+      selectedBorrowBook.gutenberg_id !== undefined
+    )
+      return;
     const bookId = selectedBorrowBook.id;
     api
       .get(`/books/${bookId}/gutenberg`)
       .then((r) =>
         setBooks((prev) =>
           prev.map((bk) =>
-            bk.id === bookId ? { ...bk, gutenberg_id: r.data.gutenberg_id || 0 } : bk
+            bk.id === bookId
+              ? { ...bk, gutenberg_id: r.data.gutenberg_id || 0 }
+              : bk
           )
         )
       )
@@ -1032,24 +1265,6 @@ function MemberDashboard() {
     }
   };
 
-  const openPost = async (post) => {
-    setCommunityView("post");
-    setSelectedPost(null);
-    setPostLoading(true);
-    setCommentContent("");
-    setCommentError("");
-    setReplyingToId(null);
-    setReplyContent("");
-    try {
-      const r = await api.get(
-        `/communities/${selectedCommunity.id}/posts/${post.id}`
-      );
-      setSelectedPost(r.data);
-    } finally {
-      setPostLoading(false);
-    }
-  };
-
   const joinCommunity = async (community) => {
     try {
       const r = await api.post(`/communities/${community.id}/join`);
@@ -1078,12 +1293,51 @@ function MemberDashboard() {
     try {
       await api.post("/communities", communityForm);
       setShowCreateCommunity(false);
-      setCommunityForm({ name: "", description: "" });
+      setCommunityForm({
+        name: "",
+        description: "",
+        banner_image: null,
+        icon_image: null,
+      });
       loadCommunities();
       toast("Community submitted for review");
     } catch (err) {
       setCommunityFormError(
         err.response?.data?.error || "Failed to create community"
+      );
+    }
+  };
+
+  const openEditCommunity = () => {
+    setEditCommunityForm({
+      description: selectedCommunity?.description || "",
+      banner_image: selectedCommunity?.banner_image || null,
+      icon_image: selectedCommunity?.icon_image || null,
+    });
+    setEditCommunityError("");
+    setShowEditCommunity(true);
+  };
+
+  const submitEditCommunity = async (e) => {
+    e.preventDefault();
+    setEditCommunityError("");
+    try {
+      const r = await api.put(
+        `/communities/${selectedCommunity.id}`,
+        editCommunityForm
+      );
+      setSelectedCommunity(r.data);
+      setCommunities((prev) =>
+        prev.map((c) => (c.id === r.data.id ? r.data : c))
+      );
+      setMyCommunities((prev) =>
+        prev.map((c) => (c.id === r.data.id ? r.data : c))
+      );
+      setShowEditCommunity(false);
+      toast("Community updated");
+    } catch (err) {
+      setEditCommunityError(
+        err.response?.data?.error || "Failed to update community"
       );
     }
   };
@@ -1094,7 +1348,7 @@ function MemberDashboard() {
     try {
       await api.post(`/communities/${selectedCommunity.id}/posts`, postForm);
       setShowCreatePost(false);
-      setPostForm({ title: "", content: "" });
+      setPostForm({ title: "", content: "", images: [] });
       const r = await api.get(`/communities/${selectedCommunity.id}/posts`);
       setCommunityPosts(r.data);
       toast("Post published!");
@@ -1103,32 +1357,44 @@ function MemberDashboard() {
     }
   };
 
-  const submitComment = async (e) => {
+  // Refetch a single post (with its comments) after a mutation and patch it
+  // into the in-place feed, rather than reloading the whole posts list.
+  const refreshPost = async (postId) => {
+    const r = await api.get(
+      `/communities/${selectedCommunity.id}/posts/${postId}`
+    );
+    setCommunityPosts((prev) =>
+      prev.map((p) => (p.id === postId ? r.data : p))
+    );
+  };
+
+  const submitComment = async (e, postId) => {
     e.preventDefault();
-    if (!commentContent.trim()) return;
-    setCommentError("");
+    const content = (commentDrafts[postId] || "").trim();
+    if (!content) return;
+    setCommentErrors((prev) => ({ ...prev, [postId]: "" }));
     try {
       await api.post(
-        `/communities/${selectedCommunity.id}/posts/${selectedPost.id}/comments`,
+        `/communities/${selectedCommunity.id}/posts/${postId}/comments`,
         {
-          content: commentContent,
+          content,
         }
       );
-      setCommentContent("");
-      const r = await api.get(
-        `/communities/${selectedCommunity.id}/posts/${selectedPost.id}`
-      );
-      setSelectedPost(r.data);
+      setCommentDrafts((prev) => ({ ...prev, [postId]: "" }));
+      await refreshPost(postId);
     } catch (err) {
-      setCommentError(err.response?.data?.error || "Failed to post comment");
+      setCommentErrors((prev) => ({
+        ...prev,
+        [postId]: err.response?.data?.error || "Failed to post comment",
+      }));
     }
   };
 
-  const submitReply = async (parentId) => {
+  const submitReply = async (postId, parentId) => {
     if (!replyContent.trim()) return;
     try {
       await api.post(
-        `/communities/${selectedCommunity.id}/posts/${selectedPost.id}/comments`,
+        `/communities/${selectedCommunity.id}/posts/${postId}/comments`,
         {
           content: replyContent,
           parent_id: parentId,
@@ -1136,35 +1402,40 @@ function MemberDashboard() {
       );
       setReplyContent("");
       setReplyingToId(null);
-      const r = await api.get(
-        `/communities/${selectedCommunity.id}/posts/${selectedPost.id}`
-      );
-      setSelectedPost(r.data);
+      await refreshPost(postId);
     } catch (err) {
-      setCommentError(err.response?.data?.error || "Failed to post reply");
+      setCommentErrors((prev) => ({
+        ...prev,
+        [postId]: err.response?.data?.error || "Failed to post reply",
+      }));
     }
   };
 
-  const reactPost = async (emoji) => {
+  const reactPost = async (postId, emoji) => {
     try {
       const r = await api.post(
-        `/communities/${selectedCommunity.id}/posts/${selectedPost.id}/react`,
+        `/communities/${selectedCommunity.id}/posts/${postId}/react`,
         { emoji }
       );
-      setSelectedPost((prev) => ({ ...prev, reactions: r.data }));
+      setCommunityPosts((prev) =>
+        prev.map((p) => (p.id === postId ? { ...p, reactions: r.data } : p))
+      );
     } catch {}
   };
 
-  const reactComment = async (commentId, emoji) => {
+  const reactComment = async (postId, commentId, emoji) => {
     try {
       const r = await api.post(
-        `/communities/${selectedCommunity.id}/posts/${selectedPost.id}/comments/${commentId}/react`,
+        `/communities/${selectedCommunity.id}/posts/${postId}/comments/${commentId}/react`,
         { emoji }
       );
-      setSelectedPost((prev) => ({
-        ...prev,
-        comments: patchReaction(prev.comments, commentId, r.data),
-      }));
+      setCommunityPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId
+            ? { ...p, comments: patchReaction(p.comments, commentId, r.data) }
+            : p
+        )
+      );
     } catch {}
   };
 
@@ -1389,9 +1660,7 @@ function MemberDashboard() {
         )}
         {reason && (
           <div
-            className={`rec-card-reason${
-              variant === "ai" ? " ai-reason" : ""
-            }`}
+            className={`rec-card-reason${variant === "ai" ? " ai-reason" : ""}`}
           >
             {reason}
           </div>
@@ -1431,43 +1700,51 @@ function MemberDashboard() {
   };
 
   const renderBorrowCard = (b) => {
-    const cover = books.find((bk) => bk.id === b.book_id)?.cover_url;
+    const book = books.find((bk) => bk.id === b.book_id);
     return (
       <div
         key={b.id}
-        className={`library-card${
-          libraryView === "strip" ? " library-card-strip" : ""
+        className={`rec-card${
+          libraryView === "strip" ? "" : " rec-card-large"
         }`}
       >
         <button
-          className="library-card-cover-btn"
+          className="rec-card-cover-btn"
           onClick={() => openBorrowCard(b.id)}
         >
-          {cover ? (
-            <img src={cover} alt={b.book_title} className="library-card-cover" />
+          {book?.cover_url ? (
+            <img
+              src={book.cover_url}
+              alt={b.book_title}
+              className="rec-card-cover"
+            />
           ) : (
-            <NoCoverPlaceholder title={b.book_title} />
+            <NoCoverPlaceholder
+              title={b.book_title}
+              className="rec-card-cover"
+            />
           )}
         </button>
-        <div className="library-card-info">
-          <div className="library-card-title">{b.book_title}</div>
-          <div className="library-card-meta">
-            Due {new Date(b.due_date).toLocaleDateString()}
-          </div>
+        <div className="rec-card-title">{b.book_title}</div>
+        <div className="rec-card-author">{book?.author}</div>
+        <div className="rec-card-meta">
           <Badge variant={b.is_overdue ? "overdue" : "active"}>
             {b.is_overdue ? "Overdue" : "Active"}
           </Badge>
-          <div className="library-card-actions">
-            <button className="btn btn-sm" onClick={() => openBorrowCard(b.id)}>
-              View
-            </button>
-            <button
-              className="btn btn-sm btn-outline"
-              onClick={() => openReturnModal(b.id, b.book_title)}
-            >
-              Return
-            </button>
-          </div>
+        </div>
+        <div className="rec-card-avail">
+          Due {new Date(b.due_date).toLocaleDateString()}
+        </div>
+        <div className="rec-card-actions">
+          <button className="btn btn-sm" onClick={() => openBorrowCard(b.id)}>
+            View
+          </button>
+          <button
+            className="btn btn-sm btn-outline"
+            onClick={() => openReturnModal(b.id, b.book_title)}
+          >
+            Return
+          </button>
         </div>
       </div>
     );
@@ -1478,42 +1755,45 @@ function MemberDashboard() {
     return (
       <div
         key={r.id}
-        className={`library-card${
-          libraryView === "strip" ? " library-card-strip" : ""
+        className={`rec-card${
+          libraryView === "strip" ? "" : " rec-card-large"
         }`}
       >
         <button
-          className="library-card-cover-btn"
+          className="rec-card-cover-btn"
           onClick={() => setSelectedBookId(r.book_id)}
         >
           {cover ? (
-            <img src={cover} alt={r.book_title} className="library-card-cover" />
+            <img src={cover} alt={r.book_title} className="rec-card-cover" />
           ) : (
-            <NoCoverPlaceholder title={r.book_title} />
+            <NoCoverPlaceholder
+              title={r.book_title}
+              className="rec-card-cover"
+            />
           )}
         </button>
-        <div className="library-card-info">
-          <div className="library-card-title">{r.book_title}</div>
-          <div className="library-card-author">{r.book_author}</div>
+        <div className="rec-card-title">{r.book_title}</div>
+        <div className="rec-card-author">{r.book_author}</div>
+        <div className="rec-card-meta">
           {r.status === "ready" ? (
             <Badge variant="active">Ready — go borrow!</Badge>
           ) : (
             <Badge variant="queue">Queue #{r.queue_position}</Badge>
           )}
-          <div className="library-card-actions">
-            <button
-              className="btn btn-sm"
-              onClick={() => setSelectedBookId(r.book_id)}
-            >
-              View
-            </button>
-            <button
-              className="btn btn-sm btn-outline"
-              onClick={() => cancelReservation(r.id)}
-            >
-              Cancel
-            </button>
-          </div>
+        </div>
+        <div className="rec-card-actions">
+          <button
+            className="btn btn-sm"
+            onClick={() => setSelectedBookId(r.book_id)}
+          >
+            View
+          </button>
+          <button
+            className="btn btn-sm btn-outline"
+            onClick={() => cancelReservation(r.id)}
+          >
+            Cancel
+          </button>
         </div>
       </div>
     );
@@ -1522,48 +1802,119 @@ function MemberDashboard() {
   const renderWishlistCard = (item) => (
     <div
       key={item.id}
-      className={`library-card${
-        libraryView === "strip" ? " library-card-strip" : ""
-      }`}
+      className={`rec-card${libraryView === "strip" ? "" : " rec-card-large"}`}
     >
       <button
-        className="library-card-cover-btn"
+        className="rec-card-cover-btn"
         onClick={() => setSelectedBookId(item.book_id)}
       >
         {item.book_cover ? (
           <img
             src={item.book_cover}
             alt={item.book_title}
-            className="library-card-cover"
+            className="rec-card-cover"
           />
         ) : (
-          <NoCoverPlaceholder title={item.book_title} />
+          <NoCoverPlaceholder
+            title={item.book_title}
+            className="rec-card-cover"
+          />
         )}
       </button>
-      <div className="library-card-info">
-        <div className="library-card-title">{item.book_title}</div>
-        <div className="library-card-author">{item.book_author}</div>
-        {item.book_available && (
+      <div className="rec-card-title">{item.book_title}</div>
+      <div className="rec-card-author">{item.book_author}</div>
+      {item.book_available && (
+        <div className="rec-card-meta">
           <span className="wishlist-available-badge">Available</span>
-        )}
-        <div className="library-card-actions">
-          <button
-            className="btn btn-sm"
-            onClick={() => setSelectedBookId(item.book_id)}
-          >
-            View
-          </button>
-          <button
-            className="btn btn-sm btn-outline"
-            onClick={() => toggleWishlist(item.book_id)}
-            disabled={wishlistLoading}
-          >
-            Remove
-          </button>
         </div>
+      )}
+      <div className="rec-card-actions">
+        <button
+          className="btn btn-sm"
+          onClick={() => setSelectedBookId(item.book_id)}
+        >
+          View
+        </button>
+        <button
+          className="btn btn-sm btn-outline"
+          onClick={() => toggleWishlist(item.book_id)}
+          disabled={wishlistLoading}
+        >
+          Remove
+        </button>
       </div>
     </div>
   );
+
+  const renderCommunityCard = (c, { statusBadge } = {}) => {
+    const clickable = !statusBadge && c.is_member;
+    return (
+      <div
+        key={c.id}
+        className={`community-card${
+          clickable ? " community-card-clickable" : ""
+        }`}
+        onClick={clickable ? () => openCommunity(c) : undefined}
+      >
+        <div className="community-card-banner">
+          {c.banner_image ? (
+            <img src={c.banner_image} alt="" />
+          ) : (
+            <div className="community-card-banner-fallback" />
+          )}
+          <div className="community-card-icon-wrap">
+            <UserAvatar avatar={c.icon_image} username={c.name} size={64} />
+          </div>
+          {statusBadge && (
+            <div className="community-card-status-badge">{statusBadge}</div>
+          )}
+        </div>
+        <div className="community-card-body">
+          <div className="community-card-name">{c.name}</div>
+          {c.description && (
+            <div className="community-card-desc">{c.description}</div>
+          )}
+          <div className="community-card-meta">
+            {c.member_count} member{c.member_count !== 1 ? "s" : ""} ·{" "}
+            {c.post_count} post{c.post_count !== 1 ? "s" : ""}
+            {c.user_role === "moderator" && (
+              <span className="community-mod-tag">Moderator</span>
+            )}
+          </div>
+          {c.admin_notes && (
+            <div className="community-admin-note">
+              Admin note: {c.admin_notes}
+            </div>
+          )}
+          {!statusBadge && (
+            <div className="community-card-actions">
+              {c.is_member ? (
+                <button
+                  className="btn btn-sm btn-outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    leaveCommunity(c.id);
+                  }}
+                >
+                  Leave
+                </button>
+              ) : (
+                <button
+                  className="btn btn-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    joinCommunity(c);
+                  }}
+                >
+                  Join
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   function BookActionButton({ book }) {
     const res = reservedBooks[book.id];
@@ -1642,21 +1993,22 @@ function MemberDashboard() {
 
   return (
     <div
-      className="layout"
-      style={
-        accentColor
+      className="layout layout-no-topbar"
+      style={{
+        ...(accentColor
           ? { "--accent": accentColor, "--accent-text": accentText }
-          : {}
-      }
+          : {}),
+        "--dashboard-bg-image": `url(${process.env.PUBLIC_URL}/bg2-poster.jpg)`,
+      }}
     >
-      <TopBar
-        title="Library"
+      <ProfileMenu
         username={user.username}
         avatar={user.avatar}
         tier={tier}
         onLogout={logout}
+        wrapperClassName="topbar-standalone-profile"
       />
-      <NavTabs
+      <SidebarNav
         tabs={TABS}
         active={tab}
         onChange={handleTabChange}
@@ -1665,172 +2017,14 @@ function MemberDashboard() {
       <div className="content">
         {error && <div className="error">{error}</div>}
 
-        {tab === "home" && (
-          <div className="home-tab">
-            {/* Hero */}
-            <div className="home-hero">
-              <div className="home-hero-title">
-                {(() => {
-                  const h = new Date().getHours();
-                  if (h >= 5 && h < 12) return "Good morning";
-                  if (h >= 12 && h < 17) return "Good afternoon";
-                  if (h >= 17 && h < 21) return "Good evening";
-                  return "Hello, night owl";
-                })()}
-              </div>
-              <h2 className="home-hero-eyebrow">{user.username}</h2>
-              <p className="home-hero-sub">
-                Browse the catalogue, borrow books, and connect with fellow
-                readers.
-              </p>
-            </div>
-
-            {/* Services */}
-            <div className="home-section">
-              <div className="home-section-heading">What we offer</div>
-              <div
-                className={`home-services-strip-wrapper${
-                  servicesActive ? " arrows-active" : ""
-                }`}
-                onMouseEnter={() => {
-                  clearTimeout(servicesTimerRef.current);
-                  setServicesActive(true);
-                }}
-                onMouseLeave={() => {
-                  clearTimeout(servicesTimerRef.current);
-                  setServicesActive(false);
-                }}
-              >
-                <button
-                  className="services-arrow services-arrow-left"
-                  onClick={() => {
-                    servicesRef.current?.scrollBy({
-                      left: -380,
-                      behavior: "smooth",
-                    });
-                    clearTimeout(servicesTimerRef.current);
-                    servicesTimerRef.current = setTimeout(
-                      () => setServicesActive(false),
-                      2000
-                    );
-                  }}
-                  aria-label="Scroll left"
-                >
-                  <ChevronLeft />
-                </button>
-                <div className="home-services-strip" ref={servicesRef}>
-                  {SERVICES.map((s) => (
-                    <div
-                      className="home-service-card"
-                      key={s.title}
-                      style={{
-                        backgroundImage: `url(${s.image})`,
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
-                      }}
-                    >
-                      {/* <div className="home-service-icon">{s.icon}</div> */}
-                      <div className="home-service-title">{s.title}</div>
-                      <div className="home-service-desc">{s.desc}</div>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  className="services-arrow services-arrow-right"
-                  onClick={() => {
-                    servicesRef.current?.scrollBy({
-                      left: 380,
-                      behavior: "smooth",
-                    });
-                    clearTimeout(servicesTimerRef.current);
-                    servicesTimerRef.current = setTimeout(
-                      () => setServicesActive(false),
-                      2000
-                    );
-                  }}
-                  aria-label="Scroll right"
-                >
-                  <ChevronRight />
-                </button>
-              </div>
-            </div>
-
-            {/* Book preview */}
-            {books.length > 0 && (
-              <div className="home-section">
-                <div className="home-section-header">
-                  <div className="home-section-heading">
-                    From the collection
-                  </div>
-                  <button
-                    className="home-view-all"
-                    onClick={() => handleTabChange("books")}
-                  >
-                    View all →
-                  </button>
-                </div>
-                <div className="home-books-grid">
-                  {books.slice(0, 6).map((book) => {
-                    const stars = book.avg_rating
-                      ? Math.round(book.avg_rating)
-                      : 0;
-                    return (
-                      <button
-                        key={book.id}
-                        className="home-book-card"
-                        onClick={() => openBook(book.id)}
-                      >
-                        <div className="home-book-cover-wrap">
-                          {book.cover_url ? (
-                            <img
-                              src={book.cover_url}
-                              alt=""
-                              className="home-book-cover"
-                            />
-                          ) : (
-                            <NoCoverPlaceholder title={book.title} />
-                          )}
-                        </div>
-                        <div className="home-book-info">
-                          <div className="home-book-title">{book.title}</div>
-                          <div className="home-book-author">{book.author}</div>
-                          <div className="home-book-meta">
-                            {book.genre && (
-                              <span className="rec-card-genre">
-                                {book.genre}
-                              </span>
-                            )}
-                            {book.avg_rating > 0 && (
-                              <span className="rec-card-rating">
-                                <span className="rec-stars">
-                                  {"★".repeat(stars)}
-                                  {"☆".repeat(5 - stars)}
-                                </span>
-                                <span className="rec-rating-val">
-                                  {book.avg_rating}
-                                </span>
-                              </span>
-                            )}
-                          </div>
-                          <div className="home-book-avail">
-                            {book.available_copies > 0 ? (
-                              `${book.available_copies} available`
-                            ) : (
-                              <span className="muted">Unavailable</span>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {tab === "books" && (
           <>
+            {/* Hero */}
+            <div className="home-hero-title">
+              {getGreeting()} {user.username},
+            </div>
+            <h2 className="home-hero-eyebrow">{}</h2>
+
             {/* Persistent search bar */}
             <div className="search-panel">
               <div className="search-trigger-row">
@@ -2026,9 +2220,7 @@ function MemberDashboard() {
             )}
             {!aiMode && hasActiveFilters && filteredBooks.length > 0 && (
               <div
-                className={
-                  cardView === "large" ? "library-grid" : "books-grid"
-                }
+                className={cardView === "large" ? "library-grid" : "books-grid"}
               >
                 {filteredBooks.map((b) => renderBookCard(b))}
               </div>
@@ -2153,7 +2345,10 @@ function MemberDashboard() {
 
         {tab === "library" && (
           <>
-            <div className="search-trigger-row" style={{ justifyContent: "flex-end" }}>
+            <div
+              className="search-trigger-row"
+              style={{ justifyContent: "flex-end" }}
+            >
               <button
                 className="search-icon-btn"
                 onClick={() =>
@@ -2464,7 +2659,12 @@ function MemberDashboard() {
                   <button
                     className="btn btn-sm"
                     onClick={() => {
-                      setCommunityForm({ name: "", description: "" });
+                      setCommunityForm({
+                        name: "",
+                        description: "",
+                        banner_image: null,
+                        icon_image: null,
+                      });
                       setCommunityFormError("");
                       setShowCreateCommunity(true);
                     }}
@@ -2480,38 +2680,27 @@ function MemberDashboard() {
                     <div className="community-section-label">
                       Your pending requests
                     </div>
-                    {myCommunities
-                      .filter((c) => c.status !== "approved")
-                      .map((c) => (
-                        <div key={c.id} className="community-card">
-                          <div className="community-card-header">
-                            <div>
-                              <div className="community-card-name">
-                                {c.name}
-                              </div>
-                              {c.description && (
-                                <div className="community-card-desc">
-                                  {c.description}
-                                </div>
-                              )}
-                            </div>
-                            <Badge
-                              variant={
-                                c.status === "rejected" ? "overdue" : "returned"
-                              }
-                            >
-                              {c.status === "rejected"
-                                ? "Rejected"
-                                : "Pending approval"}
-                            </Badge>
-                          </div>
-                          {c.admin_notes && (
-                            <div className="community-admin-note">
-                              Admin note: {c.admin_notes}
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                    <div className="community-grid">
+                      {myCommunities
+                        .filter((c) => c.status !== "approved")
+                        .map((c) =>
+                          renderCommunityCard(c, {
+                            statusBadge: (
+                              <Badge
+                                variant={
+                                  c.status === "rejected"
+                                    ? "overdue"
+                                    : "returned"
+                                }
+                              >
+                                {c.status === "rejected"
+                                  ? "Rejected"
+                                  : "Pending approval"}
+                              </Badge>
+                            ),
+                          })
+                        )}
+                    </div>
                   </div>
                 )}
 
@@ -2522,59 +2711,20 @@ function MemberDashboard() {
                     No communities yet — be the first to create one!
                   </div>
                 ) : (
-                  communities.map((c) => (
-                    <div key={c.id} className="community-card">
-                      <div className="community-card-header">
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div className="community-card-name">{c.name}</div>
-                          {c.description && (
-                            <div className="community-card-desc">
-                              {c.description}
-                            </div>
-                          )}
-                          <div className="community-card-meta">
-                            {c.member_count} member
-                            {c.member_count !== 1 ? "s" : ""} · {c.post_count}{" "}
-                            post{c.post_count !== 1 ? "s" : ""}
-                            {c.user_role === "moderator" && (
-                              <span className="community-mod-tag">
-                                Moderator
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="btn-row" style={{ flexShrink: 0 }}>
-                          {c.is_member ? (
-                            <>
-                              <button
-                                className="btn btn-sm"
-                                onClick={() => openCommunity(c)}
-                              >
-                                View
-                              </button>
-                              <button
-                                className="btn btn-sm btn-outline"
-                                onClick={() => leaveCommunity(c.id)}
-                              >
-                                Leave
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              className="btn btn-sm"
-                              onClick={() => joinCommunity(c)}
-                            >
-                              Join
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))
+                  <div className="community-grid">
+                    {communities.map((c) => renderCommunityCard(c))}
+                  </div>
                 )}
               </>
             ) : communityView === "community" ? (
               <>
+                {selectedCommunity?.banner_image && (
+                  <img
+                    src={selectedCommunity.banner_image}
+                    alt=""
+                    className="community-banner-hero"
+                  />
+                )}
                 <div className="community-nav">
                   <button
                     className="btn btn-sm btn-outline"
@@ -2585,6 +2735,11 @@ function MemberDashboard() {
                   >
                     ← Back
                   </button>
+                  <UserAvatar
+                    avatar={selectedCommunity?.icon_image}
+                    username={selectedCommunity?.name}
+                    size={40}
+                  />
                   <div>
                     <div className="community-nav-title">
                       {selectedCommunity?.name}
@@ -2602,17 +2757,29 @@ function MemberDashboard() {
                       )}
                     </div>
                   </div>
-                  <button
-                    className="btn btn-sm"
-                    style={{ marginLeft: "auto" }}
-                    onClick={() => {
-                      setPostForm({ title: "", content: "" });
-                      setPostFormError("");
-                      setShowCreatePost(true);
-                    }}
+                  <div
+                    className="btn-row"
+                    style={{ marginLeft: "auto", flexShrink: 0 }}
                   >
-                    + New Post
-                  </button>
+                    {selectedCommunity?.user_role === "moderator" && (
+                      <button
+                        className="btn btn-sm btn-outline"
+                        onClick={openEditCommunity}
+                      >
+                        Edit
+                      </button>
+                    )}
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => {
+                        setPostForm({ title: "", content: "", images: [] });
+                        setPostFormError("");
+                        setShowCreatePost(true);
+                      }}
+                    >
+                      + New Post
+                    </button>
+                  </div>
                 </div>
 
                 {postsLoading ? (
@@ -2623,89 +2790,36 @@ function MemberDashboard() {
                   </div>
                 ) : (
                   communityPosts.map((post) => (
-                    <div
-                      key={post.id}
-                      className="post-card"
-                      onClick={() => openPost(post)}
-                    >
-                      <div className="post-card-title">{post.title}</div>
-                      <div className="post-card-meta">
+                    <div key={post.id} className="post-detail">
+                      <h2 className="post-detail-title">{post.title}</h2>
+                      <div className="post-detail-meta">
                         <span>{post.author_username}</span>
                         <span className="muted">·</span>
                         <span className="muted">
-                          {new Date(post.created_at).toLocaleDateString()}
-                        </span>
-                        <span className="muted">·</span>
-                        <span className="muted">
-                          {post.comment_count} comment
-                          {post.comment_count !== 1 ? "s" : ""}
+                          {new Date(post.created_at).toLocaleString()}
                         </span>
                       </div>
-                      {Object.keys(post.reactions.counts).length > 0 && (
-                        <div className="post-reactions-preview">
-                          {REACTIONS.filter(
-                            ({ key }) => post.reactions.counts[key] > 0
-                          ).map(({ key, label }) => (
-                            <span
-                              key={key}
-                              className="reaction-mini"
-                              title={label}
-                            >
-                              <ReactionIcon type={key} size={11} />
-                              <span className="reaction-count">
-                                {post.reactions.counts[key]}
-                              </span>
-                            </span>
+                      <div className="post-detail-content">{post.content}</div>
+                      {post.images?.length > 0 && (
+                        <div
+                          className={`post-detail-images post-detail-images-${post.images.length}`}
+                        >
+                          {post.images.map((img, i) => (
+                            <img key={i} src={img} alt="" />
                           ))}
                         </div>
                       )}
-                    </div>
-                  ))
-                )}
-              </>
-            ) : communityView === "post" ? (
-              <>
-                <div className="community-nav" style={{ marginBottom: 24 }}>
-                  <button
-                    className="btn btn-sm btn-outline"
-                    onClick={() => {
-                      setCommunityView("community");
-                    }}
-                  >
-                    ← {selectedCommunity?.name}
-                  </button>
-                </div>
-
-                {postLoading || !selectedPost ? (
-                  <div className="empty">Loading…</div>
-                ) : (
-                  <>
-                    <div className="post-detail">
-                      <h2 className="post-detail-title">
-                        {selectedPost.title}
-                      </h2>
-                      <div className="post-detail-meta">
-                        <span>{selectedPost.author_username}</span>
-                        <span className="muted">·</span>
-                        <span className="muted">
-                          {new Date(selectedPost.created_at).toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="post-detail-content">
-                        {selectedPost.content}
-                      </div>
                       <div className="reaction-bar">
                         {REACTIONS.map(({ key, label }) => {
-                          const count = selectedPost.reactions.counts[key] || 0;
-                          const active =
-                            selectedPost.reactions.user_reaction === key;
+                          const count = post.reactions.counts[key] || 0;
+                          const active = post.reactions.user_reaction === key;
                           return (
                             <button
                               key={key}
                               className={`reaction-btn${
                                 active ? " reaction-active" : ""
                               }`}
-                              onClick={() => reactPost(key)}
+                              onClick={() => reactPost(post.id, key)}
                               title={label}
                             >
                               <ReactionIcon type={key} size={15} />
@@ -2716,59 +2830,70 @@ function MemberDashboard() {
                           );
                         })}
                       </div>
-                    </div>
 
-                    <div className="comments-section">
-                      <div className="comments-header">
-                        {selectedPost.comment_count} Comment
-                        {selectedPost.comment_count !== 1 ? "s" : ""}
-                      </div>
-
-                      <form className="comment-form" onSubmit={submitComment}>
-                        {commentError && (
-                          <div className="error" style={{ marginBottom: 8 }}>
-                            {commentError}
-                          </div>
-                        )}
-                        <textarea
-                          className="comment-input"
-                          value={commentContent}
-                          onChange={(e) => setCommentContent(e.target.value)}
-                          placeholder="Write a comment…"
-                          rows={2}
-                        />
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "flex-end",
-                            marginTop: 6,
-                          }}
-                        >
-                          <button
-                            type="submit"
-                            className="btn btn-sm"
-                            disabled={!commentContent.trim()}
-                          >
-                            Comment
-                          </button>
+                      <div className="comments-section">
+                        <div className="comments-header">
+                          {post.comment_count} Comment
+                          {post.comment_count !== 1 ? "s" : ""}
                         </div>
-                      </form>
 
-                      {selectedPost.comments?.map((comment) => (
-                        <CommentItem
-                          key={comment.id}
-                          comment={comment}
-                          currentUserId={user.id}
-                          onReact={reactComment}
-                          onReply={setReplyingToId}
-                          replyingToId={replyingToId}
-                          replyContent={replyContent}
-                          setReplyContent={setReplyContent}
-                          onSubmitReply={submitReply}
-                        />
-                      ))}
+                        <form
+                          className="comment-form"
+                          onSubmit={(e) => submitComment(e, post.id)}
+                        >
+                          {commentErrors[post.id] && (
+                            <div className="error" style={{ marginBottom: 8 }}>
+                              {commentErrors[post.id]}
+                            </div>
+                          )}
+                          <textarea
+                            className="comment-input"
+                            value={commentDrafts[post.id] || ""}
+                            onChange={(e) =>
+                              setCommentDrafts((prev) => ({
+                                ...prev,
+                                [post.id]: e.target.value,
+                              }))
+                            }
+                            placeholder="Write a comment…"
+                            rows={2}
+                          />
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "flex-end",
+                              marginTop: 6,
+                            }}
+                          >
+                            <button
+                              type="submit"
+                              className="btn btn-sm"
+                              disabled={!(commentDrafts[post.id] || "").trim()}
+                            >
+                              Comment
+                            </button>
+                          </div>
+                        </form>
+
+                        {post.comments?.map((comment) => (
+                          <CommentItem
+                            key={comment.id}
+                            comment={comment}
+                            onReact={(commentId, emoji) =>
+                              reactComment(post.id, commentId, emoji)
+                            }
+                            onReply={setReplyingToId}
+                            replyingToId={replyingToId}
+                            replyContent={replyContent}
+                            setReplyContent={setReplyContent}
+                            onSubmitReply={(commentId) =>
+                              submitReply(post.id, commentId)
+                            }
+                          />
+                        ))}
+                      </div>
                     </div>
-                  </>
+                  ))
                 )}
               </>
             ) : null}
@@ -2782,8 +2907,8 @@ function MemberDashboard() {
           title={selectedBook.title}
           onClose={closeBook}
           wide
-          heroBg={coverPalette?.bg ?? "var(--bg-raised)"}
-          heroTextColor={coverPalette?.text ?? "var(--text)"}
+          heroBg={coverPalette?.bg ?? "var(--glass-dark, var(--bg-raised))"}
+          heroTextColor={coverPalette?.text ?? "var(--glass-text, var(--text))"}
           heroContent={
             <>
               <div className="book-detail-header">
@@ -2872,12 +2997,20 @@ function MemberDashboard() {
                     <BookActionButton book={selectedBook} />
                     {!borrowedBookIds.has(selectedBook.id) && (
                       <button
-                        className={`btn${wishlistIds.has(selectedBook.id) ? "" : " btn-outline"}`}
+                        className={`btn${
+                          wishlistIds.has(selectedBook.id) ? "" : " btn-outline"
+                        }`}
                         onClick={() => toggleWishlist(selectedBook.id)}
                         disabled={wishlistLoading}
-                        title={wishlistIds.has(selectedBook.id) ? "Remove from wishlist" : "Add to wishlist"}
+                        title={
+                          wishlistIds.has(selectedBook.id)
+                            ? "Remove from wishlist"
+                            : "Add to wishlist"
+                        }
                       >
-                        {wishlistIds.has(selectedBook.id) ? "♥ Wishlisted" : "♡ Wishlist"}
+                        {wishlistIds.has(selectedBook.id)
+                          ? "♥ Wishlisted"
+                          : "♡ Wishlist"}
                       </button>
                     )}
                   </div>
@@ -2947,8 +3080,12 @@ function MemberDashboard() {
           title={selectedBorrowBook.title}
           onClose={closeBorrowCard}
           wide
-          heroBg={borrowedCoverPalette?.bg ?? "var(--bg-raised)"}
-          heroTextColor={borrowedCoverPalette?.text ?? "var(--text)"}
+          heroBg={
+            borrowedCoverPalette?.bg ?? "var(--glass-dark, var(--bg-raised))"
+          }
+          heroTextColor={
+            borrowedCoverPalette?.text ?? "var(--glass-text, var(--text))"
+          }
           heroContent={
             <div className="book-detail-header">
               {selectedBorrowBook.cover_url && (
@@ -2960,13 +3097,19 @@ function MemberDashboard() {
               )}
               <div className="book-detail book-detail-meta">
                 <div className="book-detail-row" style={borrowedHeroRowStyle}>
-                  <span className="book-detail-label" style={borrowedHeroLabelStyle}>
+                  <span
+                    className="book-detail-label"
+                    style={borrowedHeroLabelStyle}
+                  >
                     Author
                   </span>
                   <span>{selectedBorrowBook.author}</span>
                 </div>
                 <div className="book-detail-row" style={borrowedHeroRowStyle}>
-                  <span className="book-detail-label" style={borrowedHeroLabelStyle}>
+                  <span
+                    className="book-detail-label"
+                    style={borrowedHeroLabelStyle}
+                  >
                     Genre
                   </span>
                   <span>
@@ -2976,7 +3119,10 @@ function MemberDashboard() {
                   </span>
                 </div>
                 <div className="book-detail-row" style={borrowedHeroRowStyle}>
-                  <span className="book-detail-label" style={borrowedHeroLabelStyle}>
+                  <span
+                    className="book-detail-label"
+                    style={borrowedHeroLabelStyle}
+                  >
                     Borrowed on
                   </span>
                   <span>
@@ -2984,7 +3130,10 @@ function MemberDashboard() {
                   </span>
                 </div>
                 <div className="book-detail-row" style={borrowedHeroRowStyle}>
-                  <span className="book-detail-label" style={borrowedHeroLabelStyle}>
+                  <span
+                    className="book-detail-label"
+                    style={borrowedHeroLabelStyle}
+                  >
                     Due date
                   </span>
                   <span>
@@ -2999,11 +3148,16 @@ function MemberDashboard() {
                       : { ...borrowedHeroRowStyle, borderBottom: "none" }
                   }
                 >
-                  <span className="book-detail-label" style={borrowedHeroLabelStyle}>
+                  <span
+                    className="book-detail-label"
+                    style={borrowedHeroLabelStyle}
+                  >
                     Status
                   </span>
                   <span>
-                    <Badge variant={selectedBorrow.is_overdue ? "overdue" : "active"}>
+                    <Badge
+                      variant={selectedBorrow.is_overdue ? "overdue" : "active"}
+                    >
                       {selectedBorrow.is_overdue ? "Overdue" : "Active"}
                     </Badge>
                   </span>
@@ -3013,7 +3167,10 @@ function MemberDashboard() {
                     className="book-detail-row"
                     style={{ ...borrowedHeroRowStyle, borderBottom: "none" }}
                   >
-                    <span className="book-detail-label" style={borrowedHeroLabelStyle}>
+                    <span
+                      className="book-detail-label"
+                      style={borrowedHeroLabelStyle}
+                    >
                       Fine so far
                     </span>
                     <span>${selectedBorrow.fine.toFixed(2)}</span>
@@ -3025,7 +3182,10 @@ function MemberDashboard() {
                     className="btn btn-outline"
                     onClick={() => {
                       closeBorrowCard();
-                      openReturnModal(selectedBorrow.id, selectedBorrow.book_title);
+                      openReturnModal(
+                        selectedBorrow.id,
+                        selectedBorrow.book_title
+                      );
                     }}
                   >
                     Return
@@ -3044,7 +3204,13 @@ function MemberDashboard() {
                   )}
                 </div>
                 {selectedBorrowBook.gutenberg_id === 0 && (
-                  <p style={{ ...borrowedHeroFaintStyle, fontSize: "0.8rem", marginTop: 8 }}>
+                  <p
+                    style={{
+                      ...borrowedHeroFaintStyle,
+                      fontSize: "0.8rem",
+                      marginTop: 8,
+                    }}
+                  >
                     Not available for online reading.
                   </p>
                 )}
@@ -3055,7 +3221,9 @@ function MemberDashboard() {
           {selectedBorrowBook.description && (
             <div className="enrichment-section">
               <div className="enrichment-label">About this book</div>
-              <p className="enrichment-text">{selectedBorrowBook.description}</p>
+              <p className="enrichment-text">
+                {selectedBorrowBook.description}
+              </p>
             </div>
           )}
         </Modal>
@@ -3095,7 +3263,11 @@ function MemberDashboard() {
                 >
                   A
                 </button>
-                <button className="modal-close-btn" onClick={closeReader} aria-label="Close">
+                <button
+                  className="modal-close-btn"
+                  onClick={closeReader}
+                  aria-label="Close"
+                >
                   ✕
                 </button>
               </div>
@@ -3294,6 +3466,11 @@ function MemberDashboard() {
                 required
               />
             </div>
+            <CommunityImageFields
+              form={communityForm}
+              setForm={setCommunityForm}
+              onError={setCommunityFormError}
+            />
             <div className="form-group">
               <label>
                 Description{" "}
@@ -3333,6 +3510,60 @@ function MemberDashboard() {
         </Modal>
       )}
 
+      {/* Edit Community Modal */}
+      {showEditCommunity && (
+        <Modal
+          title="Edit Community"
+          onClose={() => setShowEditCommunity(false)}
+        >
+          <form onSubmit={submitEditCommunity}>
+            {editCommunityError && (
+              <div className="error">{editCommunityError}</div>
+            )}
+            <CommunityImageFields
+              form={editCommunityForm}
+              setForm={setEditCommunityForm}
+              onError={setEditCommunityError}
+            />
+            <div className="form-group">
+              <label>
+                Description{" "}
+                <span
+                  className="muted"
+                  style={{ textTransform: "none", fontSize: "0.75rem" }}
+                >
+                  (optional)
+                </span>
+              </label>
+              <textarea
+                className="comment-input"
+                value={editCommunityForm.description}
+                onChange={(e) =>
+                  setEditCommunityForm({
+                    ...editCommunityForm,
+                    description: e.target.value,
+                  })
+                }
+                placeholder="What is this community about?"
+                rows={3}
+              />
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                onClick={() => setShowEditCommunity(false)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-sm">
+                Save Changes
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
       {/* Create Post Modal */}
       {showCreatePost && (
         <Modal title="New Post" onClose={() => setShowCreatePost(false)} wide>
@@ -3362,6 +3593,11 @@ function MemberDashboard() {
                 required
               />
             </div>
+            <PostImagesField
+              form={postForm}
+              setForm={setPostForm}
+              onError={setPostFormError}
+            />
             <div className="modal-actions">
               <button
                 type="button"

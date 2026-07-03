@@ -3,6 +3,7 @@ import api from "../api";
 import { useAuth } from "../context/AuthContext";
 import TopBar from "../components/TopBar";
 import NavTabs from "../components/NavTabs";
+import UserAvatar from "../components/UserAvatar";
 import Badge from "../components/Badge";
 import Modal from "../components/Modal";
 import SearchBar from "../components/SearchBar";
@@ -343,6 +344,23 @@ function AdminDashboard() {
     }
   };
 
+  const deleteCommunity = async (community) => {
+    if (
+      !window.confirm(
+        `Delete "${community.name}"? This permanently removes all its posts, comments, and memberships.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await api.delete(`/admin/communities/${community.id}`);
+      loadAdminCommunities(adminCommunitiesFilter);
+      toast("Community deleted");
+    } catch (err) {
+      toast(err.response?.data?.error || "Failed to delete community", "error");
+    }
+  };
+
   const openMember = async (member) => {
     setSelectedMember(member);
     setMemberBorrows([]);
@@ -502,13 +520,13 @@ function AdminDashboard() {
         aiGenModal.field === "author_bio" ? "author bio" : aiGenModal.field;
       setRefreshLog((prev) =>
         prev.map((entry, i) =>
-          i === 0
-            ? { ...entry, loaded: [...entry.loaded, logLabel] }
-            : entry
+          i === 0 ? { ...entry, loaded: [...entry.loaded, logLabel] } : entry
         )
       );
       toast(
-        `${aiGenModal.field === "author_bio" ? "Author bio" : "Description"} saved`
+        `${
+          aiGenModal.field === "author_bio" ? "Author bio" : "Description"
+        } saved`
       );
       setAiGenModal(null);
     } catch (err) {
@@ -559,17 +577,14 @@ function AdminDashboard() {
   const saveCoverUpload = async () => {
     if (!coverUploadBookId) return;
     const urlToSave =
-      coverUploadMode === "file"
-        ? coverUploadPreview
-        : coverUploadUrl.trim();
+      coverUploadMode === "file" ? coverUploadPreview : coverUploadUrl.trim();
     if (!urlToSave) return;
     setCoverUploadSaving(true);
     setCoverUploadError("");
     try {
-      const res = await api.put(
-        `/books/${coverUploadBookId}/patch-metadata`,
-        { cover_url: urlToSave }
-      );
+      const res = await api.put(`/books/${coverUploadBookId}/patch-metadata`, {
+        cover_url: urlToSave,
+      });
       setBooks((prev) =>
         prev.map((b) =>
           b.id === coverUploadBookId
@@ -583,9 +598,7 @@ function AdminDashboard() {
       );
       setRefreshLog((prev) =>
         prev.map((entry, i) =>
-          i === 0
-            ? { ...entry, loaded: [...entry.loaded, "cover"] }
-            : entry
+          i === 0 ? { ...entry, loaded: [...entry.loaded, "cover"] } : entry
         )
       );
       toast("Cover saved");
@@ -1481,7 +1494,22 @@ function AdminDashboard() {
                 <tbody>
                   {adminCommunities.map((c) => (
                     <tr key={c.id}>
-                      <td style={{ fontWeight: 500 }}>{c.name}</td>
+                      <td style={{ fontWeight: 500 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <UserAvatar
+                            avatar={c.icon_image}
+                            username={c.name}
+                            size={26}
+                          />
+                          {c.name}
+                        </div>
+                      </td>
                       <td
                         style={{
                           maxWidth: 200,
@@ -1509,30 +1537,38 @@ function AdminDashboard() {
                       </td>
                       <td>{new Date(c.created_at).toLocaleDateString()}</td>
                       <td>
-                        {c.status === "pending" && (
-                          <div className="btn-row">
-                            <button
-                              className="btn btn-sm"
-                              onClick={() => {
-                                setApprovingCommunity(c);
-                                setCommunityApproveNotes("");
-                                setCommunityApproveError("");
-                              }}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              className="btn btn-sm btn-outline"
-                              onClick={() => {
-                                setRejectingCommunity(c);
-                                setCommunityRejectNotes("");
-                                setCommunityRejectError("");
-                              }}
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        )}
+                        <div className="btn-row">
+                          {c.status === "pending" && (
+                            <>
+                              <button
+                                className="btn btn-sm"
+                                onClick={() => {
+                                  setApprovingCommunity(c);
+                                  setCommunityApproveNotes("");
+                                  setCommunityApproveError("");
+                                }}
+                              >
+                                Approve
+                              </button>
+                              <button
+                                className="btn btn-sm btn-outline"
+                                onClick={() => {
+                                  setRejectingCommunity(c);
+                                  setCommunityRejectNotes("");
+                                  setCommunityRejectError("");
+                                }}
+                              >
+                                Reject
+                              </button>
+                            </>
+                          )}
+                          <button
+                            className="btn btn-sm btn-outline"
+                            onClick={() => deleteCommunity(c)}
+                          >
+                            Delete
+                          </button>
+                        </div>
                         {c.admin_notes && (
                           <div
                             style={{
@@ -1777,9 +1813,7 @@ function AdminDashboard() {
                       {missingBio && (
                         <button
                           className="btn btn-sm btn-outline"
-                          onClick={() =>
-                            openAiGen(refreshBookId, "author_bio")
-                          }
+                          onClick={() => openAiGen(refreshBookId, "author_bio")}
                         >
                           ✨ Author bio
                         </button>
@@ -2047,10 +2081,7 @@ function AdminDashboard() {
 
       {/* ── Add Book Modal ── */}
       {showAddGenre && (
-        <Modal
-          title="Add Genre"
-          onClose={() => setShowAddGenre(false)}
-        >
+        <Modal title="Add Genre" onClose={() => setShowAddGenre(false)}>
           <form onSubmit={addGenre}>
             {genreError && <div className="error">{genreError}</div>}
             <div className="form-group">
@@ -2062,8 +2093,15 @@ function AdminDashboard() {
                 autoFocus
                 required
               />
-              <div style={{ fontSize: "0.78rem", color: "var(--text-4)", marginTop: 4 }}>
-                Letters only (a–z). First letter will be capitalised automatically.
+              <div
+                style={{
+                  fontSize: "0.78rem",
+                  color: "var(--text-4)",
+                  marginTop: 4,
+                }}
+              >
+                Letters only (a–z). First letter will be capitalised
+                automatically.
               </div>
             </div>
             <div className="modal-actions">
@@ -2230,7 +2268,11 @@ function AdminDashboard() {
                   <span>
                     {bookReviews && bookReviews.rating_count > 0 ? (
                       <span
-                        style={{ display: "flex", alignItems: "center", gap: 8 }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
                       >
                         <span className="star-display">
                           {"★".repeat(Math.round(bookReviews.avg_rating))}
@@ -2243,7 +2285,9 @@ function AdminDashboard() {
                         </span>
                         <span style={{ fontSize: "0.8rem", ...heroFaintStyle }}>
                           · {bookReviews.rating_count}{" "}
-                          {bookReviews.rating_count === 1 ? "rating" : "ratings"}
+                          {bookReviews.rating_count === 1
+                            ? "rating"
+                            : "ratings"}
                         </span>
                       </span>
                     ) : (
@@ -2548,7 +2592,9 @@ function AdminDashboard() {
       {/* ── AI Generate Field Modal ── */}
       {aiGenModal && (
         <Modal
-          title={`Generate ${aiGenModal.field === "author_bio" ? "Author Bio" : "Description"} — ${aiGenModal.bookTitle}`}
+          title={`Generate ${
+            aiGenModal.field === "author_bio" ? "Author Bio" : "Description"
+          } — ${aiGenModal.bookTitle}`}
           onClose={() => !aiGenSaving && setAiGenModal(null)}
           wide
         >
@@ -2619,7 +2665,9 @@ function AdminDashboard() {
         >
           <div className="cover-upload-tabs">
             <button
-              className={`cover-upload-tab${coverUploadMode === "file" ? " active" : ""}`}
+              className={`cover-upload-tab${
+                coverUploadMode === "file" ? " active" : ""
+              }`}
               onClick={() => {
                 setCoverUploadMode("file");
                 setCoverUploadPreview("");
@@ -2628,7 +2676,9 @@ function AdminDashboard() {
               Upload file
             </button>
             <button
-              className={`cover-upload-tab${coverUploadMode === "url" ? " active" : ""}`}
+              className={`cover-upload-tab${
+                coverUploadMode === "url" ? " active" : ""
+              }`}
               onClick={() => {
                 setCoverUploadMode("url");
                 setCoverUploadUrl("");

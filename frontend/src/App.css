@@ -495,18 +495,71 @@ textarea::placeholder {
 /* ── Login page ─────────────────────────────────────────────────────────────── */
 
 .login-page {
+  position: relative;
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
+  overflow: hidden;
   background: var(--bg);
+  animation: login-page-in 0.35s ease-out both;
+}
+
+@keyframes login-page-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.login-video-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+}
+
+.login-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+
+.login-back-link {
+  position: fixed;
+  top: 2rem;
+  left: 2rem;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-display, serif);
+  font-size: 1.125rem;
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.login-back-link:hover {
+  opacity: 0.7;
 }
 
 .login-box {
+  position: relative;
+  z-index: 10;
   width: 360px;
   padding: 48px 32px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+  background: var(--bg);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
 }
 
 .login-box h1 {
@@ -693,10 +746,24 @@ textarea::placeholder {
 /* ── Layout ─────────────────────────────────────────────────────────────────── */
 
 .layout {
+  position: relative;
   min-height: 100vh;
 }
 
-/* ── TopBar ─────────────────────────────────────────────────────────────────── */
+.layout::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--dashboard-bg-image, none);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 1;
+  pointer-events: none;
+}
+
+/* ── TopBar ─────────────────────────────────────────────────────────────────----  */
 
 .topbar {
   display: flex;
@@ -710,6 +777,31 @@ textarea::placeholder {
 .topbar h2 {
   font-size: 1.1rem;
   font-weight: 600;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.topbar-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-4);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.topbar-menu-btn:hover {
+  background: var(--bg-muted);
+  color: var(--text);
 }
 
 .topbar-right {
@@ -2173,6 +2265,25 @@ td {
   color: var(--text-3);
 }
 
+/* ── Cover-only button variant (used when the rest of the card isn't itself
+   a <button>, e.g. My Library cards which need separate action buttons) ── */
+.rec-card-cover-btn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.rec-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
 /* ── Large card view modifier ─────────────────────────────────────────────────
    Applied instead of the default 190px rec-card when the user switches
    Available Books to the large-card view; container also switches to
@@ -2272,6 +2383,7 @@ td {
 .home-hero {
   padding: 48px 0 32px;
   border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 24px;
 }
 
 .home-hero-eyebrow {
@@ -2279,7 +2391,7 @@ td {
   letter-spacing: 0.6px;
   color: var(--text-5);
   font-weight: 500;
-  margin-bottom: 8px;
+  margin-bottom: 24px;
   padding-left: 10px;
   border-left: 3px solid var(--accent, transparent);
   transition: border-color 0.4s ease;
@@ -2756,33 +2868,99 @@ td {
   margin-bottom: 10px;
 }
 
+.community-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
 .community-card {
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  padding: 16px 20px;
-  margin-bottom: 12px;
+  overflow: hidden;
   background: var(--bg);
 }
 
-.community-card-header {
+.community-card-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.community-card-clickable:hover {
+  border-color: var(--text-5);
+  background: var(--bg-subtle);
+}
+
+.community-card-banner {
+  position: relative;
+  width: 100%;
+  height: 100px;
+  background: var(--bg-muted);
+}
+
+.community-card-banner img,
+.community-card-banner-fallback {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.community-card-banner-fallback {
+  background: linear-gradient(135deg, var(--border-subtle), var(--bg-muted));
+}
+
+/* Icon sits in front of (on top of) the banner, inset so the card's
+   overflow: hidden never clips it — that's what keeps it a perfect circle
+   and keeps all four card corners cleanly rounded. */
+.community-card-icon-wrap {
+  position: absolute;
+  left: 14px;
+  bottom: 10px;
+  z-index: 1;
+}
+
+.community-card-icon-wrap .user-avatar {
+  display: block;
+  border: 3px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--border-subtle);
+}
+
+.community-card-status-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.community-card-body {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
+  flex-direction: column;
+  flex: 1;
+  padding: 16px;
 }
 
 .community-card-name {
   font-size: 1rem;
   font-weight: 600;
   color: var(--text);
-  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .community-card-desc {
   font-size: 0.85rem;
   color: var(--text-3);
-  margin-bottom: 6px;
+  margin-bottom: 10px;
   line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .community-card-meta {
@@ -2791,6 +2969,13 @@ td {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-bottom: 12px;
+}
+
+.community-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
 }
 
 .community-mod-tag {
@@ -2842,56 +3027,75 @@ td {
   align-items: center;
 }
 
-/* ── Post list ──────────────────────────────────────────────────────────────── */
-
-.post-card {
-  border: 1px solid var(--border-subtle);
+.community-banner-hero {
+  display: block;
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
   border-radius: var(--radius-lg);
-  padding: 16px 20px;
-  margin-bottom: 10px;
+  margin-bottom: 20px;
+  background: var(--bg-muted);
+}
+
+/* ── Community icon / banner upload (Create + Edit Community modals) ─────────── */
+
+.community-icon-upload {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.community-icon-preview {
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 1px dashed var(--border-input);
+  border-radius: 50%;
+  background: var(--bg-muted);
+  color: var(--text-5);
   cursor: pointer;
-  transition: border-color 0.1s;
-  background: var(--bg);
-}
-
-.post-card:hover {
-  border-color: var(--text-5);
-  background: var(--bg-subtle);
-}
-
-.post-card-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 6px;
-}
-
-.post-card-meta {
+  overflow: hidden;
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.78rem;
-  color: var(--text-5);
+  justify-content: center;
 }
 
-.post-reactions-preview {
+.community-icon-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.community-icon-placeholder {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.community-banner-upload {
   display: flex;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.reaction-mini {
-  display: inline-flex;
   align-items: center;
-  gap: 3px;
-  font-size: 0.72rem;
+  justify-content: center;
+  width: 100%;
+  height: 110px;
+  padding: 0;
+  border: 1px dashed var(--border-input);
+  border-radius: var(--radius-md);
+  background: var(--bg-muted);
   color: var(--text-5);
-  padding: 1px 5px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  cursor: pointer;
+  overflow: hidden;
 }
 
-/* ── Post detail ────────────────────────────────────────────────────────────── */
+.community-banner-upload img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ── Post feed ──────────────────────────────────────────────────────────────── */
 
 .post-detail {
   border: 1px solid var(--border-subtle);
@@ -2925,6 +3129,103 @@ td {
   margin-bottom: 20px;
   padding-bottom: 20px;
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.post-detail-images {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.post-detail-images img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  display: block;
+}
+
+.post-detail-images-1 {
+  grid-template-columns: 1fr;
+}
+
+.post-detail-images-1 img {
+  max-height: 420px;
+  object-fit: contain;
+  background: var(--bg-muted);
+}
+
+.post-detail-images-2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.post-detail-images-2 img {
+  height: 260px;
+}
+
+.post-detail-images-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.post-detail-images-3 img {
+  height: 180px;
+}
+
+/* ── Post image picker (Create Post modal) ────────────────────────────────── */
+
+.post-images-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.post-image-thumb {
+  position: relative;
+  width: 80px;
+  height: 80px;
+}
+
+.post-image-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  display: block;
+}
+
+.post-image-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-3);
+  font-size: 0.65rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.post-image-add {
+  width: 80px;
+  height: 80px;
+  border: 1px dashed var(--border-input);
+  border-radius: var(--radius-md);
+  background: var(--bg-muted);
+  color: var(--text-5);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ── Reactions ──────────────────────────────────────────────────────────────── */
@@ -3208,6 +3509,791 @@ td {
   text-align: center;
 }
 
+/* ── Glassmorphism design tokens (Member dashboard only) ─────────────────────
+   Tint sampled from bg3.png's own foliage/wood palette via Pillow, mirroring
+   how book cover_color is extracted server-side. Scoped entirely to
+   .layout-no-topbar (the Member dashboard's root) so Admin is untouched. ── */
+
+.layout-no-topbar {
+  --glass-tint: 58, 74, 34;
+  /* Opacity floors below are chosen so that --glass-text-muted (the lower of
+     the two text tones) still clears 4.5:1 against these panels even in the
+     worst case — a pure-white pixel behind the scrim + this panel's tint.
+     See the WCAG note above .layout-no-topbar::before for the full math. */
+  --glass-bg: rgba(var(--glass-tint), 0.55);
+  --glass-bg-strong: rgba(var(--glass-tint), 0.68);
+  --glass-dark: rgba(20, 28, 15, 0.92);
+  --glass-dark-hover: rgba(30, 40, 21, 0.92);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-blur: blur(28px);
+  --glass-text: #f5f7f0;
+  /* Solid, not alpha-transparent — an alpha-based muted tone would let a
+     bright patch of the underlying photo lighten it unpredictably, which is
+     exactly what breaks a guaranteed contrast ratio. */
+  --glass-text-muted: #c9d3c1;
+  --glass-accent: #8cbd5b;
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+/* WCAG safety net: glass over a photo can't get a compile-time-guaranteed
+   contrast ratio the way a solid --bg/--text pair can, since the backdrop
+   varies pixel to pixel. Instead of relying on background-blend-mode (whose
+   compositing order is easy to get wrong), stack a flat, fully predictable
+   60%-black scrim as its own background-image layer under the photo. Worst
+   case (a pure-white pixel) is capped at rgb(102,102,102); combined with the
+   --glass-bg/-strong opacity floors above, --glass-text-muted still clears
+   4.5:1 and --glass-text clears well above it, in that worst case. */
+.layout-no-topbar::before {
+  background-image:
+    linear-gradient(rgba(6, 10, 4, 0.6), rgba(6, 10, 4, 0.6)),
+    var(--dashboard-bg-image, none);
+  background-size: cover, cover;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+}
+
+/* ── Dock nav (macOS-style floating dock, Member dashboard) ──────────────────── */
+
+.dock-nav {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%) translateY(0);
+  z-index: 195;
+  opacity: 1;
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.28s ease;
+}
+
+.dock-nav:not(.dock-nav-visible) {
+  transform: translateX(-50%) translateY(140%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Keep the dock on screen for keyboard users tabbing through its items,
+   even if the mouse isn't near the bottom edge. */
+.dock-nav:focus-within {
+  transform: translateX(-50%) translateY(0) !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+/* Touch devices have no hover/cursor-proximity concept, so auto-hide would
+   just make the primary nav unreachable — keep it always on screen there. */
+@media (hover: none) {
+  .dock-nav {
+    transform: translateX(-50%) translateY(0) !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+}
+
+.dock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 24px;
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    var(--glass-shadow),
+    inset 0 1px 1px rgba(255, 255, 255, 0.25);
+}
+
+.dock-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 50px;
+  height: 50px;
+  border: none;
+  border-radius: 15px;
+  background: none;
+  color: var(--glass-text-muted);
+  cursor: pointer;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background-color 0.18s ease, color 0.18s ease;
+}
+
+.dock-item:hover,
+.dock-item:focus-visible {
+  transform: translateY(-8px) scale(1.12);
+  background: var(--glass-bg);
+  color: var(--glass-text);
+}
+
+.dock-item-active {
+  color: var(--glass-text);
+  background: var(--glass-dark);
+}
+
+.dock-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dock-badge {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 9999px;
+  background: #c00;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
+
+.dock-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.dock-dot-active {
+  background: var(--glass-accent);
+}
+
+.dock-label {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--glass-dark);
+  color: var(--glass-text);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.dock-item:hover .dock-label,
+.dock-item:focus-visible .dock-label {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (max-width: 640px) {
+  .dock {
+    gap: 2px;
+    padding: 8px;
+  }
+
+  .dock-item {
+    width: 42px;
+    height: 42px;
+  }
+
+  .dock-item:hover,
+  .dock-item:focus-visible {
+    transform: translateY(-4px) scale(1.08);
+  }
+}
+
+.topbar-standalone-profile {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 150;
+}
+
+.layout-no-topbar .topbar-avatar-btn {
+  padding: 3px;
+  border-radius: 9999px;
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.layout-no-topbar .profile-dropdown {
+  background: var(--glass-dark);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.layout-no-topbar .pd-username,
+.layout-no-topbar .pd-section-label,
+.layout-no-topbar .pd-item-label {
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .pd-divider {
+  background: var(--glass-border);
+}
+
+.layout-no-topbar .pd-option {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .pd-option:hover,
+.layout-no-topbar .pd-option-active {
+  background: var(--glass-bg);
+  color: var(--glass-text);
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+
+.layout-no-topbar .btn {
+  background: var(--glass-dark);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  color: var(--glass-text);
+  box-shadow: var(--glass-shadow);
+}
+
+.layout-no-topbar .btn:hover {
+  background: var(--glass-dark-hover);
+  border-color: var(--glass-border);
+}
+
+.layout-no-topbar .btn-outline {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .btn-outline:hover {
+  background: var(--glass-bg-strong);
+}
+
+/* ── Cards (rec-card: home collection / trending / recs / library grids) ───── */
+
+.layout-no-topbar .rec-card {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow);
+}
+
+.layout-no-topbar .rec-card:hover {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border);
+}
+
+.layout-no-topbar .rec-card-cover {
+  background: rgba(var(--glass-tint), 0.3);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.layout-no-topbar .rec-card-title,
+.layout-no-topbar .rec-card-reason {
+  color: var(--glass-text);
+  border-bottom-color: var(--glass-border);
+}
+
+.layout-no-topbar .rec-card-author,
+.layout-no-topbar .rec-card-genre,
+.layout-no-topbar .rec-card-avail,
+.layout-no-topbar .rec-rating-val,
+.layout-no-topbar .rec-card-collab .rec-card-reason {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .rec-card-genre {
+  border-color: var(--glass-border);
+}
+
+/* ── Genre pills (tab-switcher style) ─────────────────────────────────────── */
+
+.layout-no-topbar .genre-card {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .genre-card:hover {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border);
+}
+
+.layout-no-topbar .genre-card-count {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .genre-card.active {
+  background: var(--glass-dark);
+  border-color: var(--glass-accent);
+  color: var(--glass-text);
+  box-shadow: var(--glass-shadow);
+}
+
+.layout-no-topbar .genre-card.active .genre-card-count {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .genre-card-add {
+  color: var(--glass-text-muted);
+}
+
+/* ── Home hero + section containers ───────────────────────────────────────── */
+
+.layout-no-topbar .home-hero {
+  padding: 32px;
+  margin-bottom: 8px;
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
+}
+
+.layout-no-topbar .home-hero-title,
+.layout-no-topbar .home-hero-eyebrow {
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .home-hero-sub {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .home-section-heading,
+.layout-no-topbar .home-view-all {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .home-view-all:hover {
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .home-service-card {
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+/* ── My Profile: avatar, membership stat card, fines table ───────────────── */
+
+.layout-no-topbar h1,
+.layout-no-topbar h2,
+.layout-no-topbar h3,
+.layout-no-topbar .section-header h3 {
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .profile-avatar-section {
+  padding: 20px;
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
+}
+
+.layout-no-topbar .profile-username {
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .profile-avatar-hint,
+.layout-no-topbar .muted {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .membership-card {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow);
+}
+
+.layout-no-topbar .membership-stat-label {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .membership-stat-value {
+  color: var(--glass-text);
+}
+
+.layout-no-topbar table {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--glass-shadow);
+}
+
+.layout-no-topbar th {
+  color: var(--glass-text-muted);
+  border-bottom-color: var(--glass-border);
+}
+
+.layout-no-topbar td {
+  color: var(--glass-text);
+  border-bottom-color: var(--glass-border);
+}
+
+.layout-no-topbar .clickable-row:hover td {
+  background: var(--glass-bg-strong);
+}
+
+/* ── Search + custom dropdowns ────────────────────────────────────────────── */
+
+.layout-no-topbar .search-bar {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .search-bar::placeholder {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .search-icon-btn {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .search-icon-btn:hover {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border);
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .search-icon-btn.has-filters {
+  border-color: var(--glass-accent);
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .search-active-dot {
+  background: var(--glass-accent);
+}
+
+.layout-no-topbar .ai-toggle-btn {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .ai-toggle-btn:hover {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border);
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .ai-toggle-btn.ai-toggle-active {
+  background: var(--glass-dark);
+  border-color: var(--glass-accent);
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .custom-select-trigger {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .custom-select-chevron {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .custom-select-dropdown {
+  background: var(--glass-dark);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.layout-no-topbar .custom-select-option {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .custom-select-option:hover,
+.layout-no-topbar .custom-select-option.custom-select-option-active {
+  background: var(--glass-bg-strong);
+  color: var(--glass-text);
+}
+
+/* ── Modal ─────────────────────────────────────────────────────────────────
+   The outer shell (frame, blur, border, shadow, rounded corners) is glass
+   for every modal, including book-detail hero modals. The hero zone itself
+   keeps its exact per-book cover-colour fill untouched — heroBg/heroTextColor
+   are a precise WCAG-AA-solved pair computed in JS (minAlphaForContrast()),
+   and any translucent wash layered on top of it (even a light sheen) would
+   shift the effective background colour under the text and invalidate that
+   guarantee. Only a 1px inner top highlight is added (negligible — it does
+   not meaningfully alter any pixel a line of text sits on). ──────────────── */
+
+.layout-no-topbar .modal-overlay {
+  background: rgba(6, 10, 4, 0.55);
+}
+
+.layout-no-topbar .modal {
+  background: var(--glass-dark);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  box-shadow: var(--glass-shadow);
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .modal-close-btn {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .modal-close-btn:hover {
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .modal-hero {
+  position: relative;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* ── Toasts ────────────────────────────────────────────────────────────────── */
+
+.layout-no-topbar .toast-success {
+  background: var(--glass-dark);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  color: var(--glass-text);
+  box-shadow: var(--glass-shadow);
+}
+
+.layout-no-topbar .toast-action {
+  color: var(--glass-accent);
+}
+
+/* ── Community tab ─────────────────────────────────────────────────────────── */
+
+.layout-no-topbar .community-locked {
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .community-locked p {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .community-section-label {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .community-card,
+.layout-no-topbar .post-detail {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow);
+}
+
+.layout-no-topbar .community-card-clickable:hover {
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border);
+}
+
+.layout-no-topbar .community-card-name,
+.layout-no-topbar .post-detail-title,
+.layout-no-topbar .community-nav-title {
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .community-card-desc,
+.layout-no-topbar .community-card-meta,
+.layout-no-topbar .community-admin-note,
+.layout-no-topbar .post-detail-meta,
+.layout-no-topbar .community-nav-meta,
+.layout-no-topbar .post-detail-content {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .community-admin-note {
+  border-top-color: var(--glass-border);
+}
+
+.layout-no-topbar .community-nav {
+  border-bottom-color: var(--glass-border);
+}
+
+.layout-no-topbar .community-banner-hero {
+  background: rgba(var(--glass-tint), 0.3);
+  border: 1px solid var(--glass-border);
+}
+
+.layout-no-topbar .community-card-banner-fallback {
+  background: linear-gradient(
+    135deg,
+    rgba(var(--glass-tint), 0.45),
+    rgba(var(--glass-tint), 0.2)
+  );
+}
+
+.layout-no-topbar .community-card-icon-wrap .user-avatar {
+  border-color: var(--glass-bg-strong);
+  box-shadow: 0 0 0 1px var(--glass-border);
+}
+
+.layout-no-topbar .community-icon-preview,
+.layout-no-topbar .community-banner-upload {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .post-detail-images img,
+.layout-no-topbar .post-image-thumb img {
+  border-color: var(--glass-border);
+}
+
+.layout-no-topbar .post-detail-images-1 img {
+  background: rgba(var(--glass-tint), 0.3);
+}
+
+.layout-no-topbar .post-image-add {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .post-image-remove {
+  background: var(--glass-dark);
+  border-color: var(--glass-border);
+  color: var(--glass-text);
+}
+
+/* ── Comments ──────────────────────────────────────────────────────────────── */
+
+.layout-no-topbar .comment-input {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .comment-item,
+.layout-no-topbar .comment-reply {
+  border-bottom-color: var(--glass-border);
+}
+
+.layout-no-topbar .comment-author {
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .comment-date,
+.layout-no-topbar .comment-content {
+  color: var(--glass-text-muted);
+}
+
+/* ── Floating strip arrows (BookStrip / My Library) ───────────────────────── */
+
+.layout-no-topbar .strip-arrow {
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  color: var(--glass-text);
+  box-shadow: var(--glass-shadow);
+}
+
+.layout-no-topbar .strip-arrow:hover {
+  background: var(--glass-dark);
+  color: var(--glass-text);
+}
+
+/* ── Modal body text (description, author bio, reviews) ──────────────────────
+   These previously used the theme's normal text/background pair, which
+   assumes a light (or dark-theme-dark) background, not the always-dark
+   --glass-dark modal body. Left unfixed, e.g. --text-5 (a light-mode gray
+   meant for a white background) would render at very low contrast here. ── */
+
+.layout-no-topbar .enrichment-label,
+.layout-no-topbar .reviews-header,
+.layout-no-topbar .review-date {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .enrichment-text,
+.layout-no-topbar .review-text,
+.layout-no-topbar .review-author {
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .enrichment-section,
+.layout-no-topbar .reviews-section,
+.layout-no-topbar .review-item {
+  border-color: var(--glass-border);
+}
+
+/* Form fields inside modals (Donate, Return + review, etc.) */
+
+.layout-no-topbar .form-group label {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .form-group input,
+.layout-no-topbar .form-group select,
+.layout-no-topbar .review-textarea {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  color: var(--glass-text);
+}
+
+.layout-no-topbar .form-group input::placeholder,
+.layout-no-topbar .review-textarea::placeholder {
+  color: var(--glass-text-muted);
+}
+
+.layout-no-topbar .content {
+  padding-top: 88px;
+  padding-bottom: 110px;
+}
+
 /* ── Refresh log panel (bottom-right corner) ────────────────────────────────── */
 
 .refresh-panel {
@@ -3419,88 +4505,15 @@ td {
   margin-top: 12px;
 }
 
-/* ── Library card grid (My Library tab: borrowed books, reservations, wishlist) ── */
+/* ── Library grid (My Library tab: borrowed books, reservations, wishlist) ──
+   Cards themselves reuse .rec-card (same markup/classes as the Available
+   Books tab) so the two tabs render pixel-identical cards; this grid is the
+   same one used by the Available Books "large" card view. */
 .library-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 12px;
   margin-bottom: 8px;
-}
-
-.library-card {
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-
-/* Modifier for use inside a horizontal BookStrip (.rec-strip is display:flex,
-   so cards need an explicit width instead of the grid's 100%-of-cell sizing) */
-.library-card-strip {
-  width: 190px;
-  flex-shrink: 0;
-}
-
-.library-card-cover-btn {
-  display: flex;
-  width: 100%;
-  aspect-ratio: 2 / 3;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  overflow: hidden;
-  border-bottom: 1px solid var(--border-subtle, var(--border));
-}
-
-.library-card-cover {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center top;
-  display: block;
-  transition: opacity 0.15s;
-}
-
-.library-card-cover-btn:hover .library-card-cover {
-  opacity: 0.88;
-}
-
-
-.library-card-info {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px;
-  flex: 1;
-}
-
-.library-card-info .badge {
-  align-self: flex-start;
-}
-
-.library-card-title {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text);
-  line-height: 1.35;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.library-card-author {
-  font-size: 0.72rem;
-  color: var(--text-4);
-}
-
-.library-card-meta {
-  font-size: 0.72rem;
-  color: var(--text-4);
 }
 
 .wishlist-available-badge {
@@ -3512,11 +4525,4 @@ td {
   border-radius: var(--radius-sm);
   padding: 2px 6px;
   align-self: flex-start;
-}
-
-.library-card-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: auto;
-  padding-top: 4px;
 }

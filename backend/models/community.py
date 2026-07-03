@@ -13,6 +13,8 @@ class Community(db.Model):
     status = db.Column(db.String(20), default='pending')  # pending|approved|rejected
     admin_notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    banner_image = db.Column(db.Text, nullable=True)  # base64 data URL; None = no banner
+    icon_image = db.Column(db.Text, nullable=True)    # base64 data URL; None = no icon
 
     creator = db.relationship('User', backref='communities_created', foreign_keys=[creator_id])
     memberships = db.relationship('CommunityMembership', backref='community',
@@ -26,6 +28,8 @@ class Community(db.Model):
             'id': self.id,
             'name': self.name,
             'description': self.description,
+            'banner_image': self.banner_image,
+            'icon_image': self.icon_image,
             'creator_id': self.creator_id,
             'creator_username': self.creator.username if self.creator else None,
             'status': self.status,
@@ -58,6 +62,7 @@ class CommunityPost(db.Model):
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     title = db.Column(db.String(200), nullable=False)
     content = db.Column(db.Text, nullable=False)
+    images = db.Column(db.JSON, nullable=True)  # list of up to 3 base64 data URLs
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     author = db.relationship('User', backref='community_posts')
@@ -88,6 +93,7 @@ class CommunityPost(db.Model):
             'author_username': self.author.username if self.author else None,
             'title': self.title,
             'content': self.content,
+            'images': self.images or [],
             'created_at': self.created_at.isoformat(),
             'comment_count': len(self.comments),
             'reactions': self.reaction_summary(user_id),

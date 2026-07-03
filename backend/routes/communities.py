@@ -35,6 +35,17 @@ def _community_for_member(cid, user):
     return community, None
 
 
+def _validate_image(data_url, label):
+    if not data_url:
+        return None
+    if not data_url.startswith('data:image/'):
+        return f'Invalid {label} image format'
+    # Rough size guard: base64 of a 2 MB image is ~2.7 MB string
+    if len(data_url) > 3 * 1024 * 1024:
+        return f'{label.capitalize()} image too large (max ~2 MB)'
+    return None
+
+
 # ── Community listing & creation ──────────────────────────────────────────────
 
 @communities_bp.get('/api/communities')
@@ -57,14 +68,52 @@ def create_community():
     data = request.get_json() or {}
     name = (data.get('name') or '').strip()
     description = (data.get('description') or '').strip() or None
+    banner_image = data.get('banner_image') or None
+    icon_image = data.get('icon_image') or None
     if not name:
         return jsonify({'error': 'Name is required'}), 400
     if Community.query.filter(db.func.lower(Community.name) == name.lower()).first():
         return jsonify({'error': 'A community with this name already exists'}), 400
-    community = Community(name=name, description=description, creator_id=user.id)
+    err = _validate_image(banner_image, 'banner') or _validate_image(icon_image, 'icon')
+    if err:
+        return jsonify({'error': err}), 400
+    community = Community(
+        name=name, description=description, creator_id=user.id,
+        banner_image=banner_image, icon_image=icon_image,
+    )
     db.session.add(community)
     db.session.commit()
     return jsonify(community.to_dict(user.id)), 201
+
+
+@communities_bp.put('/api/communities/<int:cid>')
+def update_community(cid):
+    user, err = _gold_user()
+    if err:
+        return err
+    community = db.session.get(Community, cid)
+    if not community:
+        return jsonify({'error': 'Community not found'}), 404
+    membership = CommunityMembership.query.filter_by(
+        community_id=cid, user_id=user.id, role='moderator'
+    ).first()
+    if not membership:
+        return jsonify({'error': 'Only a moderator can edit this community'}), 403
+    data = request.get_json() or {}
+    if 'banner_image' in data:
+        err = _validate_image(data['banner_image'], 'banner')
+        if err:
+            return jsonify({'error': err}), 400
+        community.banner_image = data['banner_image'] or None
+    if 'icon_image' in data:
+        err = _validate_image(data['icon_image'], 'icon')
+        if err:
+            return jsonify({'error': err}), 400
+        community.icon_image = data['icon_image'] or None
+    if 'description' in data:
+        community.description = (data['description'] or '').strip() or None
+    db.session.commit()
+    return jsonify(community.to_dict(user.id))
 
 
 @communities_bp.get('/api/my-communities')
@@ -120,6 +169,17 @@ def leave_community(cid):
 
 # ── Posts ─────────────────────────────────────────────────────────────────────
 
+def _post_with_comments(post, user_id):
+    top_comments = (CommunityComment.query
+                    .filter_by(post_id=post.id, parent_id=None)
+                    .order_by(CommunityComment.created_at)
+                    .all())
+    return {
+        **post.to_dict(user_id),
+        'comments': [c.to_dict(user_id) for c in top_comments],
+    }
+
+
 @communities_bp.get('/api/communities/<int:cid>/posts')
 def list_posts(cid):
     user, err = _gold_user()
@@ -132,7 +192,9 @@ def list_posts(cid):
              .filter_by(community_id=cid)
              .order_by(CommunityPost.created_at.desc())
              .all())
-    return jsonify([p.to_dict(user.id) for p in posts])
+    # Posts render as a full feed on the community page (no separate detail
+    # view), so comments are included here rather than fetched per-post.
+    return jsonify([_post_with_comments(p, user.id) for p in posts])
 
 
 @communities_bp.post('/api/communities/<int:cid>/posts')
@@ -146,9 +208,19 @@ def create_post(cid):
     data = request.get_json() or {}
     title = (data.get('title') or '').strip()
     content = (data.get('content') or '').strip()
+    images = data.get('images') or []
     if not title or not content:
         return jsonify({'error': 'Title and content are required'}), 400
-    post = CommunityPost(community_id=cid, author_id=user.id, title=title, content=content)
+    if not isinstance(images, list) or len(images) > 3:
+        return jsonify({'error': 'A post can have at most 3 images'}), 400
+    for img in images:
+        err = _validate_image(img, 'post')
+        if err:
+            return jsonify({'error': err}), 400
+    post = CommunityPost(
+        community_id=cid, author_id=user.id, title=title, content=content,
+        images=images or None,
+    )
     db.session.add(post)
     db.session.commit()
     return jsonify(post.to_dict(user.id)), 201
@@ -165,14 +237,7 @@ def get_post(cid, pid):
     post = CommunityPost.query.filter_by(id=pid, community_id=cid).first()
     if not post:
         return jsonify({'error': 'Post not found'}), 404
-    top_comments = (CommunityComment.query
-                    .filter_by(post_id=pid, parent_id=None)
-                    .order_by(CommunityComment.created_at)
-                    .all())
-    return jsonify({
-        **post.to_dict(user.id),
-        'comments': [c.to_dict(user.id) for c in top_comments],
-    })
+    return jsonify(_post_with_comments(post, user.id))
 
 
 # ── Comments ──────────────────────────────────────────────────────────────────
@@ -375,3 +440,14 @@ def admin_reject(cid):
     community.admin_notes = data.get('admin_notes') or None
     db.session.commit()
     return jsonify(community.to_dict())
+
+
+@communities_bp.delete('/api/admin/communities/<int:cid>')
+@admin_required
+def admin_delete_community(cid):
+    community = db.session.get(Community, cid)
+    if not community:
+        return jsonify({'error': 'Community not found'}), 404
+    db.session.delete(community)
+    db.session.commit()
+    return jsonify({'ok': True})

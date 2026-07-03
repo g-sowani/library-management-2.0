@@ -46,6 +46,8 @@ def _migrate_db():
     add_missing_cols('user', {'avatar': 'TEXT'})
     add_missing_cols('post_reaction', {'created_at': 'DATETIME'})
     add_missing_cols('comment_reaction', {'created_at': 'DATETIME'})
+    add_missing_cols('community', {'banner_image': 'TEXT', 'icon_image': 'TEXT'})
+    add_missing_cols('community_post', {'images': 'TEXT'})
     db.session.commit()
 
 

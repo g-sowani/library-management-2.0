@@ -278,6 +278,31 @@ def _ensure_gutenberg_checked(book):
     db.session.commit()
 
 
+@books_bp.route('/books/preview')
+def books_preview():
+    """Public, unauthenticated glimpse of the catalogue for the landing page."""
+    books = (
+        Book.query.filter(Book.cover_url.isnot(None), Book.cover_url != '')
+        .order_by(Book.id.desc())
+        .limit(10)
+        .all()
+    )
+    if len(books) < 10:
+        books = Book.query.order_by(Book.id.desc()).limit(10).all()
+    return jsonify([
+        {
+            'id': b.id,
+            'title': b.title,
+            'author': b.author,
+            'genre': b.genre or '',
+            'cover_url': b.cover_url or '',
+            'cover_color': b.cover_color or '',
+            'description': b.description or '',
+        }
+        for b in books
+    ])
+
+
 @books_bp.route('/books')
 @login_required
 def get_books():

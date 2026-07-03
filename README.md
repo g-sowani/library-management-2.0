@@ -53,27 +53,18 @@ Created automatically on first run — no setup needed.
 | Layer    | Technology                              |
 |----------|-----------------------------------------|
 | Backend  | Python 3 · Flask 3 · SQLAlchemy · SQLite |
-| Frontend | React 18 (Create React App) · Axios · lucide-react |
+| Frontend | React 18 (Create React App) · Axios     |
 | Auth     | Flask session cookies (`withCredentials`) |
 | Metadata | Open Library API (scraping) · Pillow (image processing) |
 | AI Search | Groq API · `llama-3.1-8b-instant` |
-| Online Reading | Project Gutenberg (via the Gutendex API) |
 
 ---
 
 ## Features
 
-**Public Landing Page**
-- Served at `/` for logged-out visitors (an existing session is redirected straight into the dashboard) — a fullscreen cinematic hero with a looping, custom-faded background video, built with Instrument Serif (display) and Inter (body) fonts; the video stays pinned behind every section below as the page scrolls, so the whole page reads as one continuous backdrop
-- Section order: **Home** (hero) → **About** → **Community** → **Catalogue**, matching the nav bar links
-- **About** section — a one-at-a-time "roller" carousel of the app's six member-facing services (Borrow, Reserve, AI Search, Personalised Picks, Communities, Donate), with full-size preview cards peeking in from either side
-- **Community** section — a rotating character carousel (center/left/right/back roles with blur and scale) advertising the app's reading communities, over a subtle film-grain texture layered on the same background video
-- **Catalogue** section — a live glimpse of real book covers pulled from a dedicated public endpoint (`GET /api/books/preview`, no login required), with shimmering skeleton placeholders while loading and a scroll-triggered fade-in for each card
-- "Start Reading" / "Join a Community" calls to action all lead into the existing `/login` flow
-
 **Member**
-- **Home tab** — time-aware greeting, a horizontally scrollable "What we offer" services strip (6 feature cards with background photos: Borrow Books, Reserve a Copy, AI Search, Personalised Picks, Reading Communities, Donate & Earn), and a 6-book preview grid ("From the collection") with a "View all →" link to the Available Books tab; strip navigation arrows float over the cards and auto-hide 2 s after last use
-- **Available Books tab** is what members land on after logging in — browse all books grouped by genre in horizontal scrollable card strips; bare chevron arrows appear on hover (only rendered when the strip actually overflows) and auto-hide 2 s after the last scroll click
+- **Home tab** (default landing page) — time-aware greeting, a horizontally scrollable "What we offer" services strip (6 feature cards with background photos: Borrow Books, Reserve a Copy, AI Search, Personalised Picks, Reading Communities, Donate & Earn), and a 6-book preview grid ("From the collection") with a "View all →" link to the Available Books tab; strip navigation arrows float over the cards and auto-hide 2 s after last use
+- Browse all books grouped by genre in horizontal scrollable card strips; bare chevron arrows appear on hover (only rendered when the strip actually overflows) and auto-hide 2 s after the last scroll click
 - Search and filter via a collapsible panel (click the search icon to expand; text search + availability and rating dropdowns); results appear as a card grid; clicking an active genre pill deselects it to clear the genre filter
 - **AI Search** *(optional)* — click the AI toggle inside the search panel to switch to natural-language search powered by Groq; describe a book in plain English (e.g. "boy with glasses at a magical school") and get semantically matched results from the library catalogue, each with a one-line AI-generated reason; press Enter to run (no separate Search button); times out after 3 s with a clear retry prompt; Clear returns to normal keyword mode
 - Borrow and return books; borrow limits enforced by membership tier
@@ -83,14 +74,11 @@ Created automatically on first run — no setup needed.
 - Trending This Week strip — top 8 books by borrow count in the last 7 days
 - Personalised recommendations — content-based (genre/author preference profile)
 - Collaborative recommendations — users with similar reading history
-- **My Library tab** — active borrows, reservations, and wishlist as card grids (toggle grid/strip view); cards match the Available Books tab's book-card style exactly
-- **Wishlist** — save books for later from the Book Detail modal's ♡ toggle; manage saved titles from the My Library tab
-- **My Profile tab** — membership info card, fines, and donation history in one place; fines table is center-aligned
-- **Read Online** *(public-domain titles)* — click a book in "My Borrowed Books" to open its Borrowed Book Card (cover, author, genre, dates, status); if the book has a free full text on Project Gutenberg, a **Read Online** button opens a full-screen reader with the real book text in a serif reading pane and adjustable font size; classics already in the catalogue (Pride and Prejudice, Dracula, Anna Karenina, Jane Eyre, Wuthering Heights, Crime and Punishment, The Great Gatsby, …) are auto-detected — no admin setup required
+- **My Profile tab** — membership info card, active borrows, reservations, fines, and donation history in one place; borrow/reservation/fines tables are center-aligned
 - **Profile photo** — upload and change a profile avatar from the My Profile tab; avatar shown in the top-bar dropdown and resized/compressed client-side before upload
 - **Donate a Book** — submit a physical book for the library; earn 1/4 of its estimated value as library credit upon admin approval
-- **Community tab** *(Gold members only)* — create and join member communities (each can have a custom banner image and icon), make posts (with up to 3 optional images), comment with unlimited reply threading, and react with SVG reaction icons (like / love / haha / wow / sad / angry); posts render as a single scrolling feed rather than a click-through list — every post's full content, images, and comments are on the page as you scroll. Moderators can edit a community's banner, icon, and description after creation. Red badge on the tab title shows new activity since your last visit
-- **Toast notifications** — brief bottom-right confirmations appear after every key action (borrow, return, reserve, cancel, donate, avatar upload, wishlist add, community actions); the "Book borrowed!" toast includes a **View in My Library** link that jumps straight to the My Library tab
+- **Community tab** *(Gold members only)* — create and join member communities, make posts, comment with unlimited reply threading, and react with SVG reaction icons (like / love / haha / wow / sad / angry); red badge on the tab title shows new activity since your last visit
+- **Toast notifications** — brief bottom-right confirmations appear after every key action (borrow, return, reserve, cancel, donate, avatar upload, community actions)
 
 **Admin**
 - **Books tab** shows the catalogue as a card grid (cover, title, author, genre, rating, availability — same card style as the member Books tab); a "Missing: …" tag flags any book lacking description, author bio, or cover
@@ -102,7 +90,7 @@ Created automatically on first run — no setup needed.
 - **Members tab** — member list with borrow history, membership pricing cards, and per-member tier management in one place
 - **Refresh** (per book) — re-scrapes Open Library for description, author bio, cover URL, and dominant cover colour; result shown inline
 - **Refresh All** — scrapes every book in the catalogue sequentially; a live progress log modal opens showing each book's outcome as it completes (e.g. "Harry Potter — description, cover, author bio, color") with a progress bar
-- **Communities tab** — review pending community requests; approve (auto-joins creator as moderator) or reject; filter by status; delete any community (any status) — permanently removes its posts, comments, and memberships
+- **Communities tab** — review pending community requests; approve (auto-joins creator as moderator) or reject; filter by status
 - **Donations tab** — review pending donations; approve (adds book to catalogue and credits member) or reject with an optional reason; filter by status
 - **Toast notifications** — confirmations appear after every admin action (add/edit/delete book, mark fine paid, save policy/pricing, change tier, approve/reject donations and communities)
 
@@ -131,8 +119,6 @@ Rates are admin-configurable at runtime (defaults: Silver $9.99 · Gold $19.99 �
 - **Animated book loader** — an open-book CSS animation (two page halves with text lines and a turning page) is shown while initial data is loading, replacing a plain spinner
 - **Custom dropdowns** — all `<select>` elements are replaced by a theme-aware `Select` component; chevron rotates on open, closes on outside click, fully styled with CSS custom properties across all 10 theme combinations
 - **Placeholder text** — all input and textarea placeholders use `--text-5` so they adapt to every theme rather than using browser-default grey
-- **Rounded, shadcn-style corners** — buttons, inputs, cards, modals, badges, and dropdowns all use a shared `--radius` CSS custom property scale (`sm`/`md`/`lg`/`xl`) instead of sharp edges, for a softer, more modern look consistent across every theme
-- **Floating dock navigation** (Member dashboard) — primary tabs live in a macOS-style icon dock fixed to the bottom-center of the screen; it auto-hides and slides away when the cursor isn't near the bottom edge, and reappears on approach (always visible on touch devices, and while a tab is keyboard-focused)
 
 ## Seed Data Script
 

@@ -5,9 +5,9 @@ let _id = 0;
 export function useToast() {
   const [toasts, setToasts] = useState([]);
 
-  const toast = useCallback((message, type = 'success') => {
+  const toast = useCallback((message, type = 'success', action = null) => {
     const id = ++_id;
-    setToasts(prev => [...prev, { id, message, type }]);
+    setToasts(prev => [...prev, { id, message, type, action }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 2800);
   }, []);
 

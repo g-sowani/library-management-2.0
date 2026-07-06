@@ -1,7 +1,7 @@
 # Library Management System — Project Context
 
 ## Overview
-A full-stack library management app. Admins manage the book catalogue, monitor borrows, configure fines, track inventory changes, and review incoming book donations. Members browse books, borrow/return them, reserve books when all copies are out, view their fines, leave optional ratings and reviews when returning a book, and donate books to the library in exchange for credit. The Books tab surfaces personalised recommendations and trending content to help members discover what to read next.
+A full-stack library management app. Admins manage the book catalogue, monitor borrows, configure fines, track inventory changes, review incoming book donations and book-add requests, and approve member membership-tier requests. Members browse books, borrow/return them, reserve books when all copies are out, save books to a wishlist, view their fines, leave optional ratings and reviews when returning a book, donate books to the library in exchange for credit, request that a missing book be added to the catalogue (and get notified on the Home tab once an admin reviews it), and request a membership tier (at registration or later) that activates once an admin approves it. The Books tab surfaces personalised recommendations and trending content to help members discover what to read next. The Home tab is a bold, colour-blocked collapsible dashboard of the member's own borrows/reservations/wishlist/collection highlights. Members can also switch between a classic tab bar and a Mac-style floating dock for navigation. Gold members additionally get community spaces and a set of book-themed word games (Hangman, Word Scramble, Wordle) that build toward a cumulative XP score.
 
 ---
 
@@ -52,14 +52,26 @@ backend/
                       #   accounts (alice/alice123, bob/bob123, carol/carol123, dave/dave123)
                       #   with rich borrow histories: on-time returns, paid/unpaid late fines,
                       #   currently-borrowed, and overdue-not-returned records per user
+                      #   Also calls models._seed_memberships() once at the end to give these
+                      #   demo accounts (+ the original seed 'member') realistic random tiers —
+                      #   real accounts pick their own tier via the membership-request flow instead
   config.py           # Config class — ports, CORS origin, secret key
   extensions.py       # db = SQLAlchemy() singleton
   decorators.py       # @login_required, @admin_required
   utils.py            # lock_book() — dialect-aware SELECT FOR UPDATE SKIP LOCKED helper
   models/
-    user.py           # User (id, username, password_hash, role, avatar)
+    user.py           # User (id, username, password_hash, role, avatar, xp)
                       #   avatar: TEXT nullable — base64 data-URL stored in DB; NULL = no photo
+                      #   xp: INTEGER default 0 — cumulative Gold Games score, server-authoritative
+                      #     (see "Gold Games & XP" below); included in to_dict() and /auth/me
                       #   has a joined-load `membership` relationship → Membership
+    wishlist.py       # Wishlist (user_id FK, book_id FK, added_at) — one row per saved book;
+                      #   unique per (user_id, book_id); to_dict() includes book title/author/
+                      #     cover_url/availability so the frontend can render a card without a
+                      #     second lookup
+    genre.py          # Genre (id, name unique) — admin-extensible genre list backing the
+                      #   book add/edit forms' genre dropdown, in addition to the static
+                      #   constants.js GENRES list
     book.py           # Book (id, title, author, isbn, genre, total/available_copies,
                       #        description, author_bio, cover_url, cover_color)
                       #   description/author_bio: NULL = never scraped, '' = tried/no data, text = data
@@ -80,6 +92,22 @@ backend/
                       #   created_at)
                       #   TIER_LIMITS = {silver:1, gold:3, family:1} (active concurrent borrows)
                       #   borrow_limit() helper reads TIER_LIMITS; to_dict() includes borrow_limit
+    membership_request.py  # MembershipRequest (user_id FK, requested_tier: silver|gold|family,
+                      #   notes nullable — member's optional note e.g. "paid cash at front desk",
+                      #   status: pending|approved|rejected, admin_notes nullable,
+                      #   submitted_at, reviewed_at nullable)
+                      #   member-submitted request to be granted a tier; approval applies the
+                      #   tier via admin.py's apply_tier() helper — see "Membership Request System" below
+    book_request.py   # BookRequest (user_id FK, title, author nullable, isbn nullable,
+                      #   genre nullable, notes nullable — member's optional note,
+                      #   status: pending|approved|rejected, admin_notes nullable,
+                      #   submitted_at, reviewed_at nullable, book_id nullable FK — set to the
+                      #   newly added/matched book on approval,
+                      #   notified bool default False — flips true once the member has dismissed
+                      #     the approve/reject banner on the Home tab; lets the outcome survive
+                      #     across sessions until acknowledged, unlike a localStorage flag)
+                      #   member-submitted "please add this book" request, surfaced when a
+                      #   catalogue search returns no results — see "Book Request System" below
     community.py      # 6 models for the Gold-member community feature:
                       #   Community (id, name, description, creator_id FK, status: pending|approved|rejected,
                       #     admin_notes, created_at)
@@ -92,11 +120,16 @@ backend/
                       #   CommentReaction (comment_id, user_id, emoji VARCHAR, created_at)
                       #   VALID_REACTIONS = {'like','love','haha','wow','sad','angry'}
     __init__.py       # re-exports all models + seed_data() + _seed_memberships()
-                      #   _seed_memberships() — randomly assigns tiers to any unassigned members
-                      #     on every startup; groups family members by family_group_id (max 4)
+                      #   _seed_memberships() — randomly assigns tiers to any unassigned members;
+                      #     groups family members by family_group_id (max 4). No longer called
+                      #     automatically on startup (real members choose a tier via the
+                      #     membership-request flow instead) — only seed_extra.py calls it now,
+                      #     once, to give demo accounts realistic tiers
   routes/
     auth.py           # /api/auth/  — register, login, logout, me, avatar (PUT)
                       #   /me now includes membership dict if user has one
+                      #   register accepts optional requested_tier (member role only) — creates
+                      #   a pending MembershipRequest in the same call; does NOT grant the tier
     books.py          # /api/books/ — CRUD + PUT edit + GET logs + GET reviews
                       #   + GET trending + GET recommendations + GET collaborative-recommendations
                       #   + GET enrichment (lazy scrape) + POST scrape (admin re-scrape)
@@ -113,18 +146,53 @@ backend/
                       #   borrow enforces per-tier active-borrow limit (Silver 1, Gold 3, Family 1)
                       #   return accepts optional JSON body with rating/review
     reservations.py   # /api/reserve/, /api/cancel-reservation/, /api/my-reservations
+    wishlist.py       # GET /api/my-wishlist — caller's saved books, newest first
+                      #   POST /api/wishlist/:bookId — save a book; 409 if already saved
+                      #   DELETE /api/wishlist/:bookId — remove a saved book; 404 if not saved
+    genres.py         # GET /api/genres — full genre list (any logged-in user)
+                      #   POST /api/genres — admin adds a new genre; letters-only name,
+                      #     normalized to Title Case, 409 if it already exists (case-insensitive)
+    games.py          # POST /api/games/xp — Gold-only; body {amount}; adds amount (1–100,
+                      #   MAX_XP_PER_AWARD) to the caller's User.xp and returns the new total;
+                      #   _gold_user() (local copy of communities.py's helper) enforces tier —
+                      #   see "Gold Games & XP" below
     admin.py          # /api/admin/ — borrows, fines, policy GET/PUT, members GET/POST,
                       #   memberships/pricing GET/PUT, members/<id>/membership PUT
                       #   PUT /api/admin/fines/<borrow_id>/mark-paid — mark a fine as paid
                       #     (sets fine_paid=True); 400 if no fine or already paid
                       #   members list now includes membership_tier and family_group_id
-    membership.py     # /api/membership — GET current user's tier, pricing, family members list
+                      #   apply_tier(user_id, tier, family_group_id=None) — shared helper that
+                      #     sets/clears a member's tier and auto-assigns a family group with room;
+                      #     used by members/<id>/membership PUT and by membership_requests.py's
+                      #     approve endpoint so the family-grouping logic isn't duplicated
+    membership.py     # GET /api/membership — current user's tier, pricing, family members list
+                      # GET /api/membership/pricing — unauthenticated pricing read, used by the
+                      #   registration form (Login.js) to show real rates before a session exists
+    membership_requests.py  # POST /api/membership-requests — member submits {tier, notes?};
+                      #     400 if the caller already has a pending request
+                      #   GET /api/my-membership-requests — caller's own requests, newest first
+                      #   GET /api/admin/membership-requests — all requests (filterable by ?status=)
+                      #   PUT /api/admin/membership-requests/:id/approve — calls admin.py's
+                      #     apply_tier() to grant the tier immediately, sets status=approved
+                      #   PUT /api/admin/membership-requests/:id/reject — sets status=rejected
+                      #     with optional admin_notes
     donations.py      # /api/donations POST — member submits a donation
                       # /api/my-donations GET — member's own donation history
                       # /api/admin/donations GET — all donations (filterable by ?status=)
                       # /api/admin/donations/:id/approve PUT — approve: adds book (or copy)
                       #   to catalogue, sets credit_amount (default price/4, admin-adjustable)
                       # /api/admin/donations/:id/reject PUT — reject with optional reason
+    book_requests.py  # POST /api/book-requests — member submits {title, author?, isbn?,
+                      #   genre?, notes?}; only title is required
+                      # GET  /api/my-book-requests — caller's own requests, newest first
+                      # PUT  /api/book-requests/:id/dismiss — member acknowledges a reviewed
+                      #   request's outcome; sets notified=True so the Home tab banner clears
+                      # GET  /api/admin/book-requests — all requests (filterable by ?status=)
+                      # PUT  /api/admin/book-requests/:id/approve — admin can edit title/author/
+                      #   isbn/genre/total_copies before confirming; matches an existing book by
+                      #   ISBN or case-insensitive title (adds copies) or creates a new Book,
+                      #   same match-or-create logic as donations.py's approve endpoint
+                      # PUT  /api/admin/book-requests/:id/reject — reject with optional admin_notes
     communities.py    # Gold-member community endpoints; _gold_user() enforces tier
                       # GET  /api/communities              — all approved communities
                       # POST /api/communities              — create community (Gold; status=pending)
@@ -147,9 +215,9 @@ backend/
 ```
 
 ### DB migrations
-`app.py` runs `_migrate_db()` on every startup. It uses a reusable `add_missing_cols(table, additions)` helper that calls `ALTER TABLE` for any column in models not yet present in the SQLite file. New tables (e.g. `community`, `community_membership`) are created automatically by `db.create_all()`. `_seed_memberships()` runs on every startup and silently no-ops when all members already have a tier.
+`app.py` runs `_migrate_db()` on every startup. It uses a reusable `add_missing_cols(table, additions)` helper that calls `ALTER TABLE` for any column in models not yet present in the SQLite file. New tables (e.g. `community`, `community_membership`, `membership_request`, `book_request`) are created automatically by `db.create_all()`. `_seed_memberships()` is no longer called automatically on startup — see "Membership Request System" below.
 
-Tables currently patched by `_migrate_db()`: `book` (genre, description, author_bio, cover_url, cover_color), `user` (avatar), `post_reaction` (created_at), `comment_reaction` (created_at).
+Tables currently patched by `_migrate_db()`: `book` (genre, description, author_bio, cover_url, cover_color), `user` (avatar, xp), `post_reaction` (created_at), `comment_reaction` (created_at).
 
 ### Fine calculation
 `Borrow.calculate_fine()` reads `fine_per_day` live from the `setting` table. `borrow_days` (loan duration) is also read from `setting` at borrow time. Both are configurable by the admin at runtime.
@@ -167,36 +235,68 @@ frontend/src/
                             # Axios interceptor: 401 clears user; 403 re-fetches /auth/me
                             # to re-sync React state with the real Flask session
                             # updateUser(patch) merges patch into user state (used after avatar upload)
-    ThemeContext.js         # ThemeProvider + useTheme() — two independent axes:
+    ThemeContext.js         # ThemeProvider + useTheme() — three independent axes:
                             #   appearance ('light'|'dark'|'system') → sets data-color-mode on <html>
                             #   readerTheme ('sepia'|'forest'|'ocean'|'rose'|'') → sets data-theme on <html>
+                            #   navStyle ('tabs'|'dock', default 'tabs') → both dashboards read this to
+                            #     render NavTabs or Dock instead — set from the Navigation Style picker
+                            #     in the member My Profile tab (see "Preferences" below); applies to the
+                            #     admin dashboard too since the provider is global, same as appearance
                             #   'system' appearance listens to OS prefers-color-scheme and updates live
-                            #   Both persisted in localStorage ('appearance', 'readerTheme')
+                            #   All three persisted in localStorage ('appearance', 'readerTheme', 'navStyle')
                             #   Combined selectors ([data-color-mode="X"][data-theme="Y"]) give 10 total
                             #   theme combinations (2 base + 4 reader × 2 modes); combined selectors
                             #   have specificity 20 vs single-attribute 10 so reader+mode always wins
   hooks/
-    useToast.js             # Toast notification hook — returns { toasts, toast(msg, type?) }
+    useToast.js             # Toast notification hook — returns { toasts, toast(msg, type?, action?) }
                             #   toast(msg) defaults type to 'success'; pass 'error' for red variant
+                            #   optional 3rd arg action: { label, onClick } renders a clickable link
+                            #     inside the toast (e.g. borrow/reserve/wishlist-add toasts link
+                            #     to the My Profile tab) — omit for a plain message-only toast
                             #   each toast auto-expires after 2.8 s; IDs are monotonic so stacked
                             #   toasts each dismiss independently
   components/
     TopBar.js               # Header with title on left; avatar button on right opens a profile dropdown
+                            #   Rendered inside a `.dashboard-header` wrapper (with NavTabs, or alone
+                            #     when navStyle is 'dock') that is `position: sticky; top: 0` so the
+                            #     header stays visible while the page content scrolls; z-index kept
+                            #     below modals/toasts/dropdowns so it never overlaps them
                             #   Dropdown sections (top → bottom):
-                            #     avatar + username + tier badge (inline, not stretched)
+                            #     avatar + username + tier badge + XP total (Gold only, "N XP",
+                            #       pd-xp) — inline, not stretched
                             #     Appearance row — 3 compact pd-option buttons: Light / System / Dark
                             #     Reader Themes row — 4 compact pd-option buttons: Sepia / Forest /
                             #       Ocean / Rose; clicking an active theme toggles it off (back to base)
+                            #     Replay Tour row (pd-item, only rendered if onReplayTour passed) —
+                            #       re-opens the Onboarding tour on demand
                             #     Sign Out row
                             #   pd-options-row / pd-option / pd-option-active CSS for compact inline layout
                             #   Closes on outside click; fade+slide animation
-                            #   Props: title, username, avatar, tier, onLogout
+                            #   Props: title, username, avatar, tier, xp, onLogout, onReplayTour (optional)
     UserAvatar.js           # Circular avatar — renders <img> when avatar (base64) is set,
                             #   otherwise a styled circle with the username's first initial
                             #   Props: avatar, username, size (default 32)
     NavTabs.js              # Tab bar driven by a tabs config array
                             #   accepts `badges = {}` prop: { [tabId]: number }
                             #   renders a red pill badge next to the tab label when count > 0
+                            #   Shown when navStyle === 'tabs' (default); Dock.js replaces it entirely
+                            #     when navStyle === 'dock' (see below) — both take the same
+                            #     tabs/active/onChange/badges props so dashboards swap one for the
+                            #     other with no other changes
+    Dock.js                 # Mac-style floating icon dock — alternative to NavTabs when the user's
+                            #   navStyle preference is 'dock'; same tabs/active/onChange/badges props
+                            #   Renders as a `position: fixed`, bottom-centered rounded pill
+                            #     (`.dock-wrap` > `.dock`) with one icon button per tab, no text labels
+                            #   ICONS — a hardcoded map of tab id → inline stroke-SVG icon covering
+                            #     every member tab id (home/books/community/games/profile) and every
+                            #     admin tab id (books/borrows/fines/members/communities/donations/
+                            #     membership-requests); unrecognised ids fall back to a generic icon
+                            #   Active tab gets an accent-coloured icon + a small dot indicator;
+                            #     hover lifts the icon slightly (translateY + scale)
+                            #   Badge counts render as a small red circle on the icon's corner
+                            #   Both dashboards add a `layout-nav-dock` class to `.layout` when active,
+                            #     which pads `.content` at the bottom so page content never sits under
+                            #     the fixed dock
     Badge.js                # Status chip — variants: active (green), overdue (red), returned (gray),
                             #   queue (yellow — used for reservation queue position)
     Modal.js                # Overlay modal; wide prop for 640px variant
@@ -219,6 +319,21 @@ frontend/src/
                             #   Renders a .toast-stack (fixed bottom-right, flex-column, 8px gap)
                             #   .toast-success uses --text/--bg (theme-aware); .toast-error is red
                             #   Each toast animates in with toast-in (fade + translateY)
+                            #   Optional t.action renders a .toast-action underlined button inside
+                            #     the toast (pointer-events re-enabled per-toast since the stack
+                            #     itself is pointer-events:none)
+    Onboarding.js           # Role-aware, interactive spotlight tour (see "Onboarding Tour" section below)
+                            #   Props: role ('member' | 'admin'), username, onClose, onNavigate
+                            #   Renders as a fixed-position overlay (.onboarding-overlay), independent
+                            #     of the Modal component — no backdrop-click-to-close (Skip/Esc/finish only)
+                            #   Each step either spotlights a real on-page element (switches tabs via
+                            #     onNavigate, scrolls it into view, tracks its position live through
+                            #     scroll/resize) or — for the welcome/closing steps only — falls back
+                            #     to the original centered `.onboarding-card` (fixed 420×480 box)
+                            #   Spotlight steps render `.tour-spotlight` (a box-shadow cutout that dims
+                            #     the rest of the page, pulsing border) plus a `.tour-tooltip` callout
+                            #     anchored above/below the target; both animate smoothly (CSS
+                            #     transitions) as the tour moves between steps or the page scrolls
   pages/
     (MemberDashboard.js exports one component but defines several helpers inline:)
     BookLoader              # Full-page animated CSS loader: open book with two halves
@@ -240,40 +355,100 @@ frontend/src/
     StarPicker              # 1–5 interactive star rating input with hover state
     StarDisplay             # Read-only star display from a numeric rating
     MembershipBadge         # Tier chip (Silver / Gold / Family) with tier-specific CSS class
+    LandingPage.js          # Public marketing page at "/" for logged-out visitors (see "Landing
+                            #   Page" section below) — nav, hero, grayscale feature photo grid,
+                            #   For Members / For Admins bullet cards, inverted CTA banner, footer
+                            #   "Get Started" navigates to /login with { state: { register: true } };
+                            #   "Sign In" navigates to /login with no state
     Login.js                # Sign-in / register form (role selector on register)
-    MemberDashboard.js      # Home · Available Books · Community · My Profile tabs
-                            #   TopBar receives avatar and tier; no badge prop
+                            #   Reads useLocation().state?.register to open directly in register
+                            #     mode when arriving from LandingPage's "Get Started" CTA
+                            #   "← Back to home" link (react-router Link to "/") above the h1
+                            #   When registering as a member: an optional tier picker (reuses the
+                            #     .tier-picker/.tier-picker-option CSS also used in MemberDashboard's
+                            #     My Profile tab) shown with live pricing from the unauthenticated
+                            #     GET /api/membership/pricing; selecting a tier and toggling it off
+                            #     again clears the selection (same deselect pattern as genre pills).
+                            #     Included in the register payload as requested_tier — see
+                            #     "Membership Request System" below; leaving it unset is fine, the
+                            #     tier can always be requested later from My Profile
+    MemberDashboard.js      # Home · Available Books · Community · Games · My Profile tabs
+                            #   TopBar receives avatar, tier, and onReplayTour (reopens onboarding)
                             #   fetches /api/membership on mount alongside books/borrows
                             #   while loading, renders <BookLoader /> (animated CSS open-book
                             #     with page-lines on left and right halves, plus a turning page)
+                            #   showOnboarding state — set true on mount if
+                            #     localStorage["onboarding_seen_<username>"] is unset; renders
+                            #     <Onboarding role="member" .../> as a sibling above .layout
                             #   global accent theming: cover_color of the user's most recently
                             #     borrowed active book (or latest borrow) sets --accent /
                             #     --accent-text CSS vars on the layout root; WCAG-safe text
                             #     colour computed via wcagTextColor(); null if no borrow history
                             #
-                            # Home tab (new, default landing tab):
-                            #   1. Hero banner — time-aware greeting ("Good morning/afternoon/
-                            #      evening/Hello night owl") + username + tagline
-                            #   2. "What we offer" services strip — horizontally scrollable
-                            #      cards with background-image photos, each describing a
-                            #      library feature; scroll 380 px per arrow click; 6 cards:
-                            #      Borrow Books · Reserve a Copy · AI Search · Personalised
-                            #      Picks · Reading Communities · Donate & Earn
-                            #      (images served from /public: service_borrow.jpg,
-                            #       service_reserve.jpg, service_ai_search.jpg,
-                            #       service_picks.jpg, service_community.jpg, service_donate.jpg)
-                            #      Arrows: bare chevrons absolutely positioned over the cards
-                            #      (position:absolute, top:50%), appear on mouseenter, auto-hide
-                            #      2 s after the last click; JS state (servicesActive +
-                            #      servicesTimerRef) drives visibility via arrows-active class
-                            #   3. "From the collection" section — 6-book grid (first 6 books
-                            #      from API); each card shows cover image (or placeholder),
-                            #      title, author, genre badge, star rating; clicking a card
-                            #      opens the Book Detail modal; "View all →" button navigates
-                            #      to the Available Books tab
+                            # Home tab (default landing tab) — bold, colour-blocked, editorial
+                            #   layout (vivid backgrounds + oversized type), not the earlier flat
+                            #   "What we offer" services-strip design, which was removed entirely
+                            #   (SERVICES const, servicesRef/servicesTimerRef/servicesActive state,
+                            #   and its CSS are all gone — replaced by the sections below):
+                            #
+                            #   HOME_PALETTE (module scope) — 5 hand-picked vivid hex colours (hero/
+                            #     borrowed/reservations/wishlist/collection), each run through
+                            #     wcagTextColor() + minAlphaForContrast() (the same helpers the Book
+                            #     Detail hero uses for cover_color) to pick black-or-white text and
+                            #     alpha-tune label/subtle text tiers so every tier clears 4.5:1
+                            #     against that exact background — a fixed palette, not per-book data
+                            #   1. Hero banner (home-hero, HOME_PALETTE.hero: cobalt blue bg, white
+                            #      text) — username eyebrow chip, oversized (3.25rem/800) time-aware
+                            #      greeting ("Good morning/afternoon/evening/Hello night owl"),
+                            #      subtitle; bottom edge cut on a diagonal via clip-path
+                            #      (.home-slant-bottom)
+                            #   2. Book-request notification banners (conditional; see "Book Request
+                            #      System" below) — dismissible approve/reject outcome cards for the
+                            #      caller's own book requests that haven't been acknowledged yet
+                            #   3–6. Four collapsible, colour-blocked sections — My Borrowed Books,
+                            #      My Reservations, My Wishlist (all three moved here from the My
+                            #      Profile tab; My Fines and Donate a Book stayed in My Profile), and
+                            #      From the collection (6-book grid, first 6 books from API, "View
+                            #      all →" link to Available Books). Borrowed/Reservations/Wishlist
+                            #      render the same .books-grid/.rec-card markup as the Available
+                            #      Books grid (Collection uses .home-books-grid/.home-book-card
+                            #      instead) — the exact same cover/title/author/meta markup either
+                            #      way, so "my stuff" looks identical to browsing the catalogue:
+                            #      - card is a div (role="button", not a <button>) so it can host a
+                            #        stopPropagation'd .admin-card-actions row (Return / Cancel /
+                            #        Remove) inside it while the rest of the card still opens the
+                            #        Book Detail modal on click
+                            #      - Borrowed Books shows Active/Overdue Badge + due date in the
+                            #        .rec-card-avail line; Reservations shows Ready/Queue #N Badge;
+                            #        Wishlist shows Available/Unavailable
+                            #      - cover art is looked up by book_id against the already-loaded
+                            #        `books` array (borrow/reservation/wishlist API responses don't
+                            #        carry cover_url themselves, wishlist's does via book_cover)
+                            #      - Section accordion: openHomeSection state (default "borrowed")
+                            #        — only one of borrowed/reservations/wishlist/collection is
+                            #        expanded at a time; toggleHomeSection(key) flips it, or closes
+                            #        it entirely if it's already open. Header is a clickable
+                            #        .home-section-toggle button (bold heading + ChevronDown that
+                            #        rotates 180° via .home-section-chevron.open); collapsed sections
+                            #        show only their header bar
+                            #      - Sections overlap: .home-color-block has margin-top: -40px, so
+                            #        each section (and each collapsed header bar) is pulled up over
+                            #        the one above it — combined with .home-tab's gap: 0, sections
+                            #        visually pile/stack rather than floating with whitespace between
+                            #      - Diagonal accents: Reservations has both .home-slant-top and
+                            #        .home-slant-bottom (a full parallelogram tilt); Collection has
+                            #        .home-slant-top; Borrowed and Wishlist stay plain rounded blocks
+                            #        for contrast. clip-path replaces border-radius on cut sides, and
+                            #        those sides get extra padding so content clears the slant
+                            #      - .empty state text and the "View all →" link inside a colour
+                            #        block use `color: inherit` (the block's WCAG-verified text
+                            #        colour) instead of the normal muted grey, since --text-5 isn't
+                            #        guaranteed to contrast against an arbitrary vivid background
                             #
                             # Available Books tab (top → bottom):
-                            #   1. Search trigger row — magnifying-glass icon button + book count
+                            #   1. Search trigger row — magnifying-glass icon button; book count
+                            #      ("N books" / "N of M books" / "N AI matches") renders as its
+                            #      own line (.book-count-label) directly below the row, not inline
                             #      Active filters shown as a dot on the icon when panel is closed
                             #   2. Collapsible search panel (searchOpen state):
                             #      search-panel-top row: SearchBar (keyword) OR ai-search-input
@@ -285,8 +460,10 @@ frontend/src/
                             #        3-second AbortController timeout — if request exceeds 3 s,
                             #        aiResults is set to [] which triggers the no-results state
                             #        state: aiMode, aiQuery, aiResults, aiLoading, aiError
-                            #      Both modes show "No results found for this search. Try again"
-                            #        (with inline Clear button) when results are empty
+                            #      Both modes show "No results found for this search." plus a
+                            #        "Request that we add it" link (opens the Request a Book modal,
+                            #        prefilled with the search/AI query as title — see "Book Request
+                            #        System" below) when results are empty
                             #      animates in with fade+translateY
                             #   3. Filtered results card grid (shown only when filters active) —
                             #      same rec-card style as strips; trending books get inline badge
@@ -311,6 +488,15 @@ frontend/src/
                             #       at render from cover_color via wcagTextColor() (WCAG AA)
                             #       coverPalette = useMemo over selectedBook.cover_color —
                             #       instant, no async canvas extraction
+                            #       BookActionButton: already-borrowed books show an active
+                            #         "Return" button (closes this modal, opens the Return+Review
+                            #         modal for that borrow) instead of a disabled "Borrowed" label
+                            #       actionError (e.g. "Gold membership allows only 3 active borrows at
+                            #         a time") renders inside this column, aligned under the action
+                            #         buttons, not full-width; its colour is computed per-cover via
+                            #         heroErrorColor — tries HERO_ERROR_REDS shades first, falls
+                            #         back to the same guaranteed-safe black/white as coverPalette.text
+                            #         so it always clears 4.5:1 against whatever the cover colour is
                             #     Below hero zone (default modal background):
                             #       Description + author bio (lazy-enriched)
                             #       Reviews list
@@ -320,12 +506,30 @@ frontend/src/
                             #   Avatar editor — 80px avatar circle; click to upload image file;
                             #     resized client-side via canvas (max 400×400, JPEG 0.88) before
                             #     PUT /api/auth/avatar; camera icon overlay on hover
+                            #   Preferences section — Navigation Style picker (.nav-style-picker):
+                            #     two cards, "Tab Bar" and "Dock", each with a small CSS-only preview
+                            #     (mini tab strip / mini dock icons) and a label; clicking calls
+                            #     ThemeContext's setNavStyle('tabs' | 'dock'), instantly swapping
+                            #     NavTabs for Dock (see components/Dock.js) in both the header and
+                            #     (were an admin viewing) the admin dashboard, since the preference
+                            #     is stored globally the same way appearance/readerTheme are
                             #   Membership info card — tier badge, borrow limit, monthly rate,
                             #     family group members (family tier only)
-                            #   My Borrowed Books — active borrows with Return button → Return+Review modal
-                            #   My Reservations — queue position or ready status, cancel button
-                            #   My Fines — fine amount and paid/unpaid status
-                            #   All three tables use .profile-table with center-aligned columns
+                            #   Membership request — shown below the info card whenever there's no
+                            #     pending request: a single custom Select dropdown (Silver/Gold/Family,
+                            #     live pricing from GET /api/membership) — collapsed by default, so
+                            #     the other tiers aren't always visible, unlike the always-shown
+                            #     .tier-picker cards on the registration form (Login.js), which are
+                            #     unchanged; selecting a tier reveals its .field-hint description
+                            #     plus a Request Membership / Request Upgrade button
+                            #     (POST /api/membership-requests); if a request is pending, a status
+                            #     banner replaces the dropdown instead; if the last request was
+                            #     rejected, the admin's reason is shown before the dropdown
+                            #     reappears — see "Membership Request System" below
+                            #   My Borrowed Books, My Reservations, and My Wishlist moved to the
+                            #     Home tab (see above) — only My Fines and Donate a Book remain here
+                            #   My Fines — fine amount and paid/unpaid status (still a .profile-table;
+                            #     not book-card material)
                             #   Donate a Book section — Donate button opens modal; table of past
                             #     donations with status, estimated value, and credit earned;
                             #     total credits earned card (approved donations only)
@@ -334,10 +538,54 @@ frontend/src/
                             #   condition — all dropdowns use the custom Select component
                             #   estimated value field with live credit preview (value/4);
                             #   success screen after submit
+                            # Request a Book modal: title (required, prefilled from search query),
+                            #   author/ISBN/genre (all optional, genre uses the custom Select),
+                            #   notes textarea (optional) — POST /api/book-requests; success screen
+                            #   after submit; see "Book Request System" below
                             # Toast notifications (useToast hook + Toast component) fire on:
                             #   borrow, return (with/without review), reserve, cancel reservation,
-                            #   avatar upload, donation submit, join/leave community,
-                            #   create community, create post
+                            #   avatar upload, donation submit, book request submit, membership
+                            #   request submit, join/leave community, create community, create post,
+                            #   add to wishlist
+                            #   Borrow, Reserve, and Add-to-wishlist toasts include a "View" action
+                            #     link (toast(msg, "success", { label, onClick })) that closes the
+                            #     Book Detail modal (if open) and switches to the My Profile tab
+                            #
+                            # Games tab (Gold members only; non-gold sees the same locked card
+                            #   style as Community — shared .community-locked/-icon CSS, LockIcon
+                            #   SVG instead of an emoji):
+                            #   Menu view — .games-grid of 3 .game-card tiles (Book Title Hangman,
+                            #     Word Scramble, Lit Wordle), each with an SVG icon (HangmanGameIcon/
+                            #     ScrambleGameIcon/WordleGameIcon), name, and tagline; header shows
+                            #     the caller's total XP (user.xp, "N XP", .games-xp-total)
+                            #   Clicking a tile calls openGame(id) → sets gameView and starts that
+                            #     game's state; "← Back to Games" (ChevronLeft icon) returns to the
+                            #     menu without resetting scores already awarded
+                            #
+                            #   Book Title Hangman — pickHangmanWord() picks a random real book
+                            #     title from the loaded `books` array (letters/digits/spaces/basic
+                            #     punctuation only, 3–26 chars), falling back to a small curated
+                            #     HANGMAN_FALLBACK_TITLES list of classics if the catalogue doesn't
+                            #     have ≥5 eligible titles; 6 wrong guesses allowed; HangmanFigure
+                            #     SVG (gallows always drawn, body parts revealed per wrong guess,
+                            #     stroke="currentColor"); on-screen A–Z keyboard, letters recolour
+                            #     correct/wrong once guessed; XP = max(10, 60 − wrong×10)
+                            #   Word Scramble — random word from SCRAMBLE_WORDS (curated library/
+                            #     literary vocabulary, 6–11 letters); shuffleWord() Fisher-Yates
+                            #     shuffles until different from the original; Reshuffle re-shuffles
+                            #     the same word, Hint reveals one more letter (uncapped attempts,
+                            #     but each hint lowers the XP payout); XP = max(10, 50 − hints×15)
+                            #   Lit Wordle — random 5-letter word from WORDLE_WORDS (literary-
+                            #     themed); guesses are validated against WORDLE_VALID_WORDS (
+                            #     WORDLE_WORDS ∪ a ~350-word COMMON_FIVE_LETTER_WORDS list) — an
+                            #     invalid guess shows "Not a valid word" and does not consume an
+                            #     attempt, same as real Wordle; wordleFeedback() does duplicate-
+                            #     letter-safe correct/present/absent scoring; 6 rows; XP by guess
+                            #     count: [100, 80, 60, 45, 30, 15]
+                            #   All three games are client-side only (word banks, shuffling,
+                            #     scoring logic all live in MemberDashboard.js — no new endpoints
+                            #     for gameplay itself); only the XP award is a network call — see
+                            #     "Gold Games & XP" below
                             #
                             # Community tab (Gold members only; non-gold sees a locked card):
                             #   3-level view: list → community → post
@@ -354,7 +602,14 @@ frontend/src/
                             #     count stored in localStorage (communityLastSeen); badge clears on tab open
                             #   Reaction icons: stroke-based inline SVGs (no icon library),
                             #     keys: like | love | haha | wow | sad | angry
-    AdminDashboard.js       # Books · Borrowed · Fines · Members · Communities · Donations tabs
+    AdminDashboard.js       # Books · Borrowed · Fines · Members · Communities · Donations ·
+                            #   Membership Requests · Book Requests tabs
+                            # TopBar receives onReplayTour (reopens onboarding)
+                            # navStyle (from useTheme()) picks NavTabs vs Dock for the tab bar,
+                            #   same as MemberDashboard — see Dock.js and ThemeContext.js above
+                            # showOnboarding state — set true on mount if
+                            #   localStorage["onboarding_seen_<username>"] is unset; renders
+                            #   <Onboarding role="admin" .../> as a sibling above .layout
                             # + Book Detail modal + Edit book modal + Inventory Logs modal
                             # + Member Records modal + Approve Donation modal + Reject Donation modal
                             # + Approve Community modal + Reject Community modal
@@ -378,11 +633,23 @@ frontend/src/
                             #     (GET /books/:id/reviews)
                             #   Missing description/author bio show a "✨ Generate…" button in
                             #     the detail modal that opens the AI Generate Field modal
-                            #     (POST /books/:id/generate-field, PUT .../patch-metadata);
-                            #     missing cover shows "+ Add cover" opening the Cover Upload
+                            #     (POST /books/:id/generate-field, PUT .../patch-metadata); when
+                            #     the field already has content, the same modal opens in "edit"
+                            #     mode instead ("Edit" link, pre-filled, no AI call) so admins can
+                            #     always overwrite description/author bio by hand, not just fill
+                            #     gaps; missing cover shows "+ Add cover" opening the Cover Upload
                             #     modal (file or URL, PUT .../patch-metadata) — both modals
                             #     previously only reachable via the Refresh Log's "Fill missing"
                             #     section, now also directly accessible from the detail view
+                            #   AI Generate Field modal — if Groq generation runs past 5 seconds
+                            #     (aiGenSlow state, set by a setTimeout started when the call
+                            #     begins), a "Write it yourself instead" button appears so the
+                            #     admin isn't stuck waiting; clicking it drops out of the loading
+                            #     state into the plain textarea. aiGenRequestIdRef guards every
+                            #     generate call so a late Groq response — after a manual bail-out,
+                            #     a Regenerate click, or closing the modal — is detected as stale
+                            #     (request id no longer matches) and its result is discarded rather
+                            #     than clobbering whatever the admin has since typed or closed
                             #   Detail modal's action row: Edit Book / Logs / Refresh metadata /
                             #     Delete — Edit, Logs, and Delete close the detail modal first;
                             #     Refresh keeps it open since `books` state updates reactively
@@ -401,8 +668,9 @@ frontend/src/
                             # Toast notifications fire on: add book, delete book, edit book,
                             #   refresh metadata, mark fine paid, save policy, save membership
                             #   pricing, change member tier, approve/reject donation,
-                            #   approve/reject community; policy/pricing no longer use inline
-                            #   "Saved" state — toasts replace those entirely
+                            #   approve/reject community, approve/reject membership request;
+                            #   policy/pricing no longer use inline "Saved" state — toasts
+                            #   replace those entirely
                             #
                             # Communities tab:
                             #   Status filter buttons — Pending / Approved / Rejected / All
@@ -420,12 +688,44 @@ frontend/src/
                             #     optional admin notes; on confirm adds book to catalogue
                             #     (or increments copy count if title or ISBN already exists)
                             #   Reject modal: optional reason field
+                            #
+                            # Membership Requests tab:
+                            #   Status filter buttons — Pending / Approved / Rejected / All
+                            #   Table: member, requested tier (badge), member's optional note,
+                            #     status badge, submitted date, Approve/Reject buttons (pending
+                            #     only), admin notes preview
+                            #   Approve modal: optional admin notes only (no credit field); on
+                            #     confirm calls admin.py's apply_tier() so the tier is active
+                            #     immediately (family requests auto-assigned to a group with room)
+                            #   Reject modal: optional reason field (shown to the member)
+                            #
+                            # Book Requests tab:
+                            #   Status filter buttons — Pending / Approved / Rejected / All
+                            #   Table: member, book (title + author/genre sub-row), member's
+                            #     optional note, status badge, submitted date, Approve/Reject
+                            #     buttons (pending only), admin notes preview
+                            #   Approve modal: title/author/ISBN/genre editable (pre-filled from
+                            #     the request; genre uses the custom Select populated from the
+                            #     live `genres` list), copies-to-add field (default 1), optional
+                            #     admin notes; on confirm, PUT .../approve matches an existing book
+                            #     by ISBN or case-insensitive title (adds copies) or creates a new
+                            #     Book — same match-or-create logic as the Donations approve flow
+                            #   Reject modal: optional reason field (shown to the member)
 ```
 
 ### Auth flow
-`AuthContext` calls `GET /api/auth/me` on mount. A 401 sets `user = null` → redirect to `/login`. Login/register calls set `user` via `login(userData)`. All protected pages use `useAuth()` — no prop drilling.
+`AuthContext` calls `GET /api/auth/me` on mount. A 401 sets `user = null`. Login/register calls set `user` via `login(userData)`. All protected pages use `useAuth()` — no prop drilling.
 
 A global Axios response interceptor handles session drift: a 401 clears the user immediately; a 403 re-fetches `/auth/me` and updates React state to match the real Flask session (prevents stale "admin" UI after switching accounts in the same browser).
+
+### Routing (`App.js`)
+| Path | Logged out | Logged in |
+|---|---|---|
+| `/` | `LandingPage` (public marketing page) | `AdminDashboard` or `MemberDashboard` (by role) |
+| `/login` | `Login` | redirects to `/` |
+| `/*` (anything else) | redirects to `/` | `AdminDashboard` or `MemberDashboard` (by role) |
+
+Unauthenticated visitors land on the public `LandingPage` at `/` rather than being sent straight to `/login`; `Login` is only reached via its CTAs or a direct `/login` visit.
 
 ---
 
@@ -434,7 +734,7 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 ### Auth
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/api/auth/register` | — | Register new user (role selectable via payload) |
+| POST | `/api/auth/register` | — | Register new user (role selectable via payload); optional `requested_tier` (member role only) creates a pending `MembershipRequest` — does not grant the tier |
 | POST | `/api/auth/login` | — | Login |
 | POST | `/api/auth/logout` | session | Logout |
 | GET | `/api/auth/me` | session | Current user |
@@ -469,6 +769,24 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 | DELETE | `/api/cancel-reservation/:id` | member | Cancel a reservation |
 | GET | `/api/my-reservations` | member | Caller's active reservations with queue position |
 
+### Wishlist
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/my-wishlist` | member | Caller's saved books, newest first |
+| POST | `/api/wishlist/:bookId` | member | Save a book; 409 if already saved |
+| DELETE | `/api/wishlist/:bookId` | member | Remove a saved book; 404 if not saved |
+
+### Genres
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/genres` | member+ | Full genre list |
+| POST | `/api/genres` | admin | Add a genre; letters-only name, normalized to Title Case; 409 if it already exists |
+
+### Games (Gold members only)
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/api/games/xp` | gold | Award XP for a completed Gold Game; body `{ amount }` (1–100); returns `{ xp }` (new total) |
+
 ### Admin
 | Method | Path | Auth | Description |
 |---|---|---|---|
@@ -487,6 +805,16 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/api/membership` | member | Current user's tier, borrow limit, monthly rate, family group members |
+| GET | `/api/membership/pricing` | — | Public pricing read (`silver_rate`, `gold_rate`, `family_rate`) — used by the registration form before a session exists |
+
+### Membership Requests
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/api/membership-requests` | member | Submit a tier request (`{ tier, notes? }`); 400 if the caller already has a pending request |
+| GET | `/api/my-membership-requests` | member | Caller's own requests, newest first |
+| GET | `/api/admin/membership-requests` | admin | All requests; optional `?status=pending\|approved\|rejected` filter |
+| PUT | `/api/admin/membership-requests/:id/approve` | admin | Approve — grants the requested tier immediately via `apply_tier()` (family requests auto-assigned to a group with room) |
+| PUT | `/api/admin/membership-requests/:id/reject` | admin | Reject with optional `admin_notes` |
 
 ### Donations
 | Method | Path | Auth | Description |
@@ -496,6 +824,16 @@ A global Axios response interceptor handles session drift: a 401 clears the user
 | GET | `/api/admin/donations` | admin | All donations; optional `?status=pending\|approved\|rejected` filter |
 | PUT | `/api/admin/donations/:id/approve` | admin | Approve donation — adds book to catalogue (or copy if title/ISBN already exists), sets credit_amount (default: estimated_price/4, admin-adjustable) |
 | PUT | `/api/admin/donations/:id/reject` | admin | Reject donation with optional `admin_notes` |
+
+### Book Requests
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/api/book-requests` | member | Submit a "please add this book" request (title required; author, isbn, genre, notes optional) |
+| GET | `/api/my-book-requests` | member | Caller's own requests, newest first |
+| PUT | `/api/book-requests/:id/dismiss` | member | Mark a reviewed request's outcome as seen (`notified=True`); clears its Home tab banner |
+| GET | `/api/admin/book-requests` | admin | All requests; optional `?status=pending\|approved\|rejected` filter |
+| PUT | `/api/admin/book-requests/:id/approve` | admin | Approve — admin can edit title/author/isbn/genre/total_copies before confirming; matches an existing book by ISBN or case-insensitive title (adds copies) or creates a new one |
+| PUT | `/api/admin/book-requests/:id/reject` | admin | Reject with optional `admin_notes` |
 
 ### Communities (Gold members only)
 | Method | Path | Auth | Description |
@@ -648,7 +986,7 @@ Three tiers control how many books a member can have active at once.
 | Tier | Active borrow limit | Notes |
 |------|-------------------|-------|
 | `silver` | 1 | Standard access |
-| `gold` | 3 | Full community section access |
+| `gold` | 3 | Full community section access + Gold Games (Hangman/Scramble/Wordle) & XP |
 | `family` | 1 per person | Up to 4 members share one plan; each has their own account |
 
 **Borrow limit enforcement** is in `POST /api/borrow/:bookId`: before decrementing `available_copies` the endpoint counts `Borrow` records with `return_date = NULL` for the current user and compares against `Membership.borrow_limit()`. A 400 error is returned with a human-readable message (e.g. *"Silver membership allows 1 active borrow at a time"*). Users with no `Membership` record default to a limit of 1.
@@ -657,7 +995,28 @@ Three tiers control how many books a member can have active at once.
 
 **Pricing** is stored in the `setting` table under keys `membership_silver_rate`, `membership_gold_rate`, `membership_family_rate`. Defaults: $9.99 / $19.99 / $29.99 per month. The admin can change these at runtime via the Memberships tab without restarting the server.
 
-**Seeding**: `_seed_memberships()` in `models/__init__.py` runs on every startup. It finds any member `User` without a `Membership` row and randomly assigns them `silver`, `gold`, or `family`. Family members are grouped sequentially (4 per group). This is idempotent — it no-ops when all members already have a tier.
+**How a member gets a tier**: real members no longer get a tier automatically — they pick one via the membership-request flow (see below) and an admin approves it. `_seed_memberships()` in `models/__init__.py` (random tier assignment, family members grouped sequentially in groups of 4) still exists but is **not called on server startup** — it's only invoked explicitly, once, by `seed_extra.py` to give demo accounts (alice/bob/carol/dave/member) realistic tiers.
+
+---
+
+## Membership Request System
+
+Members choose their own tier — at registration, or anytime later from My Profile — rather than having one assigned. Payment is currently handled offline (in person); online payment is a possible future addition. Mirrors the Donation System's `pending → approved/rejected` shape almost exactly.
+
+**Member flow:**
+1. **At registration**: the register form (`Login.js`) shows a `.tier-picker` with live pricing (from the public `GET /api/membership/pricing`); picking a tier is optional (default is "decide later"). If a tier is selected, a `MembershipRequest` is created with `status='pending'` in the same call that creates the account — the account is **not** granted the tier yet.
+2. **Later, from My Profile**: if the member has no pending request, a `.tier-picker` (Silver/Gold/Family, live pricing from `GET /api/membership`) appears below the membership info card, with a **Request Membership** (no tier yet) or **Request Upgrade** (already has a tier) button. Submitting calls `POST /api/membership-requests`.
+3. While a request is `pending`, the picker is replaced by a status banner ("Requested — awaiting admin approval") — the 400 guard on the backend also prevents submitting a second request in the meantime.
+4. If the most recent request was `rejected`, the admin's reason (if any) is shown once, then the picker reappears so the member can submit a new request.
+
+**Admin flow:**
+1. Admin opens the **Membership Requests** tab (defaults to Pending view) and sees a table of submitted requests — member, requested tier, the member's optional note, status, submitted date.
+2. **Approve**: optional admin notes, then confirms. Calls the same `apply_tier()` helper used by the direct admin tier-change endpoint (`admin.py`) — the tier is granted immediately; a `family` request is auto-assigned to an existing group with room (< 4 members) or a new group, exactly like the direct admin flow.
+3. **Reject**: admin optionally provides a reason, shown to the member on their next visit to My Profile.
+
+**`MembershipRequest` model fields:** `id`, `user_id`, `requested_tier` (silver/gold/family), `notes` (nullable — member's optional note), `status` (pending/approved/rejected), `admin_notes` (nullable), `submitted_at`, `reviewed_at` (nullable).
+
+**Shared tier logic**: `apply_tier(user_id, tier, family_group_id=None)` in `routes/admin.py` is the single place that sets/clears a `Membership` row and handles family-group auto-assignment. Both `PUT /api/admin/members/:id/membership` (direct admin override) and `PUT /api/admin/membership-requests/:id/approve` (request approval) call it, so the family-grouping logic exists in exactly one place.
 
 ---
 
@@ -685,6 +1044,24 @@ Members can donate physical books to the library. Donations sit in a `pending` q
 
 ---
 
+## Book Request System
+
+Lets a member ask the library to add a book that isn't in the catalogue, surfaced right where the need shows up: an empty search result. Mirrors the Donation/Membership Request systems' `pending → approved/rejected` shape.
+
+**Member flow:**
+1. A keyword or AI search that returns no results shows "No results found for this search." plus a **Request that we add it** link, prefilled with the search query as the title.
+2. The Request a Book modal collects title (required), author/ISBN/genre (optional), and a free-text notes field. Submitting creates a `BookRequest` with `status = 'pending'`.
+3. Once an admin reviews it, the outcome appears as a banner on the Home tab (not buried in a table the member has to go check): approved requests show *"'Title' — the book you requested was approved and is now in the catalogue!"* with a **View book** link straight to the Book Detail modal; rejected requests show the admin's reason if one was given. Dismissing a banner (✕) calls `PUT /api/book-requests/:id/dismiss`, which sets `notified = True` server-side — so, unlike a `localStorage` flag, the "already seen" state follows the account across devices/sessions rather than resetting on a new browser.
+
+**Admin flow:**
+1. Admin opens the **Book Requests** tab (defaults to Pending view) and sees a table of submitted requests — member, book (title/author/genre), the member's optional note, status, submitted date.
+2. **Approve**: opens a modal pre-filled from the request but every field (title, author, ISBN, genre, copies-to-add) is editable, since the member's info may be incomplete or need cleanup before it becomes a catalogue entry. Confirming matches an existing book by ISBN or case-insensitive title (and just adds copies) or creates a new `Book` — identical match-or-create logic to the Donations approve endpoint. A `BookLog` entry is written either way.
+3. **Reject**: admin optionally provides a reason, shown to the member on their next Home tab visit.
+
+**`BookRequest` model fields:** `id`, `user_id`, `title`, `author` (nullable), `isbn` (nullable), `genre` (nullable), `notes` (nullable), `status` (pending/approved/rejected), `admin_notes` (nullable), `submitted_at`, `reviewed_at` (nullable), `book_id` (nullable FK — set to the matched or newly created book on approval), `notified` (bool, default False — flips true once the member dismisses the Home tab banner).
+
+---
+
 ## Community System
 
 Gold members can create communities, which go through admin approval before becoming active. Once approved, other Gold members can join and participate.
@@ -698,6 +1075,50 @@ Gold members can create communities, which go through admin approval before beco
 **Reactions:** Six types — `like`, `love`, `haha`, `wow`, `sad`, `angry`. Stored as VARCHAR string keys (not emoji characters) in `PostReaction.emoji` / `CommentReaction.emoji`. Each user can have at most one reaction per post or comment (unique constraint); submitting the same reaction again toggles it off. Frontend renders stroke-based inline SVG icons (no icon library), 12–15 px, via the `ReactionIcon` component.
 
 **Notification badge:** A red number on the Community tab label showing unseen activity. Computed by `GET /api/communities/activity-count?since=<iso>` which counts new posts, comments, post reactions, and comment reactions (by others) across all communities the caller is a member of. The frontend polls every 60 seconds when not on the Community tab; `communityLastSeen` is persisted in `localStorage` and updated whenever the Community tab is opened.
+
+---
+
+## Gold Games & XP
+
+A second Gold-only perk alongside Community: three classic word/vocabulary games (Book Title Hangman, Word Scramble, Lit Wordle) in their own **Games** tab, each awarding XP toward a single cumulative, server-authoritative score shown across the app.
+
+**Gameplay is entirely client-side** — word banks, shuffling, letter/guess validation, and scoring all live in `MemberDashboard.js` (see the "Games tab" entry under Frontend Structure above for each game's rules). The backend is only involved in the one thing that must be tamper-resistant: the running total.
+
+**XP awarding:** on a win, the frontend computes an amount from that game's own formula (Hangman: `max(10, 60 − wrong×10)`; Scramble: `max(10, 50 − hints×15)`; Wordle: `[100, 80, 60, 45, 30, 15]` indexed by guess count) and calls `POST /api/games/xp` with `{ amount }`. `routes/games.py` re-checks Gold membership server-side (`_gold_user()`) and rejects any non-integer or out-of-range amount (`0 < amount <= 100`), then does `user.xp += amount` and returns the new total, which the frontend syncs into React state via `updateUser({ xp })`. There is no per-game or historical XP breakdown stored — `User.xp` is a single running counter.
+
+**Where XP is shown:** the Games tab menu header ("N XP") and the TopBar profile dropdown (Gold members only, next to the tier badge). Both read `user.xp` directly off the auth context — no separate fetch.
+
+**Lit Wordle word validation:** unlike a typical "any 5 letters" placeholder implementation, guesses must be real words. `WORDLE_VALID_WORDS` is the union of the literary answer list (`WORDLE_WORDS`) and a ~350-word common-English list (`COMMON_FIVE_LETTER_WORDS`), both hardcoded client-side (no dictionary API/network call). A guess not in that set shows an inline "Not a valid word" message and is not counted as one of the 6 attempts.
+
+---
+
+## Landing Page
+
+A public marketing page (`pages/LandingPage.js`) rendered at `/` for logged-out visitors — see the Routing table above. Monochrome, matches the rest of the site's fonts/CSS variables (no new dependencies).
+
+**Sections (top → bottom):**
+1. Nav — "Library" wordmark + Sign In / Get Started buttons
+2. Hero — eyebrow, headline, subtext, dual CTA row
+3. Feature photo grid — its own 6-card `SERVICES`-style array (Borrow Books, Reserve a Copy, AI Search, Personalised Picks, Reading Communities, Donate & Earn) using the same `/service_*.jpg` images the member Home tab's services strip used to; rendered with `filter: grayscale(1)` and a bottom gradient overlay (title + description) to keep the public page strictly monochrome. Independent of `MemberDashboard.js`, which removed its own services strip in favour of the colour-blocked Home tab sections — see Home tab notes above
+4. "For Members" / "For Admins" two-column bullet cards (reuses `.onboarding-list` styling)
+5. Inverted CTA banner — `background: var(--text); color: var(--bg)` so it flips correctly across all 10 theme combinations without hardcoded colours
+6. Footer — product name + Sign In link
+
+**Get Started → Register:** clicking "Get Started" calls `navigate('/login', { state: { register: true } })`; `Login.js` reads `useLocation().state?.register` to initialise `isRegister` as `true`, landing the visitor directly on the register form. Plain "Sign In" navigates with no state (defaults to sign-in mode). `Login.js` also has a "← Back to home" link (`Link to="/"`).
+
+---
+
+## Onboarding Tour
+
+A role-aware, interactive tour (`components/Onboarding.js`) introduces new sessions to the feature set by spotlighting the real UI element each step talks about, rather than just describing it in a static modal. Rendered as its own fixed-position overlay (separate from `Modal.js` — no backdrop-click-to-dismiss; only Skip, Escape, or finishing the last step closes it).
+
+**Trigger & persistence:** Both `MemberDashboard.js` and `AdminDashboard.js` hold a `showOnboarding` boolean. On mount, if `localStorage["onboarding_seen_<username>"]` is unset, the tour is shown automatically; closing it (Skip or finishing) sets that key so it won't auto-show again for that user. It can be re-opened anytime via **Replay Tour** in the `TopBar` profile dropdown (passed down as `onReplayTour`).
+
+**Step shape:** each step is either a spotlight step (has a `target` CSS selector like `[data-tour="member-search"]`, and optionally a `tab` to switch to first) or a bookend step (welcome/closing, no target — rendered as the original centered card). `role="member"` renders 6 steps (welcome → search/AI → borrowing & reservations → membership → donations → profile, closing); `role="admin"` renders 8 (welcome → Books → Borrowed Books → Fines → Members → Donations → Communities → closing), one step per admin tab.
+
+**Spotlight mechanics:** on each step change, `Onboarding` calls the `onNavigate` prop (the dashboard's `handleTabChange`) if the step has a `tab`, then locates `document.querySelector(target)`, calls `scrollIntoView({ block: 'center' })`, and tracks the element's `getBoundingClientRect()` continuously via scroll/resize listeners (so the highlight stays correct if the page moves). The target elements are marked with plain `data-tour="…"` attributes in `MemberDashboard.js` / `AdminDashboard.js` (e.g. the search row, genre strip, membership card, Donate section header; each admin tab's `.section-header`) — no separate registry, the selector is just read off the DOM.
+
+**Rendering:** `.tour-spotlight` is a `position: fixed` box sized to the target's rect (plus a few px padding) whose `box-shadow: 0 0 0 6000px var(--overlay)` dims the entire rest of the page in one element (no separate dimming layer needed) — an animated `::after` border pulses around it. A `.tour-tooltip` callout is positioned above or below the target (whichever has more room; `bottom` is used instead of `top` for the "above" case so no height measurement is needed) and horizontally clamped to stay on-screen. Both the spotlight box and the tooltip transition smoothly (CSS `transition` on position/size) between steps and as the page scrolls; the tooltip's content fades in per step via a `key={step}`-driven animation. Bookend steps (no target) fall back to the original fixed 420×480px `.onboarding-card` with the dimmed `.onboarding-overlay` background.
 
 ---
 
@@ -734,3 +1155,25 @@ Gold members can create communities, which go through admin approval before beco
 - **Custom Select replaces all native dropdowns** — `Select.js` parses `<option>` children via `React.Children.toArray` and fires a synthetic `{ target: { value } }` event so all existing onChange handlers work without modification. Two size variants: default (form-group, full-width) and `.filter-select` (compact inline). Fully theme-aware via CSS custom properties.
 - **Toast system via `useToast` hook** — a module-level counter generates monotonic IDs so concurrent toasts each auto-dismiss independently after 2.8 s. Success toasts use `--text`/`--bg` (inverted, theme-safe); error toasts are hardcoded red. Both dashboards share the same hook; the `Toast` component is rendered once at the root of each page.
 - **Genre pill deselect** — clicking an active genre pill toggles it off (sets `selectedGenre` to `""`) rather than requiring the user to click the "All" pill. Same behaviour as many filter UIs users already know.
+- **Onboarding tracked per-username in `localStorage`, not the database** — a `seen`/`not seen` flag doesn't warrant a schema change or API round trip; `onboarding_seen_<username>` is simple, works offline, and is trivially resettable (Replay Tour, or clearing the key) without touching the backend.
+- **Onboarding bookend card is fixed-size, not content-sized** — steps vary from a one-line paragraph to a 3-item bullet list; letting the card grow/shrink per step made the progress dots and footer buttons jump around between clicks. Fixing `.onboarding-card` at 420×480px and making only the inner content region (`flex: 1; overflow-y: auto`) flexible keeps navigation controls in a constant position. Only the welcome/closing steps use this card — spotlight steps use the smaller `.tour-tooltip` instead, sized to its content.
+- **Spotlight dimming is one box-shadow, not a separate overlay layer** — `.tour-spotlight`'s `box-shadow: 0 0 0 6000px var(--overlay)` dims the whole page and cuts out the highlighted element in a single element, instead of a full-screen dim `<div>` plus a transparent cutout punched through it (e.g. via `clip-path` or an SVG mask). Simpler to position and animate.
+- **Tooltip "above" placement uses CSS `bottom`, not a measured height** — computing `top = target.top - tooltipHeight - gap` would need a two-pass render (measure the tooltip, then position it) since content length varies per step. Anchoring with `bottom: window.innerHeight - target.top + gap` instead lets the browser handle the height, so placement is a single synchronous calculation from the target's `getBoundingClientRect()` alone.
+- **Tour targets are plain `data-tour` attributes, not a central registry** — each step's `target` is just a CSS selector (`[data-tour="member-search"]`) matched against attributes already sitting on the relevant JSX elements in `MemberDashboard.js`/`AdminDashboard.js`. Adding a new step means adding one attribute at the element and one step object — no separate mapping table to keep in sync.
+- **Membership requests mirror the Donation system's shape exactly** (`pending → approved/rejected`, admin reviews, member sees status in profile) — same lifecycle, same problem shape (member submits something that needs admin sign-off before it takes effect), so the same pattern was reused rather than inventing a new one.
+- **Tier-apply logic centralized in `apply_tier()`** (`routes/admin.py`) — both the admin's direct tier-change endpoint and membership-request approval need to set a tier and handle family-group auto-assignment; extracting it once avoids the family-grouping logic (find a group with room, else start a new one) existing in two places that could drift apart.
+- **Random tier auto-assignment removed from server startup** — `_seed_memberships()` used to run on every startup so any member missing a `Membership` row got a random tier. That's incompatible with a real request-based flow (a restart would silently grant a tier before the member ever asked for one), so it's now only ever called explicitly by `seed_extra.py`, once, for demo accounts.
+- **Landing page reuses Home tab imagery in grayscale rather than new assets** — the public page needed to feel visually consistent with "clean monochrome" while still showing real product photography; applying `filter: grayscale(1)` to the existing `/service_*.jpg` files (already used by the member Home tab) avoided sourcing new images or adding an illustration system.
+- **XP is a single server-side counter, not per-game/session state** — `User.xp` is the only source of truth; the frontend never trusts a locally-accumulated total. Each game POSTs one small, range-checked amount per win (`routes/games.py` clamps to `0 < amount <= 100`) rather than the client sending a cumulative score, so a stale tab or a replayed request can only ever add one more valid win's worth of XP, not an arbitrary total.
+- **Lit Wordle guesses are validated against a hardcoded word list, not a dictionary API** — `WORDLE_VALID_WORDS` (the answer list ∪ ~350 common words) is bundled client-side like `SCRAMBLE_WORDS`/`HANGMAN_FALLBACK_TITLES`, keeping every Gold Game dependency-free and instant, at the cost of not accepting every valid English word (acceptable for a bonus feature, unlike the core catalogue).
+- **"My stuff" grids reuse the Available Books tab's exact `rec-card` markup** — My Borrowed Books, My Reservations, and My Wishlist render as `.books-grid`/`.rec-card` divs (not the original one-off `.wishlist-card`/`.profile-table` styles) so a book looks identical whether it's being browsed or already yours; the per-row action (Return/Cancel/Remove) sits in a `stopPropagation`'d `.admin-card-actions` row reused from the admin book-card pattern, since a `rec-card` can't itself be a `<button>` once it needs a nested interactive action.
+- **Toast action links reuse the existing toast infrastructure** — `useToast`'s `toast(msg, type, action)` takes an optional `{ label, onClick }` instead of introducing a separate "toast with CTA" component; every existing two-argument call site is unaffected, and Borrow/Reserve/Add-to-wishlist toasts just pass a third argument that closes the book modal and jumps to My Profile.
+- **No emoji anywhere in the UI, by convention** — pictographic emoji (🔒🎉✨ etc.) were removed app-wide in favour of the existing inline stroke-SVG icon convention (`ReactionIcon`, `FilterIcon`, `LockIcon`, the Games icons, etc.) or plain text where no icon is needed. Established text/dingbat symbols already used as icons throughout (★/☆ ratings, ✕ close, ✓/✗, ♥/♡ wishlist) are a separate, pre-existing convention and were left as-is.
+- **Hero-context error colour is computed, not a fixed red** — the borrow/reserve error banner inside the Book Detail modal's cover-tinted hero can't safely use the app's normal fixed `#c00` error red, since an arbitrary cover colour might not contrast with it. `heroErrorColor` tries a small ordered list of red shades (`HERO_ERROR_REDS`) and picks the first that clears 4.5:1 against the cover colour, falling back to the same guaranteed-safe black/white `coverPalette.text` already used for hero labels — no fixed hue can pass WCAG against literally any background, so the fallback is what keeps the "always" guarantee.
+- **Landing page CTA banner inverts `--text`/`--bg` instead of a hardcoded dark colour** — since both are theme CSS variables, the "inverted" band automatically renders correctly (light-on-dark or dark-on-light) across all 10 theme combinations with zero per-theme overrides.
+- **Navigation style is a third `ThemeContext` axis, not a separate context** — `navStyle` persists in `localStorage` and applies globally exactly like `appearance`/`readerTheme`, so Dock vs NavTabs "just works" on both dashboards without a second provider or prop-drilling a preference that's conceptually the same kind of thing (a persisted UI choice).
+- **Book Request System reuses the Donation/Membership Request `pending → approved/rejected` shape** — same problem (member submits something that needs admin sign-off before it takes effect), so the same lifecycle, admin-tab-with-status-filter, and approve/reject-modal pattern was reused rather than inventing a new one.
+- **Book request outcomes are tracked server-side (`notified` column), not in `localStorage`** — unlike onboarding's `seen`/`not seen` flag, an unacknowledged approval/rejection needs to survive a login from a different browser or device, so it's a real column the dismiss endpoint flips, not a client-only flag.
+- **Home tab's vivid section colours reuse the existing WCAG helpers, not a new colour system** — `HOME_PALETTE` runs a small fixed set of hex colours through the same `wcagTextColor()` + `minAlphaForContrast()` functions already used to derive the Book Detail hero's `coverPalette` from a book's `cover_color`, so "pick black or white text, then alpha-tune secondary text tiers to guarantee 4.5:1" has one implementation shared by both a per-book dynamic colour and a fixed design palette.
+- **AI generation bail-out uses a request-id ref, not `AbortController`** — Groq's Python SDK call happens server-side, so the frontend can't actually cancel the in-flight request; instead `aiGenRequestIdRef` is bumped on every new generate call, manual bail-out, or modal close, and any response is checked against the id it was issued under before touching state, so a slow response arriving after the admin has already moved on is silently discarded rather than overwriting their typed content.
+- **Home tab sections overlap and collapse instead of stacking with whitespace** — `.home-tab` has `gap: 0` and each colour block has `margin-top: -40px`, so sections visually pile against each other (later DOM siblings paint over earlier ones automatically, no z-index needed); combined with the accordion (`openHomeSection`, one section expanded at a time), collapsed sections shrink to just their header bar and stack tightly under whichever section is open, rather than the page showing four always-expanded grids at once.

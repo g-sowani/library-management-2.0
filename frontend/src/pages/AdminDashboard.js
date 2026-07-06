@@ -1,14 +1,17 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
 import TopBar from "../components/TopBar";
 import NavTabs from "../components/NavTabs";
+import Dock from "../components/Dock";
 import Badge from "../components/Badge";
 import Modal from "../components/Modal";
 import SearchBar from "../components/SearchBar";
 import Select from "../components/Select";
 import Toast from "../components/Toast";
+import Onboarding from "../components/Onboarding";
 import { useToast } from "../hooks/useToast";
+import { useTheme } from "../context/ThemeContext";
 
 const TABS = [
   { id: "books", label: "Books" },
@@ -17,6 +20,8 @@ const TABS = [
   { id: "members", label: "Members" },
   { id: "communities", label: "Communities" },
   { id: "donations", label: "Donations" },
+  { id: "membership-requests", label: "Membership Requests" },
+  { id: "book-requests", label: "Book Requests" },
 ];
 
 const EMPTY_BOOK_FORM = {
@@ -69,6 +74,7 @@ function NoCoverPlaceholder({ title, className }) {
 
 function AdminDashboard() {
   const { user, logout } = useAuth();
+  const { navStyle } = useTheme();
   const [tab, setTab] = useState("books");
   const [books, setBooks] = useState([]);
   const [borrows, setBorrows] = useState([]);
@@ -76,6 +82,7 @@ function AdminDashboard() {
   const [search, setSearch] = useState("");
   const [selectedGenre, setSelectedGenre] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Add book
   const [showAdd, setShowAdd] = useState(false);
@@ -135,6 +142,37 @@ function AdminDashboard() {
   const [donationsLoaded, setDonationsLoaded] = useState(false);
   const [donationStatusFilter, setDonationStatusFilter] = useState("pending");
 
+  // Membership requests
+  const [membershipRequests, setMembershipRequests] = useState([]);
+  const [membershipRequestsLoaded, setMembershipRequestsLoaded] = useState(false);
+  const [membershipRequestStatusFilter, setMembershipRequestStatusFilter] =
+    useState("pending");
+  const [approvingMembershipRequest, setApprovingMembershipRequest] =
+    useState(null);
+  const [approveMembershipNotes, setApproveMembershipNotes] = useState("");
+  const [approveMembershipError, setApproveMembershipError] = useState("");
+  const [rejectingMembershipRequest, setRejectingMembershipRequest] =
+    useState(null);
+  const [rejectMembershipNotes, setRejectMembershipNotes] = useState("");
+  const [rejectMembershipError, setRejectMembershipError] = useState("");
+
+  // Book requests
+  const [bookRequests, setBookRequests] = useState([]);
+  const [bookRequestsLoaded, setBookRequestsLoaded] = useState(false);
+  const [bookRequestStatusFilter, setBookRequestStatusFilter] =
+    useState("pending");
+  const [approvingBookRequest, setApprovingBookRequest] = useState(null);
+  const [approveBookTitle, setApproveBookTitle] = useState("");
+  const [approveBookAuthor, setApproveBookAuthor] = useState("");
+  const [approveBookIsbn, setApproveBookIsbn] = useState("");
+  const [approveBookGenre, setApproveBookGenre] = useState("");
+  const [approveBookCopies, setApproveBookCopies] = useState(1);
+  const [approveBookNotes, setApproveBookNotes] = useState("");
+  const [approveBookError, setApproveBookError] = useState("");
+  const [rejectingBookRequest, setRejectingBookRequest] = useState(null);
+  const [rejectBookNotes, setRejectBookNotes] = useState("");
+  const [rejectBookError, setRejectBookError] = useState("");
+
   // Communities
   const [adminCommunities, setAdminCommunities] = useState([]);
   const [adminCommunitiesLoaded, setAdminCommunitiesLoaded] = useState(false);
@@ -174,8 +212,11 @@ function AdminDashboard() {
   const [aiGenModal, setAiGenModal] = useState(null); // { bookId, field, bookTitle }
   const [aiGenContent, setAiGenContent] = useState("");
   const [aiGenLoading, setAiGenLoading] = useState(false);
+  const [aiGenSlow, setAiGenSlow] = useState(false); // true once generation has taken > 5s
   const [aiGenError, setAiGenError] = useState("");
   const [aiGenSaving, setAiGenSaving] = useState(false);
+  const aiGenRequestIdRef = useRef(0);
+  const aiGenSlowTimerRef = useRef(null);
 
   // Cover upload
   const [coverUploadBookId, setCoverUploadBookId] = useState(null);
@@ -207,6 +248,18 @@ function AdminDashboard() {
       setLoadError("Failed to load data. Is the server running?")
     );
   }, [load]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (!localStorage.getItem(`onboarding_seen_${user.username}`)) {
+      setShowOnboarding(true);
+    }
+  }, [user]);
+
+  const closeOnboarding = () => {
+    localStorage.setItem(`onboarding_seen_${user.username}`, "true");
+    setShowOnboarding(false);
+  };
 
   const selectedBook = books.find((b) => b.id === selectedBookId) || null;
 
@@ -297,6 +350,22 @@ function AdminDashboard() {
     });
   }, []);
 
+  const loadMembershipRequests = useCallback((status) => {
+    const qs = status ? `?status=${status}` : "";
+    api.get(`/admin/membership-requests${qs}`).then((r) => {
+      setMembershipRequests(r.data);
+      setMembershipRequestsLoaded(true);
+    });
+  }, []);
+
+  const loadBookRequests = useCallback((status) => {
+    const qs = status ? `?status=${status}` : "";
+    api.get(`/admin/book-requests${qs}`).then((r) => {
+      setBookRequests(r.data);
+      setBookRequestsLoaded(true);
+    });
+  }, []);
+
   const handleTabChange = (t) => {
     setTab(t);
 
@@ -309,6 +378,9 @@ function AdminDashboard() {
     }
     if (t === "donations") loadDonations(donationStatusFilter);
     if (t === "communities") loadAdminCommunities(adminCommunitiesFilter);
+    if (t === "membership-requests")
+      loadMembershipRequests(membershipRequestStatusFilter);
+    if (t === "book-requests") loadBookRequests(bookRequestStatusFilter);
   };
 
   const submitApproveCommunity = async (e) => {
@@ -450,37 +522,82 @@ function AdminDashboard() {
   };
 
   // ── AI field generation ───────────────────────────────────────
-  const openAiGen = async (bookId, field) => {
-    const book = books.find((b) => b.id === bookId);
-    setAiGenModal({ bookId, field, bookTitle: book?.title || "" });
+  const AI_GEN_SLOW_MS = 5000;
+
+  const clearAiGenSlowTimer = () => {
+    clearTimeout(aiGenSlowTimerRef.current);
+    aiGenSlowTimerRef.current = null;
+  };
+
+  const runAiGenerate = async (bookId, field) => {
+    const reqId = ++aiGenRequestIdRef.current;
     setAiGenContent("");
     setAiGenError("");
+    setAiGenSlow(false);
     setAiGenLoading(true);
+    clearAiGenSlowTimer();
+    aiGenSlowTimerRef.current = setTimeout(() => {
+      if (aiGenRequestIdRef.current === reqId) setAiGenSlow(true);
+    }, AI_GEN_SLOW_MS);
+
     try {
       const res = await api.post(`/books/${bookId}/generate-field`, { field });
+      if (aiGenRequestIdRef.current !== reqId) return; // superseded — ignore stale response
       setAiGenContent(res.data.content);
     } catch (err) {
+      if (aiGenRequestIdRef.current !== reqId) return;
       setAiGenError(err.response?.data?.error || "Generation failed");
     } finally {
-      setAiGenLoading(false);
+      if (aiGenRequestIdRef.current === reqId) {
+        setAiGenLoading(false);
+        setAiGenSlow(false);
+        clearAiGenSlowTimer();
+      }
     }
   };
 
-  const regenerateAiField = async () => {
-    if (!aiGenModal) return;
-    setAiGenContent("");
+  const openAiGen = (bookId, field) => {
+    const book = books.find((b) => b.id === bookId);
+    const existing = book?.[field] || "";
+    setAiGenModal({
+      bookId,
+      field,
+      bookTitle: book?.title || "",
+      mode: existing ? "edit" : "generate",
+    });
     setAiGenError("");
-    setAiGenLoading(true);
-    try {
-      const res = await api.post(`/books/${aiGenModal.bookId}/generate-field`, {
-        field: aiGenModal.field,
-      });
-      setAiGenContent(res.data.content);
-    } catch (err) {
-      setAiGenError(err.response?.data?.error || "Generation failed");
-    } finally {
+    setAiGenSlow(false);
+    if (existing) {
+      // Editing existing metadata — pre-fill with the current value; no AI call needed.
+      aiGenRequestIdRef.current++; // invalidate any stray in-flight request
+      clearAiGenSlowTimer();
+      setAiGenContent(existing);
       setAiGenLoading(false);
+      return;
     }
+    runAiGenerate(bookId, field);
+  };
+
+  const regenerateAiField = () => {
+    if (!aiGenModal) return;
+    runAiGenerate(aiGenModal.bookId, aiGenModal.field);
+  };
+
+  // Bail out of waiting on Groq and let the admin type the field by hand instead.
+  const writeAiGenManually = () => {
+    aiGenRequestIdRef.current++; // invalidate the in-flight request so its response is ignored
+    clearAiGenSlowTimer();
+    setAiGenLoading(false);
+    setAiGenSlow(false);
+    setAiGenError("");
+    setAiGenContent("");
+  };
+
+  const closeAiGenModal = () => {
+    if (aiGenSaving) return;
+    aiGenRequestIdRef.current++; // invalidate any in-flight request
+    clearAiGenSlowTimer();
+    setAiGenModal(null);
   };
 
   const saveAiGenContent = async () => {
@@ -776,6 +893,110 @@ function AdminDashboard() {
     }
   };
 
+  const openApproveMembershipRequest = (req) => {
+    setApprovingMembershipRequest(req);
+    setApproveMembershipNotes("");
+    setApproveMembershipError("");
+  };
+
+  const submitApproveMembershipRequest = async (e) => {
+    e.preventDefault();
+    setApproveMembershipError("");
+    try {
+      await api.put(
+        `/admin/membership-requests/${approvingMembershipRequest.id}/approve`,
+        { admin_notes: approveMembershipNotes }
+      );
+      setApprovingMembershipRequest(null);
+      loadMembershipRequests(membershipRequestStatusFilter);
+      toast("Membership request approved");
+    } catch (err) {
+      setApproveMembershipError(
+        err.response?.data?.error || "Failed to approve request"
+      );
+    }
+  };
+
+  const openRejectMembershipRequest = (req) => {
+    setRejectingMembershipRequest(req);
+    setRejectMembershipNotes("");
+    setRejectMembershipError("");
+  };
+
+  const submitRejectMembershipRequest = async (e) => {
+    e.preventDefault();
+    setRejectMembershipError("");
+    try {
+      await api.put(
+        `/admin/membership-requests/${rejectingMembershipRequest.id}/reject`,
+        { admin_notes: rejectMembershipNotes }
+      );
+      setRejectingMembershipRequest(null);
+      loadMembershipRequests(membershipRequestStatusFilter);
+      toast("Membership request rejected");
+    } catch (err) {
+      setRejectMembershipError(
+        err.response?.data?.error || "Failed to reject request"
+      );
+    }
+  };
+
+  const openApproveBookRequest = (req) => {
+    setApprovingBookRequest(req);
+    setApproveBookTitle(req.title);
+    setApproveBookAuthor(req.author || "");
+    setApproveBookIsbn(req.isbn || "");
+    setApproveBookGenre(req.genre || "");
+    setApproveBookCopies(1);
+    setApproveBookNotes("");
+    setApproveBookError("");
+  };
+
+  const submitApproveBookRequest = async (e) => {
+    e.preventDefault();
+    setApproveBookError("");
+    try {
+      await api.put(`/admin/book-requests/${approvingBookRequest.id}/approve`, {
+        title: approveBookTitle,
+        author: approveBookAuthor,
+        isbn: approveBookIsbn,
+        genre: approveBookGenre,
+        total_copies: Number(approveBookCopies),
+        admin_notes: approveBookNotes,
+      });
+      setApprovingBookRequest(null);
+      loadBookRequests(bookRequestStatusFilter);
+      toast("Book request approved");
+    } catch (err) {
+      setApproveBookError(
+        err.response?.data?.error || "Failed to approve request"
+      );
+    }
+  };
+
+  const openRejectBookRequest = (req) => {
+    setRejectingBookRequest(req);
+    setRejectBookNotes("");
+    setRejectBookError("");
+  };
+
+  const submitRejectBookRequest = async (e) => {
+    e.preventDefault();
+    setRejectBookError("");
+    try {
+      await api.put(`/admin/book-requests/${rejectingBookRequest.id}/reject`, {
+        admin_notes: rejectBookNotes,
+      });
+      setRejectingBookRequest(null);
+      loadBookRequests(bookRequestStatusFilter);
+      toast("Book request rejected");
+    } catch (err) {
+      setRejectBookError(
+        err.response?.data?.error || "Failed to reject request"
+      );
+    }
+  };
+
   // ── Helpers ───────────────────────────────────────────────────
   const genreCounts = useMemo(() => {
     const counts = {};
@@ -867,20 +1088,37 @@ function AdminDashboard() {
   });
 
   return (
-    <div className="layout">
-      <TopBar
-        title="Library Admin"
-        username={user.username}
-        onLogout={logout}
-      />
-      <NavTabs tabs={TABS} active={tab} onChange={handleTabChange} />
+    <>
+      {showOnboarding && (
+        <Onboarding
+          role="admin"
+          username={user.username}
+          onClose={closeOnboarding}
+          onNavigate={handleTabChange}
+        />
+      )}
+      <div className={`layout${navStyle === "dock" ? " layout-nav-dock" : ""}`}>
+      <div className="dashboard-header">
+        <TopBar
+          title="Library Admin"
+          username={user.username}
+          onLogout={logout}
+          onReplayTour={() => setShowOnboarding(true)}
+        />
+        {navStyle !== "dock" && (
+          <NavTabs tabs={TABS} active={tab} onChange={handleTabChange} />
+        )}
+      </div>
+      {navStyle === "dock" && (
+        <Dock tabs={TABS} active={tab} onChange={handleTabChange} />
+      )}
       <div className="content">
         {loadError && <div className="error">{loadError}</div>}
 
         {/* ── Books ── */}
         {tab === "books" && (
           <>
-            <div className="section-header">
+            <div className="section-header" data-tour="admin-books">
               <h3>All Books</h3>
               <div className="btn-row">
                 <button
@@ -1107,7 +1345,7 @@ function AdminDashboard() {
         {/* ── Borrowed Books ── */}
         {tab === "borrows" && (
           <>
-            <div className="section-header">
+            <div className="section-header" data-tour="admin-borrows">
               <h3>Currently Borrowed</h3>
             </div>
             {borrows.length === 0 ? (
@@ -1146,7 +1384,7 @@ function AdminDashboard() {
         {/* ── Fines ── */}
         {tab === "fines" && (
           <>
-            <div className="section-header">
+            <div className="section-header" data-tour="admin-fines">
               <h3>Pending Fines</h3>
               {fines.length > 0 && (
                 <span
@@ -1290,7 +1528,7 @@ function AdminDashboard() {
                   <div className="tier-pricing-card tier-pricing-card-gold">
                     <div className="tier-pricing-name">Gold</div>
                     <div className="tier-pricing-desc">
-                      3 books at a time · Community access
+                      3 books at a time · Community & Games access
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label>Monthly Rate ($)</label>
@@ -1342,7 +1580,7 @@ function AdminDashboard() {
               </form>
             )}
 
-            <div className="section-header" style={{ marginTop: 40 }}>
+            <div className="section-header" style={{ marginTop: 40 }} data-tour="admin-members">
               <h3>Member Records</h3>
             </div>
             {!membersLoaded ? (
@@ -1436,7 +1674,7 @@ function AdminDashboard() {
         {/* ── Communities ── */}
         {tab === "communities" && (
           <>
-            <div className="section-header">
+            <div className="section-header" data-tour="admin-communities">
               <h3>Community Requests</h3>
               <div className="btn-row">
                 {["pending", "approved", "rejected", ""].map((s) => (
@@ -1560,7 +1798,7 @@ function AdminDashboard() {
         {/* ── Donations ── */}
         {tab === "donations" && (
           <>
-            <div className="section-header">
+            <div className="section-header" data-tour="admin-donations">
               <h3>Book Donations</h3>
               <div className="btn-row">
                 {["pending", "approved", "rejected", ""].map((s) => (
@@ -1689,6 +1927,229 @@ function AdminDashboard() {
             )}
           </>
         )}
+
+        {/* ── Membership Requests ── */}
+        {tab === "membership-requests" && (
+          <>
+            <div className="section-header">
+              <h3>Membership Requests</h3>
+              <div className="btn-row">
+                {["pending", "approved", "rejected", ""].map((s) => (
+                  <button
+                    key={s || "all"}
+                    className={`btn btn-sm${
+                      membershipRequestStatusFilter === s ? "" : " btn-outline"
+                    }`}
+                    onClick={() => {
+                      setMembershipRequestStatusFilter(s);
+                      loadMembershipRequests(s);
+                    }}
+                  >
+                    {s ? s.charAt(0).toUpperCase() + s.slice(1) : "All"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {!membershipRequestsLoaded ? (
+              <div className="empty">Loading…</div>
+            ) : membershipRequests.length === 0 ? (
+              <div className="empty">
+                No membership requests
+                {membershipRequestStatusFilter
+                  ? ` with status "${membershipRequestStatusFilter}"`
+                  : ""}
+              </div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Member</th>
+                    <th>Requested Tier</th>
+                    <th>Notes</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {membershipRequests.map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.username}</td>
+                      <td>
+                        <span
+                          className={`membership-badge membership-badge-${r.requested_tier}`}
+                        >
+                          {r.requested_tier.charAt(0).toUpperCase() +
+                            r.requested_tier.slice(1)}
+                        </span>
+                      </td>
+                      <td>{r.notes || <span className="muted">—</span>}</td>
+                      <td>
+                        <Badge
+                          variant={
+                            r.status === "approved"
+                              ? "active"
+                              : r.status === "rejected"
+                              ? "overdue"
+                              : "returned"
+                          }
+                        >
+                          {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                        </Badge>
+                      </td>
+                      <td>{new Date(r.submitted_at).toLocaleDateString()}</td>
+                      <td>
+                        {r.status === "pending" && (
+                          <div className="btn-row">
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => openApproveMembershipRequest(r)}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline"
+                              onClick={() => openRejectMembershipRequest(r)}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                        {r.admin_notes && (
+                          <div
+                            style={{
+                              fontSize: "0.75rem",
+                              color: "#666",
+                              marginTop: 4,
+                            }}
+                            title={r.admin_notes}
+                          >
+                            Note:{" "}
+                            {r.admin_notes.length > 40
+                              ? r.admin_notes.slice(0, 40) + "…"
+                              : r.admin_notes}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+
+        {/* ── Book Requests ── */}
+        {tab === "book-requests" && (
+          <>
+            <div className="section-header">
+              <h3>Book Requests</h3>
+              <div className="btn-row">
+                {["pending", "approved", "rejected", ""].map((s) => (
+                  <button
+                    key={s || "all"}
+                    className={`btn btn-sm${
+                      bookRequestStatusFilter === s ? "" : " btn-outline"
+                    }`}
+                    onClick={() => {
+                      setBookRequestStatusFilter(s);
+                      loadBookRequests(s);
+                    }}
+                  >
+                    {s ? s.charAt(0).toUpperCase() + s.slice(1) : "All"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {!bookRequestsLoaded ? (
+              <div className="empty">Loading…</div>
+            ) : bookRequests.length === 0 ? (
+              <div className="empty">
+                No book requests
+                {bookRequestStatusFilter
+                  ? ` with status "${bookRequestStatusFilter}"`
+                  : ""}
+              </div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Member</th>
+                    <th>Book</th>
+                    <th>Notes</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bookRequests.map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.username}</td>
+                      <td>
+                        {r.title}
+                        <div style={{ fontSize: "0.75rem", color: "#666" }}>
+                          {[r.author, r.genre].filter(Boolean).join(" · ") ||
+                            <span className="muted">—</span>}
+                        </div>
+                      </td>
+                      <td>{r.notes || <span className="muted">—</span>}</td>
+                      <td>
+                        <Badge
+                          variant={
+                            r.status === "approved"
+                              ? "active"
+                              : r.status === "rejected"
+                              ? "overdue"
+                              : "returned"
+                          }
+                        >
+                          {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                        </Badge>
+                      </td>
+                      <td>{new Date(r.submitted_at).toLocaleDateString()}</td>
+                      <td>
+                        {r.status === "pending" && (
+                          <div className="btn-row">
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => openApproveBookRequest(r)}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline"
+                              onClick={() => openRejectBookRequest(r)}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                        {r.admin_notes && (
+                          <div
+                            style={{
+                              fontSize: "0.75rem",
+                              color: "#666",
+                              marginTop: 4,
+                            }}
+                            title={r.admin_notes}
+                          >
+                            Note:{" "}
+                            {r.admin_notes.length > 40
+                              ? r.admin_notes.slice(0, 40) + "…"
+                              : r.admin_notes}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
       </div>
 
       {/* ── Refresh Log Panel ── */}
@@ -1771,7 +2232,7 @@ function AdminDashboard() {
                             openAiGen(refreshBookId, "description")
                           }
                         >
-                          ✨ Description
+                          Description
                         </button>
                       )}
                       {missingBio && (
@@ -1781,7 +2242,7 @@ function AdminDashboard() {
                             openAiGen(refreshBookId, "author_bio")
                           }
                         >
-                          ✨ Author bio
+                          Author bio
                         </button>
                       )}
                       {missingCover && (
@@ -2045,6 +2506,260 @@ function AdminDashboard() {
         </Modal>
       )}
 
+      {/* ── Approve Membership Request Modal ── */}
+      {approvingMembershipRequest && (
+        <Modal
+          title="Approve Membership Request"
+          onClose={() => setApprovingMembershipRequest(null)}
+        >
+          <p style={{ marginBottom: 16, fontSize: "0.9rem", color: "#555" }}>
+            Approving{" "}
+            <strong>
+              {approvingMembershipRequest.requested_tier
+                .charAt(0)
+                .toUpperCase() +
+                approvingMembershipRequest.requested_tier.slice(1)}
+            </strong>{" "}
+            membership for{" "}
+            <strong>{approvingMembershipRequest.username}</strong>. Their tier
+            will activate immediately.
+          </p>
+          <form onSubmit={submitApproveMembershipRequest}>
+            {approveMembershipError && (
+              <div className="error">{approveMembershipError}</div>
+            )}
+            <div className="form-group">
+              <label>
+                Admin notes{" "}
+                <span
+                  className="muted"
+                  style={{ textTransform: "none", fontSize: "0.75rem" }}
+                >
+                  (optional)
+                </span>
+              </label>
+              <input
+                value={approveMembershipNotes}
+                onChange={(e) => setApproveMembershipNotes(e.target.value)}
+                placeholder="Any notes for the member…"
+              />
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                onClick={() => setApprovingMembershipRequest(null)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-sm">
+                Confirm Approval
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ── Reject Membership Request Modal ── */}
+      {rejectingMembershipRequest && (
+        <Modal
+          title="Reject Membership Request"
+          onClose={() => setRejectingMembershipRequest(null)}
+        >
+          <p style={{ marginBottom: 16, fontSize: "0.9rem", color: "#555" }}>
+            Rejecting the membership request from{" "}
+            <strong>{rejectingMembershipRequest.username}</strong>.
+          </p>
+          <form onSubmit={submitRejectMembershipRequest}>
+            {rejectMembershipError && (
+              <div className="error">{rejectMembershipError}</div>
+            )}
+            <div className="form-group">
+              <label>
+                Reason{" "}
+                <span
+                  className="muted"
+                  style={{ textTransform: "none", fontSize: "0.75rem" }}
+                >
+                  (optional — shown to member)
+                </span>
+              </label>
+              <input
+                value={rejectMembershipNotes}
+                onChange={(e) => setRejectMembershipNotes(e.target.value)}
+                placeholder="e.g. Payment not received yet…"
+              />
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                onClick={() => setRejectingMembershipRequest(null)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-sm btn-outline">
+                Confirm Rejection
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ── Approve Book Request Modal ── */}
+      {approvingBookRequest && (
+        <Modal
+          title="Approve Book Request"
+          onClose={() => setApprovingBookRequest(null)}
+        >
+          <p style={{ marginBottom: 16, fontSize: "0.9rem", color: "#555" }}>
+            Approving <strong>{approvingBookRequest.username}</strong>'s
+            request. Review the details below, then add it to the catalogue.
+          </p>
+          <form onSubmit={submitApproveBookRequest}>
+            {approveBookError && (
+              <div className="error">{approveBookError}</div>
+            )}
+            <div className="form-group">
+              <label>Title *</label>
+              <input
+                value={approveBookTitle}
+                onChange={(e) => setApproveBookTitle(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Author *</label>
+              <input
+                value={approveBookAuthor}
+                onChange={(e) => setApproveBookAuthor(e.target.value)}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>
+                ISBN{" "}
+                <span
+                  className="muted"
+                  style={{ textTransform: "none", fontSize: "0.75rem" }}
+                >
+                  (optional)
+                </span>
+              </label>
+              <input
+                value={approveBookIsbn}
+                onChange={(e) => setApproveBookIsbn(e.target.value)}
+                placeholder="e.g. 978-0747532743"
+              />
+            </div>
+            <div className="form-group">
+              <label>
+                Genre{" "}
+                <span
+                  className="muted"
+                  style={{ textTransform: "none", fontSize: "0.75rem" }}
+                >
+                  (optional)
+                </span>
+              </label>
+              <Select
+                value={approveBookGenre}
+                onChange={(e) => setApproveBookGenre(e.target.value)}
+              >
+                <option value="">— Select genre —</option>
+                {genres.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="form-group">
+              <label>Copies to add</label>
+              <input
+                type="number"
+                min="1"
+                value={approveBookCopies}
+                onChange={(e) => setApproveBookCopies(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label>
+                Admin notes{" "}
+                <span
+                  className="muted"
+                  style={{ textTransform: "none", fontSize: "0.75rem" }}
+                >
+                  (optional)
+                </span>
+              </label>
+              <input
+                value={approveBookNotes}
+                onChange={(e) => setApproveBookNotes(e.target.value)}
+                placeholder="Any notes for the member…"
+              />
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                onClick={() => setApprovingBookRequest(null)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-sm">
+                Confirm Approval
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ── Reject Book Request Modal ── */}
+      {rejectingBookRequest && (
+        <Modal
+          title="Reject Book Request"
+          onClose={() => setRejectingBookRequest(null)}
+        >
+          <p style={{ marginBottom: 16, fontSize: "0.9rem", color: "#555" }}>
+            Rejecting the request for{" "}
+            <strong>"{rejectingBookRequest.title}"</strong> from{" "}
+            <strong>{rejectingBookRequest.username}</strong>.
+          </p>
+          <form onSubmit={submitRejectBookRequest}>
+            {rejectBookError && <div className="error">{rejectBookError}</div>}
+            <div className="form-group">
+              <label>
+                Reason{" "}
+                <span
+                  className="muted"
+                  style={{ textTransform: "none", fontSize: "0.75rem" }}
+                >
+                  (optional — shown to member)
+                </span>
+              </label>
+              <input
+                value={rejectBookNotes}
+                onChange={(e) => setRejectBookNotes(e.target.value)}
+                placeholder="e.g. Couldn't source this title…"
+              />
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                onClick={() => setRejectingBookRequest(null)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-sm btn-outline">
+                Confirm Rejection
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
       {/* ── Add Book Modal ── */}
       {showAddGenre && (
         <Modal
@@ -2158,11 +2873,19 @@ function AdminDashboard() {
           heroContent={
             <div className="book-detail-header">
               {selectedBook.cover_url ? (
-                <img
-                  src={selectedBook.cover_url}
-                  alt={`Cover of ${selectedBook.title}`}
-                  className="book-cover-img"
-                />
+                <div className="admin-cover-slot">
+                  <img
+                    src={selectedBook.cover_url}
+                    alt={`Cover of ${selectedBook.title}`}
+                    className="book-cover-img"
+                  />
+                  <button
+                    className="btn btn-sm btn-outline"
+                    onClick={() => openCoverUpload(selectedBook.id)}
+                  >
+                    Change cover
+                  </button>
+                </div>
               ) : (
                 <div className="admin-cover-slot">
                   <div className="book-cover-placeholder">
@@ -2299,7 +3022,15 @@ function AdminDashboard() {
         >
           {selectedBook.description ? (
             <div className="enrichment-section">
-              <div className="enrichment-label">About this book</div>
+              <div className="enrichment-label-row">
+                <span className="enrichment-label">About this book</span>
+                <button
+                  className="btn-link"
+                  onClick={() => openAiGen(selectedBook.id, "description")}
+                >
+                  Edit
+                </button>
+              </div>
               <p className="enrichment-text">{selectedBook.description}</p>
             </div>
           ) : (
@@ -2310,13 +3041,21 @@ function AdminDashboard() {
                 className="btn btn-sm btn-outline"
                 onClick={() => openAiGen(selectedBook.id, "description")}
               >
-                ✨ Generate description
+                Generate description
               </button>
             </div>
           )}
           {selectedBook.author_bio ? (
             <div className="enrichment-section">
-              <div className="enrichment-label">About the author</div>
+              <div className="enrichment-label-row">
+                <span className="enrichment-label">About the author</span>
+                <button
+                  className="btn-link"
+                  onClick={() => openAiGen(selectedBook.id, "author_bio")}
+                >
+                  Edit
+                </button>
+              </div>
               <p className="enrichment-text">{selectedBook.author_bio}</p>
             </div>
           ) : (
@@ -2327,7 +3066,7 @@ function AdminDashboard() {
                 className="btn btn-sm btn-outline"
                 onClick={() => openAiGen(selectedBook.id, "author_bio")}
               >
-                ✨ Generate author bio
+                Generate author bio
               </button>
             </div>
           )}
@@ -2548,8 +3287,10 @@ function AdminDashboard() {
       {/* ── AI Generate Field Modal ── */}
       {aiGenModal && (
         <Modal
-          title={`Generate ${aiGenModal.field === "author_bio" ? "Author Bio" : "Description"} — ${aiGenModal.bookTitle}`}
-          onClose={() => !aiGenSaving && setAiGenModal(null)}
+          title={`${
+            aiGenModal.mode === "edit" ? "Edit" : "Generate"
+          } ${aiGenModal.field === "author_bio" ? "Author Bio" : "Description"} — ${aiGenModal.bookTitle}`}
+          onClose={closeAiGenModal}
           wide
         >
           {aiGenError && (
@@ -2558,13 +3299,36 @@ function AdminDashboard() {
             </div>
           )}
           {aiGenLoading ? (
-            <div className="empty" style={{ padding: "24px 0" }}>
-              ✨ Generating…
+            <div
+              className="empty"
+              style={{
+                padding: "24px 0",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <span>Generating…</span>
+              {aiGenSlow && (
+                <>
+                  <span style={{ fontSize: "0.8rem" }}>
+                    This is taking longer than expected.
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline"
+                    onClick={writeAiGenManually}
+                  >
+                    Write it yourself instead
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <div className="form-group">
               <label>
-                Generated content{" "}
+                {aiGenModal.mode === "edit" ? "Content" : "Generated content"}{" "}
                 <span
                   className="muted"
                   style={{ textTransform: "none", fontSize: "0.75rem" }}
@@ -2584,7 +3348,7 @@ function AdminDashboard() {
           <div className="modal-actions">
             <button
               className="btn btn-sm btn-outline"
-              onClick={() => setAiGenModal(null)}
+              onClick={closeAiGenModal}
               disabled={aiGenSaving}
             >
               Cancel
@@ -2594,14 +3358,18 @@ function AdminDashboard() {
               onClick={regenerateAiField}
               disabled={aiGenLoading || aiGenSaving}
             >
-              ↺ Regenerate
+              {aiGenModal.mode === "edit" ? "Generate with AI" : "Regenerate"}
             </button>
             <button
               className="btn btn-sm"
               onClick={saveAiGenContent}
               disabled={aiGenLoading || aiGenSaving || !aiGenContent.trim()}
             >
-              {aiGenSaving ? "Saving…" : "Approve & Save"}
+              {aiGenSaving
+                ? "Saving…"
+                : aiGenModal.mode === "edit"
+                ? "Save"
+                : "Approve & Save"}
             </button>
           </div>
         </Modal>
@@ -2750,7 +3518,8 @@ function AdminDashboard() {
           )}
         </Modal>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 

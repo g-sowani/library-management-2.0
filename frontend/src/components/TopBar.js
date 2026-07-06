@@ -33,6 +33,15 @@ function MonitorIcon() {
   );
 }
 
+function CompassIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+    </svg>
+  );
+}
+
 function SignOutIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -114,7 +123,7 @@ function TierBadge({ tier }) {
 
 // ── TopBar ────────────────────────────────────────────────────────────────────
 
-function TopBar({ title, username, avatar, tier, onLogout }) {
+function TopBar({ title, username, avatar, tier, xp, onLogout, onReplayTour }) {
   const { appearance, setAppearance, readerTheme, setReaderTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -150,6 +159,7 @@ function TopBar({ title, username, avatar, tier, onLogout }) {
               <div className="pd-header-info">
                 <div className="pd-username">{username}</div>
                 {tier && <TierBadge tier={tier} />}
+                {tier === 'gold' && <div className="pd-xp">{xp || 0} XP</div>}
               </div>
             </div>
 
@@ -188,6 +198,19 @@ function TopBar({ title, username, avatar, tier, onLogout }) {
                 </button>
               ))}
             </div>
+
+            {onReplayTour && (
+              <>
+                <div className="pd-divider" />
+                <button
+                  className="pd-item"
+                  onClick={() => { setOpen(false); onReplayTour(); }}
+                >
+                  <span className="pd-item-icon"><CompassIcon /></span>
+                  <span className="pd-item-label">Replay Tour</span>
+                </button>
+              </>
+            )}
 
             <div className="pd-divider" />
 

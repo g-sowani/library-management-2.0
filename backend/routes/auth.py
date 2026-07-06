@@ -1,7 +1,10 @@
+from datetime import datetime
+
 from flask import Blueprint, request, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from extensions import db
 from models import User
+from models.membership_request import MembershipRequest
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
@@ -11,12 +14,24 @@ def register():
     data = request.json
     if User.query.filter_by(username=data['username']).first():
         return jsonify({'error': 'Username already exists'}), 400
+    role = data.get('role', 'member')
     user = User(
         username=data['username'],
         password_hash=generate_password_hash(data['password']),
-        role=data.get('role', 'member'),
+        role=role,
     )
     db.session.add(user)
+    db.session.flush()  # assign user.id before referencing it below
+
+    requested_tier = data.get('requested_tier')
+    if role == 'member' and requested_tier in ('silver', 'gold', 'family'):
+        db.session.add(MembershipRequest(
+            user_id=user.id,
+            requested_tier=requested_tier,
+            status='pending',
+            submitted_at=datetime.utcnow(),
+        ))
+
     db.session.commit()
     session['user_id'] = user.id
     return jsonify(user.to_dict()), 201

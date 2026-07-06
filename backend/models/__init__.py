@@ -6,7 +6,9 @@ from models.book_log import BookLog
 from models.reservation import Reservation
 from models.review import Review
 from models.membership import Membership
+from models.membership_request import MembershipRequest
 from models.donation import Donation
+from models.book_request import BookRequest
 from models.community import (Community, CommunityMembership, CommunityPost,
                                CommunityComment, PostReaction, CommentReaction)
 from models.wishlist import Wishlist
@@ -19,7 +21,6 @@ def seed_data():
 
     if User.query.first():
         _seed_settings(db)
-        _seed_memberships(db)
         return
 
     admin = User(username='admin', password_hash=generate_password_hash('admin123'), role='admin')
@@ -37,7 +38,8 @@ def seed_data():
     _seed_settings(db)
     _seed_genres(db)
     db.session.commit()
-    _seed_memberships(db)
+    # Real accounts pick a tier themselves via the membership-request flow —
+    # random auto-assignment is only used explicitly by seed_extra.py for demo data.
 
 
 def _seed_settings(db):

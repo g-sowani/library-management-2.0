@@ -115,19 +115,12 @@ def update_membership_pricing():
     })
 
 
-@admin_bp.route('/members/<int:user_id>/membership', methods=['PUT'])
-@admin_required
-def update_member_tier(user_id):
+def apply_tier(user_id, tier, family_group_id=None):
+    """Set (or clear, if tier is None) a user's membership tier, auto-assigning
+    a family group with room when tier == 'family' and no group id is given.
+    Shared by the direct admin tier-change endpoint and membership-request approval.
+    """
     from sqlalchemy import func
-
-    m = db.session.get(User, user_id)
-    if not m or m.role != 'member':
-        return jsonify({'error': 'Member not found'}), 404
-
-    data = request.json
-    tier = data.get('tier')
-    if tier not in ('silver', 'gold', 'family', None):
-        return jsonify({'error': 'Invalid tier'}), 400
 
     membership = Membership.query.filter_by(user_id=user_id).first()
 
@@ -135,7 +128,7 @@ def update_member_tier(user_id):
         if membership:
             db.session.delete(membership)
         db.session.commit()
-        return jsonify({'membership': None})
+        return None
 
     if not membership:
         membership = Membership(user_id=user_id)
@@ -144,14 +137,12 @@ def update_member_tier(user_id):
     membership.tier = tier
     if tier == 'family':
         # Use provided group id or auto-assign to an existing group with room
-        fgid = data.get('family_group_id')
-        if fgid:
-            membership.family_group_id = int(fgid)
+        if family_group_id:
+            membership.family_group_id = int(family_group_id)
         else:
             # Find a family group with fewer than 4 members
-            from sqlalchemy import func as sqlfunc
             groups = (db.session.query(Membership.family_group_id,
-                                       sqlfunc.count(Membership.id).label('cnt'))
+                                       func.count(Membership.id).label('cnt'))
                       .filter(Membership.tier == 'family',
                               Membership.family_group_id.isnot(None),
                               Membership.user_id != user_id)
@@ -167,7 +158,23 @@ def update_member_tier(user_id):
         membership.family_group_id = None
 
     db.session.commit()
-    return jsonify({'membership': membership.to_dict()})
+    return membership
+
+
+@admin_bp.route('/members/<int:user_id>/membership', methods=['PUT'])
+@admin_required
+def update_member_tier(user_id):
+    m = db.session.get(User, user_id)
+    if not m or m.role != 'member':
+        return jsonify({'error': 'Member not found'}), 404
+
+    data = request.json
+    tier = data.get('tier')
+    if tier not in ('silver', 'gold', 'family', None):
+        return jsonify({'error': 'Invalid tier'}), 400
+
+    membership = apply_tier(user_id, tier, data.get('family_group_id'))
+    return jsonify({'membership': membership.to_dict() if membership else None})
 
 
 @admin_bp.route('/members/<int:user_id>/borrows')

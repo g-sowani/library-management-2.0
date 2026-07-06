@@ -9,6 +9,9 @@ export function ThemeProvider({ children }) {
   const [readerTheme, setReaderThemeState] = useState(
     () => localStorage.getItem('readerTheme') || ''
   );
+  const [navStyle, setNavStyleState] = useState(
+    () => localStorage.getItem('navStyle') || 'tabs'
+  );
 
   useEffect(() => {
     const html = document.documentElement;
@@ -43,8 +46,13 @@ export function ThemeProvider({ children }) {
     setReaderThemeState(t);
   };
 
+  const setNavStyle = (s) => {
+    localStorage.setItem('navStyle', s);
+    setNavStyleState(s);
+  };
+
   return (
-    <ThemeContext.Provider value={{ appearance, setAppearance, readerTheme, setReaderTheme }}>
+    <ThemeContext.Provider value={{ appearance, setAppearance, readerTheme, setReaderTheme, navStyle, setNavStyle }}>
       {children}
     </ThemeContext.Provider>
   );

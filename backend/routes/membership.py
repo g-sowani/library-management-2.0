@@ -8,6 +8,17 @@ from decorators import login_required
 membership_bp = Blueprint('membership', __name__, url_prefix='/api')
 
 
+@membership_bp.route('/membership/pricing')
+def get_public_pricing():
+    """Unauthenticated pricing read — lets the registration form show real
+    rates before an account (and session) exists."""
+    return jsonify({
+        'silver_rate': get_setting('membership_silver_rate', default=9.99, cast=float),
+        'gold_rate': get_setting('membership_gold_rate', default=19.99, cast=float),
+        'family_rate': get_setting('membership_family_rate', default=29.99, cast=float),
+    })
+
+
 @membership_bp.route('/membership')
 @login_required
 def get_membership():

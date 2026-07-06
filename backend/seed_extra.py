@@ -214,6 +214,12 @@ with app.app_context():
 
     db.session.commit()
 
+    # Give these demo accounts realistic membership tiers — real users pick their
+    # own tier via the membership-request flow, so this random assignment is only
+    # ever run explicitly here, not on every server startup.
+    from models import _seed_memberships
+    _seed_memberships(db)
+
     print(f"Added {len(added_books)} books, members: {added_members or 'already exist'}")
     print("Borrow history seeded.")
     print("\nMember summary:")

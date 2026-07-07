@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, session
+from flask import Blueprint, jsonify, session, g
 from sqlalchemy import update as sa_update
 from extensions import db
 from models import Book, Borrow
@@ -19,6 +19,9 @@ def reserve_book(book_id):
         if db.session.get(Book, book_id) is None:
             return jsonify({'error': 'Book not found'}), 404
         return jsonify({'error': 'Another transaction is in progress, please try again'}), 409
+
+    if book.library_id != g.library_id:
+        return jsonify({'error': 'Book not found'}), 404
 
     if book.available_copies > 0:
         return jsonify({'error': 'Book is available — borrow it directly'}), 400

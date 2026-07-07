@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request, session, g
 from datetime import datetime, timedelta
 from sqlalchemy import update as sa_update
 from extensions import db
@@ -25,6 +25,9 @@ def borrow_book(book_id):
         if db.session.get(Book, book_id) is None:
             return jsonify({'error': 'Book not found'}), 404
         return jsonify({'error': 'Another transaction is in progress, please try again'}), 409
+
+    if book.library_id != g.library_id:
+        return jsonify({'error': 'Book not found'}), 404
 
     if Borrow.query.filter_by(user_id=session['user_id'], book_id=book_id, return_date=None).first():
         return jsonify({'error': 'You already borrowed this book'}), 400
@@ -66,7 +69,7 @@ def borrow_book(book_id):
         if user_reservation:
             db.session.delete(user_reservation)
 
-    borrow_days = get_setting('borrow_days', default=14, cast=int)
+    borrow_days = get_setting('borrow_days', g.library_id, default=14, cast=int)
     borrow = Borrow(
         user_id=session['user_id'], book_id=book_id,
         due_date=datetime.utcnow() + timedelta(days=borrow_days),
@@ -79,7 +82,11 @@ def borrow_book(book_id):
 @borrows_bp.route('/return/<int:borrow_id>', methods=['POST'])
 @login_required
 def return_book(borrow_id):
-    from models.reservation import Reservation
+    """Members can't finalize a return themselves — this only files a return
+    request for an admin to approve (see admin.approve_return), which is when
+    the copy is actually released and the fine is locked in. Overdue borrows
+    with an unpaid fine can't even request a return until the fine is paid.
+    """
     from models.review import Review
 
     borrow = db.session.get(Borrow, borrow_id)
@@ -87,33 +94,16 @@ def return_book(borrow_id):
         return jsonify({'error': 'Borrow record not found'}), 404
     if borrow.return_date:
         return jsonify({'error': 'Already returned'}), 400
+    if borrow.return_requested_at:
+        return jsonify({'error': 'Return already requested, awaiting admin approval'}), 400
 
-    # Lock the book row so no concurrent borrow or return races with the
-    # available_copies increment / reservation promotion below.
-    book = lock_book(borrow.book_id)
-    if book is None:
-        return jsonify({'error': 'Another transaction is in progress, please try again'}), 409
-
-    borrow.return_date = datetime.utcnow()
     borrow.calculate_fine()
+    if borrow.fine > 0 and not borrow.fine_paid:
+        return jsonify({
+            'error': 'You have an unpaid fine on this book. Please settle it with the library before returning.'
+        }), 400
 
-    next_pending = (Reservation.query
-                    .filter_by(book_id=borrow.book_id, status='pending')
-                    .order_by(Reservation.created_at)
-                    .first())
-    if next_pending:
-        # Hold the returned copy for the next person in the queue.
-        next_pending.status = 'ready'
-    else:
-        # No queue — release the copy atomically.
-        db.session.execute(
-            sa_update(Book)
-            .where(Book.id == borrow.book_id)
-            .values(available_copies=Book.available_copies + 1)
-            .execution_options(synchronize_session=False)
-        )
-
-    # Optional review submitted at return time.
+    # Optional review submitted at return-request time.
     data = request.get_json(silent=True) or {}
     rating = data.get('rating')
     if rating is not None:
@@ -131,6 +121,7 @@ def return_book(borrow_id):
             )
             db.session.add(review)
 
+    borrow.return_requested_at = datetime.utcnow()
     db.session.commit()
     return jsonify(borrow.to_dict())
 

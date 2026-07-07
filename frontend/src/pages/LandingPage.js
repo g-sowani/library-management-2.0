@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../api';
 
 // ── Icons (feather-style, matches TopBar / Onboarding) ─────────────────────────
 
@@ -22,6 +23,54 @@ function SlidersIcon() {
     </svg>
   );
 }
+
+function CheckIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+const TIERS = [
+  {
+    id: 'silver',
+    name: 'Silver',
+    priceKey: 'silver_rate',
+    tagline: 'Standard access for everyday readers',
+    benefits: [
+      'Borrow 1 book at a time',
+      'Reserve, wishlist, and rate any title',
+      'AI search & personalized recommendations',
+      'Donate books to earn library credit',
+    ],
+  },
+  {
+    id: 'gold',
+    name: 'Gold',
+    priceKey: 'gold_rate',
+    tagline: 'For members who read (and talk about it) often',
+    featured: true,
+    benefits: [
+      'Borrow up to 3 books at once',
+      'Everything in Silver',
+      'Join Gold-only Reading Communities',
+      'Book-themed games that build a cumulative XP score',
+    ],
+  },
+  {
+    id: 'family',
+    name: 'Family',
+    priceKey: 'family_rate',
+    tagline: 'One plan for the whole household',
+    benefits: [
+      'Up to 4 members on one plan',
+      '1 book at a time per member',
+      'Everything in Silver, for every member',
+      'A single monthly bill',
+    ],
+  },
+];
 
 const FEATURES = [
   {
@@ -58,6 +107,11 @@ const FEATURES = [
 
 function LandingPage() {
   const navigate = useNavigate();
+  const [pricing, setPricing] = useState(null);
+
+  useEffect(() => {
+    api.get('/membership/pricing').then((r) => setPricing(r.data)).catch(() => {});
+  }, []);
 
   const goToLogin = () => navigate('/login');
   const goToRegister = () => navigate('/login', { state: { register: true } });
@@ -76,11 +130,11 @@ function LandingPage() {
         <div className="landing-hero-eyebrow">Library Management, Reimagined</div>
         <h1 className="landing-hero-title">Read more.<br />Manage less.</h1>
         <p className="landing-hero-sub">
-          One system for members to discover, borrow, and discuss books — and for
+          One system for members to discover, borrow, and discuss books and for
           admins to run the whole catalogue without the busywork.
         </p>
         <div className="landing-cta-row">
-          <button className="btn" onClick={goToRegister}>Get Started — it's free</button>
+          <button className="btn" onClick={goToRegister}>Get Started, it's free!</button>
           <button className="btn btn-outline" onClick={goToLogin}>Sign In</button>
         </div>
       </div>
@@ -98,6 +152,37 @@ function LandingPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="landing-tiers-section">
+        <div className="landing-tiers-heading">
+          <h2>Membership Tiers</h2>
+          <p>Pick the plan that fits how you read. Upgrade or downgrade anytime.</p>
+        </div>
+        <div className="landing-tiers">
+          {TIERS.map((t) => (
+            <div
+              key={t.id}
+              className={`landing-tier-card${t.featured ? ' landing-tier-featured' : ''}`}
+            >
+              {t.featured && <div className="landing-tier-tag">Most Popular</div>}
+              <h3>{t.name}</h3>
+              <div className="landing-tier-price">
+                {pricing ? `$${pricing[t.priceKey].toFixed(2)}` : '—'}
+                <span className="landing-tier-price-period">/mo</span>
+              </div>
+              <p className="landing-tier-tagline">{t.tagline}</p>
+              <ul className="landing-tier-benefits">
+                {t.benefits.map((b) => (
+                  <li key={b}>
+                    <span className="landing-tier-check"><CheckIcon /></span>
+                    {b}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="landing-audience">

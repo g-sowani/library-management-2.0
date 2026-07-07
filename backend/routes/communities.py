@@ -1,5 +1,5 @@
 from datetime import datetime
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, g
 from extensions import db
 from models import User
 from models.membership import Membership
@@ -25,7 +25,7 @@ def _gold_user():
 
 def _community_for_member(cid, user):
     community = db.session.get(Community, cid)
-    if not community or community.status != 'approved':
+    if not community or community.status != 'approved' or community.library_id != user.library_id:
         return None, (jsonify({'error': 'Community not found'}), 404)
     membership = CommunityMembership.query.filter_by(
         community_id=cid, user_id=user.id
@@ -43,7 +43,7 @@ def list_communities():
     if err:
         return err
     communities = (Community.query
-                   .filter_by(status='approved')
+                   .filter_by(status='approved', library_id=user.library_id)
                    .order_by(Community.created_at.desc())
                    .all())
     return jsonify([c.to_dict(user.id) for c in communities])
@@ -59,9 +59,11 @@ def create_community():
     description = (data.get('description') or '').strip() or None
     if not name:
         return jsonify({'error': 'Name is required'}), 400
-    if Community.query.filter(db.func.lower(Community.name) == name.lower()).first():
+    if Community.query.filter(
+        Community.library_id == user.library_id, db.func.lower(Community.name) == name.lower()
+    ).first():
         return jsonify({'error': 'A community with this name already exists'}), 400
-    community = Community(name=name, description=description, creator_id=user.id)
+    community = Community(name=name, description=description, creator_id=user.id, library_id=user.library_id)
     db.session.add(community)
     db.session.commit()
     return jsonify(community.to_dict(user.id)), 201
@@ -93,7 +95,7 @@ def join_community(cid):
     if err:
         return err
     community = db.session.get(Community, cid)
-    if not community or community.status != 'approved':
+    if not community or community.status != 'approved' or community.library_id != user.library_id:
         return jsonify({'error': 'Community not found'}), 404
     if CommunityMembership.query.filter_by(community_id=cid, user_id=user.id).first():
         return jsonify({'error': 'Already a member'}), 400
@@ -334,7 +336,7 @@ def activity_count():
 @admin_required
 def admin_list_communities():
     status_filter = request.args.get('status')
-    q = Community.query
+    q = Community.query.filter_by(library_id=g.library_id)
     if status_filter:
         q = q.filter_by(status=status_filter)
     communities = q.order_by(Community.created_at.desc()).all()
@@ -345,7 +347,7 @@ def admin_list_communities():
 @admin_required
 def admin_approve(cid):
     community = db.session.get(Community, cid)
-    if not community:
+    if not community or community.library_id != g.library_id:
         return jsonify({'error': 'Community not found'}), 404
     if community.status == 'approved':
         return jsonify({'error': 'Already approved'}), 400
@@ -368,7 +370,7 @@ def admin_approve(cid):
 @admin_required
 def admin_reject(cid):
     community = db.session.get(Community, cid)
-    if not community:
+    if not community or community.library_id != g.library_id:
         return jsonify({'error': 'Community not found'}), 404
     data = request.get_json() or {}
     community.status = 'rejected'

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, g
 from extensions import db
 from models import Book, BookLog, User
 from models.book_request import BookRequest
@@ -59,9 +59,12 @@ def dismiss_book_request(request_id):
 @admin_required
 def admin_book_requests():
     status = request.args.get('status')
-    q = BookRequest.query.order_by(BookRequest.submitted_at.desc())
+    q = (BookRequest.query
+         .join(User, BookRequest.user_id == User.id)
+         .filter(User.library_id == g.library_id)
+         .order_by(BookRequest.submitted_at.desc()))
     if status:
-        q = q.filter_by(status=status)
+        q = q.filter(BookRequest.status == status)
     return jsonify([r.to_dict() for r in q.all()])
 
 
@@ -69,7 +72,7 @@ def admin_book_requests():
 @admin_required
 def approve_book_request(request_id):
     req = db.session.get(BookRequest, request_id)
-    if not req:
+    if not req or not req.user or req.user.library_id != g.library_id:
         return jsonify({'error': 'Book request not found'}), 404
     if req.status != 'pending':
         return jsonify({'error': 'Book request is not pending'}), 400
@@ -94,9 +97,11 @@ def approve_book_request(request_id):
     from sqlalchemy import func as sqlfunc
     existing = None
     if isbn:
-        existing = Book.query.filter_by(isbn=isbn).first()
+        existing = Book.query.filter_by(isbn=isbn, library_id=g.library_id).first()
     if not existing:
-        existing = Book.query.filter(sqlfunc.lower(Book.title) == title.lower()).first()
+        existing = Book.query.filter(
+            Book.library_id == g.library_id, sqlfunc.lower(Book.title) == title.lower()
+        ).first()
     if existing:
         existing.total_copies += total_copies
         existing.available_copies += total_copies
@@ -115,6 +120,7 @@ def approve_book_request(request_id):
             total_copies=total_copies,
             available_copies=total_copies,
             genre=genre,
+            library_id=g.library_id,
         )
         db.session.add(book)
         db.session.flush()
@@ -139,7 +145,7 @@ def approve_book_request(request_id):
 @admin_required
 def reject_book_request(request_id):
     req = db.session.get(BookRequest, request_id)
-    if not req:
+    if not req or not req.user or req.user.library_id != g.library_id:
         return jsonify({'error': 'Book request not found'}), 404
     if req.status != 'pending':
         return jsonify({'error': 'Book request is not pending'}), 400

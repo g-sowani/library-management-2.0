@@ -1680,7 +1680,9 @@ function MemberDashboard() {
       setReturnModal(null);
       load();
       toast(
-        reviewRating > 0 ? "Returned & review submitted!" : "Book returned!"
+        reviewRating > 0
+          ? "Review submitted — return requested, awaiting admin approval!"
+          : "Return requested — awaiting admin approval!"
       );
     } catch (e) {
       setReturnModal(null);
@@ -2272,6 +2274,13 @@ function MemberDashboard() {
 
     if (isBorrowed) {
       const activeBorrow = activeBorrows.find((b) => b.book_id === book.id);
+      if (activeBorrow?.return_requested_at) {
+        return (
+          <button className="btn btn-outline" disabled>
+            Return Requested
+          </button>
+        );
+      }
       return (
         <button
           className="btn btn-outline"
@@ -2406,6 +2415,7 @@ function MemberDashboard() {
             avatar={user.avatar}
             tier={tier}
             xp={user.xp}
+            library={user.library}
             onLogout={logout}
             onReplayTour={() => setShowOnboarding(true)}
           />
@@ -2589,19 +2599,29 @@ function MemberDashboard() {
                                 {b.is_overdue ? "Overdue" : "Active"}
                               </Badge>{" "}
                               · Due {new Date(b.due_date).toLocaleDateString()}
+                              {b.return_requested_at && (
+                                <>
+                                  {" "}
+                                  · <Badge variant="queue">
+                                    Return Requested
+                                  </Badge>
+                                </>
+                              )}
                             </div>
                             <div
                               className="admin-card-actions"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <button
-                                className="btn btn-sm btn-outline"
-                                onClick={() =>
-                                  openReturnModal(b.id, b.book_title)
-                                }
-                              >
-                                Return
-                              </button>
+                              {!b.return_requested_at && (
+                                <button
+                                  className="btn btn-sm btn-outline"
+                                  onClick={() =>
+                                    openReturnModal(b.id, b.book_title)
+                                  }
+                                >
+                                  Return
+                                </button>
+                              )}
                             </div>
                           </div>
                         );

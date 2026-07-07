@@ -123,7 +123,7 @@ function TierBadge({ tier }) {
 
 // ── TopBar ────────────────────────────────────────────────────────────────────
 
-function TopBar({ title, username, avatar, tier, xp, onLogout, onReplayTour }) {
+function TopBar({ title, username, avatar, tier, xp, library, onLogout, onReplayTour }) {
   const { appearance, setAppearance, readerTheme, setReaderTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -160,6 +160,11 @@ function TopBar({ title, username, avatar, tier, xp, onLogout, onReplayTour }) {
                 <div className="pd-username">{username}</div>
                 {tier && <TierBadge tier={tier} />}
                 {tier === 'gold' && <div className="pd-xp">{xp || 0} XP</div>}
+                {library && (
+                  <div className="pd-library" title="Share this code so others can join your library">
+                    {library.name} · Code: {library.code}
+                  </div>
+                )}
               </div>
             </div>
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, g
 from extensions import db
 from models import Book, BookLog, User
 from models.donation import Donation
@@ -61,9 +61,12 @@ def my_donations():
 @admin_required
 def admin_donations():
     status = request.args.get('status')
-    q = Donation.query.order_by(Donation.submitted_at.desc())
+    q = (Donation.query
+         .join(User, Donation.user_id == User.id)
+         .filter(User.library_id == g.library_id)
+         .order_by(Donation.submitted_at.desc()))
     if status:
-        q = q.filter_by(status=status)
+        q = q.filter(Donation.status == status)
     return jsonify([d.to_dict() for d in q.all()])
 
 
@@ -71,7 +74,7 @@ def admin_donations():
 @admin_required
 def approve_donation(donation_id):
     donation = db.session.get(Donation, donation_id)
-    if not donation:
+    if not donation or not donation.user or donation.user.library_id != g.library_id:
         return jsonify({'error': 'Donation not found'}), 404
     if donation.status != 'pending':
         return jsonify({'error': 'Donation is not pending'}), 400
@@ -94,9 +97,11 @@ def approve_donation(donation_id):
     from sqlalchemy import func as sqlfunc
     existing = None
     if donation.isbn:
-        existing = Book.query.filter_by(isbn=donation.isbn).first()
+        existing = Book.query.filter_by(isbn=donation.isbn, library_id=g.library_id).first()
     if not existing:
-        existing = Book.query.filter(sqlfunc.lower(Book.title) == donation.title.lower()).first()
+        existing = Book.query.filter(
+            Book.library_id == g.library_id, sqlfunc.lower(Book.title) == donation.title.lower()
+        ).first()
     if existing:
         existing.total_copies += 1
         existing.available_copies += 1
@@ -116,6 +121,7 @@ def approve_donation(donation_id):
             total_copies=1,
             available_copies=1,
             genre=donation.genre or '',
+            library_id=g.library_id,
         )
         db.session.add(book)
         db.session.flush()
@@ -140,7 +146,7 @@ def approve_donation(donation_id):
 @admin_required
 def reject_donation(donation_id):
     donation = db.session.get(Donation, donation_id)
-    if not donation:
+    if not donation or not donation.user or donation.user.library_id != g.library_id:
         return jsonify({'error': 'Donation not found'}), 404
     if donation.status != 'pending':
         return jsonify({'error': 'Donation is not pending'}), 400

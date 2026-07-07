@@ -77,6 +77,11 @@ def days_ago(n):
     return datetime.utcnow() - timedelta(days=n)
 
 with app.app_context():
+    # This script assumes a single default library exists (the one seed_data()
+    # creates on first run) and targets that library's catalogue/members.
+    seed_member_for_lookup = User.query.filter_by(username='member').first()
+    library_id = seed_member_for_lookup.library_id if seed_member_for_lookup else None
+
     # ── Add extra members ──────────────────────────────────────────
     extra_members = [
         ('alice',   'alice123'),
@@ -87,7 +92,7 @@ with app.app_context():
     added_members = []
     for uname, pwd in extra_members:
         if not User.query.filter_by(username=uname).first():
-            u = User(username=uname, password_hash=generate_password_hash(pwd), role='member')
+            u = User(username=uname, password_hash=generate_password_hash(pwd), role='member', library_id=library_id)
             db.session.add(u)
             added_members.append(uname)
     db.session.flush()
@@ -95,9 +100,9 @@ with app.app_context():
     # ── Add books ─────────────────────────────────────────────────
     added_books = []
     for title, author, isbn, genre, copies in BOOKS_TO_ADD:
-        if not Book.query.filter_by(isbn=isbn).first():
+        if not Book.query.filter_by(isbn=isbn, library_id=library_id).first():
             b = Book(title=title, author=author, isbn=isbn,
-                     total_copies=copies, available_copies=copies, genre=genre)
+                     total_copies=copies, available_copies=copies, genre=genre, library_id=library_id)
             db.session.add(b)
             added_books.append(title)
     db.session.flush()
@@ -110,7 +115,7 @@ with app.app_context():
     dave  = User.query.filter_by(username='dave').first()
     seed_member = User.query.filter_by(username='member').first()
 
-    all_books = Book.query.all()
+    all_books = Book.query.filter_by(library_id=library_id).all()
     by_title = {b.title: b for b in all_books}
 
     def returned_on_time(user, book, borrow_days_ago, loan_days=14):
@@ -218,7 +223,7 @@ with app.app_context():
     # own tier via the membership-request flow, so this random assignment is only
     # ever run explicitly here, not on every server startup.
     from models import _seed_memberships
-    _seed_memberships(db)
+    _seed_memberships(db, library_id)
 
     print(f"Added {len(added_books)} books, members: {added_members or 'already exist'}")
     print("Borrow history seeded.")

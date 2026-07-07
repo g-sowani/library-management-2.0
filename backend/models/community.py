@@ -6,8 +6,11 @@ VALID_REACTIONS = {'like', 'love', 'haha', 'wow', 'sad', 'angry'}
 
 class Community(db.Model):
     __tablename__ = 'community'
+    __table_args__ = (db.UniqueConstraint('library_id', 'name', name='uq_community_library_name'),)
+
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), nullable=False, unique=True)
+    library_id = db.Column(db.Integer, db.ForeignKey('library.id'), nullable=True)
+    name = db.Column(db.String(120), nullable=False)
     description = db.Column(db.Text, nullable=True)
     creator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     status = db.Column(db.String(20), default='pending')  # pending|approved|rejected

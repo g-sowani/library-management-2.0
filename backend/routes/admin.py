@@ -1,12 +1,14 @@
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, g
 from datetime import datetime
+from sqlalchemy import update as sa_update
 from werkzeug.security import check_password_hash
 from extensions import db
-from models import Borrow
+from models import Borrow, Book, Reservation
 from models.user import User
 from models.membership import Membership
-from models.setting import Setting, get_setting
+from models.setting import get_setting, set_setting
 from decorators import admin_required
+from utils import lock_book
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 
@@ -14,7 +16,10 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 @admin_bp.route('/borrows')
 @admin_required
 def admin_borrows():
-    borrows = Borrow.query.filter_by(return_date=None).all()
+    borrows = (Borrow.query
+               .join(User, Borrow.user_id == User.id)
+               .filter(Borrow.return_date.is_(None), User.library_id == g.library_id)
+               .all())
     return jsonify([b.to_dict() for b in borrows])
 
 
@@ -22,12 +27,33 @@ def admin_borrows():
 @admin_required
 def admin_fines():
     fines = []
-    for b in Borrow.query.all():
+    borrows = (Borrow.query
+               .join(User, Borrow.user_id == User.id)
+               .filter(User.library_id == g.library_id)
+               .all())
+    for b in borrows:
         b.calculate_fine()
         if b.fine > 0 and not b.fine_paid:
             fines.append(b.to_dict())
     db.session.commit()
     return jsonify(fines)
+
+
+@admin_bp.route('/fines/history')
+@admin_required
+def fine_history():
+    history = []
+    borrows = (Borrow.query
+               .join(User, Borrow.user_id == User.id)
+               .filter(User.library_id == g.library_id)
+               .all())
+    for b in borrows:
+        b.calculate_fine()
+        if b.fine > 0 and b.fine_paid:
+            history.append(b.to_dict())
+    db.session.commit()
+    history.sort(key=lambda b: b['due_date'], reverse=True)
+    return jsonify(history)
 
 
 @admin_bp.route('/verify-password', methods=['POST'])
@@ -45,15 +71,15 @@ def verify_password():
 @admin_required
 def get_policy():
     return jsonify({
-        'fine_per_day': get_setting('fine_per_day', default=1.0, cast=float),
-        'borrow_days': get_setting('borrow_days', default=14, cast=int),
+        'fine_per_day': get_setting('fine_per_day', g.library_id, default=1.0, cast=float),
+        'borrow_days': get_setting('borrow_days', g.library_id, default=14, cast=int),
     })
 
 
 @admin_bp.route('/members')
 @admin_required
 def admin_members():
-    members = User.query.filter_by(role='member').order_by(User.username).all()
+    members = User.query.filter_by(role='member', library_id=g.library_id).order_by(User.username).all()
     result = []
     for m in members:
         for b in m.borrows:
@@ -76,9 +102,9 @@ def admin_members():
 @admin_required
 def get_membership_pricing():
     return jsonify({
-        'silver_rate': get_setting('membership_silver_rate', default=9.99, cast=float),
-        'gold_rate': get_setting('membership_gold_rate', default=19.99, cast=float),
-        'family_rate': get_setting('membership_family_rate', default=29.99, cast=float),
+        'silver_rate': get_setting('membership_silver_rate', g.library_id, default=9.99, cast=float),
+        'gold_rate': get_setting('membership_gold_rate', g.library_id, default=19.99, cast=float),
+        'family_rate': get_setting('membership_family_rate', g.library_id, default=29.99, cast=float),
     })
 
 
@@ -98,9 +124,7 @@ def update_membership_pricing():
                 val = float(data[field])
                 if val < 0:
                     raise ValueError
-                s = db.session.get(Setting, key) or Setting(key=key, value='')
-                s.value = f'{val:.2f}'
-                db.session.add(s)
+                db.session.add(set_setting(key, g.library_id, f'{val:.2f}'))
             except (ValueError, TypeError):
                 errors[field] = 'Must be a non-negative number'
 
@@ -109,9 +133,9 @@ def update_membership_pricing():
 
     db.session.commit()
     return jsonify({
-        'silver_rate': get_setting('membership_silver_rate', default=9.99, cast=float),
-        'gold_rate': get_setting('membership_gold_rate', default=19.99, cast=float),
-        'family_rate': get_setting('membership_family_rate', default=29.99, cast=float),
+        'silver_rate': get_setting('membership_silver_rate', g.library_id, default=9.99, cast=float),
+        'gold_rate': get_setting('membership_gold_rate', g.library_id, default=19.99, cast=float),
+        'family_rate': get_setting('membership_family_rate', g.library_id, default=29.99, cast=float),
     })
 
 
@@ -136,23 +160,31 @@ def apply_tier(user_id, tier, family_group_id=None):
 
     membership.tier = tier
     if tier == 'family':
-        # Use provided group id or auto-assign to an existing group with room
+        target_user = db.session.get(User, user_id)
+        library_id = target_user.library_id if target_user else None
+        # Use provided group id or auto-assign to an existing group with room,
+        # scoped to this user's own library so group numbers never collide/leak
+        # across libraries.
         if family_group_id:
             membership.family_group_id = int(family_group_id)
         else:
-            # Find a family group with fewer than 4 members
             groups = (db.session.query(Membership.family_group_id,
                                        func.count(Membership.id).label('cnt'))
+                      .join(User, Membership.user_id == User.id)
                       .filter(Membership.tier == 'family',
                               Membership.family_group_id.isnot(None),
-                              Membership.user_id != user_id)
+                              Membership.user_id != user_id,
+                              User.library_id == library_id)
                       .group_by(Membership.family_group_id)
                       .all())
-            avail = next((g.family_group_id for g in groups if g.cnt < 4), None)
+            avail = next((g_.family_group_id for g_ in groups if g_.cnt < 4), None)
             if avail:
                 membership.family_group_id = avail
             else:
-                max_group = db.session.query(func.max(Membership.family_group_id)).scalar() or 0
+                max_group = (db.session.query(func.max(Membership.family_group_id))
+                             .join(User, Membership.user_id == User.id)
+                             .filter(User.library_id == library_id)
+                             .scalar() or 0)
                 membership.family_group_id = max_group + 1
     else:
         membership.family_group_id = None
@@ -165,7 +197,7 @@ def apply_tier(user_id, tier, family_group_id=None):
 @admin_required
 def update_member_tier(user_id):
     m = db.session.get(User, user_id)
-    if not m or m.role != 'member':
+    if not m or m.role != 'member' or m.library_id != g.library_id:
         return jsonify({'error': 'Member not found'}), 404
 
     data = request.json
@@ -181,7 +213,7 @@ def update_member_tier(user_id):
 @admin_required
 def admin_member_borrows(user_id):
     m = db.session.get(User, user_id)
-    if not m or m.role != 'member':
+    if not m or m.role != 'member' or m.library_id != g.library_id:
         return jsonify({'error': 'Member not found'}), 404
     for b in m.borrows:
         b.calculate_fine()
@@ -193,13 +225,64 @@ def admin_member_borrows(user_id):
 @admin_required
 def mark_fine_paid(borrow_id):
     borrow = db.session.get(Borrow, borrow_id)
-    if not borrow:
+    if not borrow or not borrow.user or borrow.user.library_id != g.library_id:
         return jsonify({'error': 'Borrow not found'}), 404
     if borrow.fine <= 0:
         return jsonify({'error': 'No fine on this borrow'}), 400
     if borrow.fine_paid:
         return jsonify({'error': 'Fine already paid'}), 400
     borrow.fine_paid = True
+    db.session.commit()
+    return jsonify(borrow.to_dict())
+
+
+@admin_bp.route('/returns/<int:borrow_id>/approve', methods=['PUT'])
+@admin_required
+def approve_return(borrow_id):
+    borrow = db.session.get(Borrow, borrow_id)
+    if not borrow or not borrow.user or borrow.user.library_id != g.library_id:
+        return jsonify({'error': 'Borrow not found'}), 404
+    if borrow.return_date or not borrow.return_requested_at:
+        return jsonify({'error': 'No pending return request for this borrow'}), 400
+
+    # Lock the book row so no concurrent borrow races with the
+    # available_copies increment / reservation promotion below.
+    book = lock_book(borrow.book_id)
+    if book is None:
+        return jsonify({'error': 'Another transaction is in progress, please try again'}), 409
+
+    # Freeze the return at the moment the member requested it, so the fine
+    # doesn't grow while the request sits waiting for admin approval.
+    borrow.return_date = borrow.return_requested_at
+    borrow.calculate_fine()
+
+    next_pending = (Reservation.query
+                    .filter_by(book_id=borrow.book_id, status='pending')
+                    .order_by(Reservation.created_at)
+                    .first())
+    if next_pending:
+        next_pending.status = 'ready'
+    else:
+        db.session.execute(
+            sa_update(Book)
+            .where(Book.id == borrow.book_id)
+            .values(available_copies=Book.available_copies + 1)
+            .execution_options(synchronize_session=False)
+        )
+
+    db.session.commit()
+    return jsonify(borrow.to_dict())
+
+
+@admin_bp.route('/returns/<int:borrow_id>/reject', methods=['PUT'])
+@admin_required
+def reject_return(borrow_id):
+    borrow = db.session.get(Borrow, borrow_id)
+    if not borrow or not borrow.user or borrow.user.library_id != g.library_id:
+        return jsonify({'error': 'Borrow not found'}), 404
+    if borrow.return_date or not borrow.return_requested_at:
+        return jsonify({'error': 'No pending return request for this borrow'}), 400
+    borrow.return_requested_at = None
     db.session.commit()
     return jsonify(borrow.to_dict())
 
@@ -215,9 +298,7 @@ def update_policy():
             val = float(data['fine_per_day'])
             if val < 0:
                 raise ValueError
-            s = db.session.get(Setting, 'fine_per_day') or Setting(key='fine_per_day', value='')
-            s.value = f'{val:.2f}'
-            db.session.add(s)
+            db.session.add(set_setting('fine_per_day', g.library_id, f'{val:.2f}'))
         except (ValueError, TypeError):
             errors['fine_per_day'] = 'Must be a non-negative number'
 
@@ -226,9 +307,7 @@ def update_policy():
             val = int(data['borrow_days'])
             if val < 1:
                 raise ValueError
-            s = db.session.get(Setting, 'borrow_days') or Setting(key='borrow_days', value='')
-            s.value = str(val)
-            db.session.add(s)
+            db.session.add(set_setting('borrow_days', g.library_id, str(val)))
         except (ValueError, TypeError):
             errors['borrow_days'] = 'Must be a positive integer'
 
@@ -237,6 +316,6 @@ def update_policy():
 
     db.session.commit()
     return jsonify({
-        'fine_per_day': get_setting('fine_per_day', default=1.0, cast=float),
-        'borrow_days': get_setting('borrow_days', default=14, cast=int),
+        'fine_per_day': get_setting('fine_per_day', g.library_id, default=1.0, cast=float),
+        'borrow_days': get_setting('borrow_days', g.library_id, default=14, cast=int),
     })

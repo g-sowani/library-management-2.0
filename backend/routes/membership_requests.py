@@ -1,8 +1,9 @@
 from datetime import datetime
 
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, request, jsonify, session, g
 from extensions import db
 from models.membership_request import MembershipRequest
+from models.user import User
 from decorators import login_required, admin_required
 from routes.admin import apply_tier
 
@@ -53,9 +54,12 @@ def my_membership_requests():
 @admin_required
 def admin_membership_requests():
     status = request.args.get('status')
-    q = MembershipRequest.query.order_by(MembershipRequest.submitted_at.desc())
+    q = (MembershipRequest.query
+         .join(User, MembershipRequest.user_id == User.id)
+         .filter(User.library_id == g.library_id)
+         .order_by(MembershipRequest.submitted_at.desc()))
     if status:
-        q = q.filter_by(status=status)
+        q = q.filter(MembershipRequest.status == status)
     return jsonify([r.to_dict() for r in q.all()])
 
 
@@ -63,7 +67,7 @@ def admin_membership_requests():
 @admin_required
 def approve_membership_request(request_id):
     req = db.session.get(MembershipRequest, request_id)
-    if not req:
+    if not req or not req.user or req.user.library_id != g.library_id:
         return jsonify({'error': 'Membership request not found'}), 404
     if req.status != 'pending':
         return jsonify({'error': 'Membership request is not pending'}), 400
@@ -82,7 +86,7 @@ def approve_membership_request(request_id):
 @admin_required
 def reject_membership_request(request_id):
     req = db.session.get(MembershipRequest, request_id)
-    if not req:
+    if not req or not req.user or req.user.library_id != g.library_id:
         return jsonify({'error': 'Membership request not found'}), 404
     if req.status != 'pending':
         return jsonify({'error': 'Membership request is not pending'}), 400

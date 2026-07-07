@@ -1,5 +1,5 @@
 import re
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 from extensions import db
 from models.genre import Genre
 from decorators import admin_required, login_required
@@ -12,7 +12,8 @@ _LETTERS_ONLY = re.compile(r'^[A-Za-z]+$')
 @genres_bp.get('/api/genres')
 @login_required
 def list_genres():
-    return jsonify([g.to_dict() for g in Genre.query.order_by(Genre.name).all()])
+    genres = Genre.query.filter_by(library_id=g.library_id).order_by(Genre.name).all()
+    return jsonify([genre.to_dict() for genre in genres])
 
 
 @genres_bp.post('/api/genres')
@@ -28,11 +29,13 @@ def add_genre():
     # Normalize: first letter uppercase, rest lowercase
     normalized = name[0].upper() + name[1:].lower()
 
-    existing = Genre.query.filter(db.func.lower(Genre.name) == normalized.lower()).first()
+    existing = Genre.query.filter(
+        Genre.library_id == g.library_id, db.func.lower(Genre.name) == normalized.lower()
+    ).first()
     if existing:
         return jsonify({'error': f'"{existing.name}" already exists'}), 409
 
-    genre = Genre(name=normalized)
+    genre = Genre(name=normalized, library_id=g.library_id)
     db.session.add(genre)
     db.session.commit()
     return jsonify(genre.to_dict()), 201

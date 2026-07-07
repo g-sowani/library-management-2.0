@@ -1,4 +1,4 @@
-from routes.auth import auth_bp
+from routes.auth import auth_bp, libraries_bp
 from routes.books import books_bp
 from routes.borrows import borrows_bp
 from routes.admin import admin_bp
@@ -15,6 +15,7 @@ from routes.book_requests import book_requests_bp
 
 def register_blueprints(app):
     app.register_blueprint(auth_bp)
+    app.register_blueprint(libraries_bp)
     app.register_blueprint(books_bp)
     app.register_blueprint(borrows_bp)
     app.register_blueprint(admin_bp)

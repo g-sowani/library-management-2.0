@@ -4,7 +4,7 @@ import urllib.request
 import urllib.parse
 import json as _json
 
-from flask import Blueprint, request, jsonify, session, current_app
+from flask import Blueprint, request, jsonify, session, current_app, g
 from extensions import db
 from models import Book, Borrow, BookLog, User
 from decorators import login_required, admin_required
@@ -197,14 +197,17 @@ def get_books():
     from models.review import Review
     from sqlalchemy import func
 
-    books = Book.query.all()
+    books = Book.query.filter_by(library_id=g.library_id).all()
+    book_ids = [b.id for b in books]
     counts = dict(
         db.session.query(Reservation.book_id, func.count(Reservation.id))
+        .filter(Reservation.book_id.in_(book_ids))
         .group_by(Reservation.book_id)
         .all()
     )
     rating_rows = (
         db.session.query(Review.book_id, func.avg(Review.rating), func.count(Review.id))
+        .filter(Review.book_id.in_(book_ids))
         .group_by(Review.book_id)
         .all()
     )
@@ -224,7 +227,8 @@ def get_books():
 @books_bp.route('/books/<int:book_id>/reviews')
 @login_required
 def book_reviews(book_id):
-    if not db.session.get(Book, book_id):
+    book = db.session.get(Book, book_id)
+    if not book or book.library_id != g.library_id:
         return jsonify({'error': 'Book not found'}), 404
 
     from models.review import Review
@@ -253,7 +257,7 @@ def book_reviews(book_id):
 def book_enrichment(book_id):
     """Return stored description/bio/cover from DB. Never triggers a scrape."""
     book = db.session.get(Book, book_id)
-    if not book:
+    if not book or book.library_id != g.library_id:
         return jsonify({'error': 'Book not found'}), 404
     return jsonify({
         'description': book.description or '',
@@ -266,7 +270,7 @@ def book_enrichment(book_id):
 @admin_required
 def scrape_all_books():
     """Scrape Open Library for every book sequentially and persist results."""
-    books = Book.query.all()
+    books = Book.query.filter_by(library_id=g.library_id).all()
     for book in books:
         data = _scrape_book_data(book.isbn, book.title, book.author)
         book.description = data['description']
@@ -287,7 +291,7 @@ def scrape_all_books():
 def scrape_book(book_id):
     """Scrape Open Library synchronously, persist, and return the updated data."""
     book = db.session.get(Book, book_id)
-    if not book:
+    if not book or book.library_id != g.library_id:
         return jsonify({'error': 'Book not found'}), 404
     data = _scrape_book_data(book.isbn, book.title, book.author)
     try:
@@ -313,7 +317,7 @@ def scrape_book(book_id):
 @admin_required
 def add_book():
     data = request.json
-    if Book.query.filter_by(isbn=data['isbn']).first():
+    if Book.query.filter_by(isbn=data['isbn'], library_id=g.library_id).first():
         return jsonify({'error': 'Book with this ISBN already exists'}), 400
     admin = db.session.get(User, session['user_id'])
     book = Book(
@@ -321,6 +325,7 @@ def add_book():
         total_copies=data.get('total_copies', 1),
         available_copies=data.get('total_copies', 1),
         genre=data.get('genre', ''),
+        library_id=g.library_id,
     )
     db.session.add(book)
     db.session.flush()
@@ -339,7 +344,7 @@ def add_book():
 @admin_required
 def edit_book(book_id):
     book = db.session.get(Book, book_id)
-    if not book:
+    if not book or book.library_id != g.library_id:
         return jsonify({'error': 'Book not found'}), 404
 
     data = request.json
@@ -349,7 +354,7 @@ def edit_book(book_id):
     # Validate ISBN uniqueness if it's changing
     new_isbn = data.get('isbn')
     if new_isbn and new_isbn != book.isbn:
-        conflict = Book.query.filter_by(isbn=new_isbn).first()
+        conflict = Book.query.filter_by(isbn=new_isbn, library_id=g.library_id).first()
         if conflict:
             return jsonify({'error': 'ISBN already used by another book'}), 400
 
@@ -418,7 +423,7 @@ def edit_book(book_id):
 @admin_required
 def delete_book(book_id):
     book = db.session.get(Book, book_id)
-    if not book:
+    if not book or book.library_id != g.library_id:
         return jsonify({'error': 'Book not found'}), 404
     if Borrow.query.filter_by(book_id=book_id, return_date=None).first():
         return jsonify({'error': 'Book has active borrows'}), 400
@@ -440,7 +445,8 @@ def trending():
 
     borrow_counts = dict(
         db.session.query(Borrow.book_id, func.count(Borrow.id))
-        .filter(Borrow.borrow_date >= since)
+        .join(Book, Borrow.book_id == Book.id)
+        .filter(Borrow.borrow_date >= since, Book.library_id == g.library_id)
         .group_by(Borrow.book_id)
         .all()
     )
@@ -449,7 +455,7 @@ def trending():
 
     top_ids = sorted(borrow_counts, key=borrow_counts.__getitem__, reverse=True)[:8]
 
-    books_q = Book.query.filter(Book.id.in_(top_ids)).all()
+    books_q = Book.query.filter(Book.id.in_(top_ids), Book.library_id == g.library_id).all()
 
     rating_rows = (
         db.session.query(Review.book_id, func.avg(Review.rating), func.count(Review.id))
@@ -510,18 +516,21 @@ def recommendations():
             genre_weights[book.genre] = genre_weights.get(book.genre, 0) + weight
         author_weights[book.author] = author_weights.get(book.author, 0) + weight
 
-    candidates = Book.query.filter(~Book.id.in_(borrowed_ids)).all()
+    candidates = Book.query.filter(~Book.id.in_(borrowed_ids), Book.library_id == g.library_id).all()
     if not candidates:
         return jsonify([])
 
+    candidate_ids = [b.id for b in candidates]
     rating_rows = (
         db.session.query(Review.book_id, func.avg(Review.rating), func.count(Review.id))
+        .filter(Review.book_id.in_(candidate_ids))
         .group_by(Review.book_id).all()
     )
     rating_stats = {row[0]: (float(row[1]), row[2]) for row in rating_rows}
 
     res_counts = dict(
         db.session.query(Reservation.book_id, func.count(Reservation.id))
+        .filter(Reservation.book_id.in_(candidate_ids))
         .group_by(Reservation.book_id).all()
     )
 
@@ -572,9 +581,19 @@ def collaborative_recommendations():
 
     user_id = session['user_id']
 
-    # Load all borrows and reviews in two bulk queries.
-    all_borrows = Borrow.query.all()
-    all_reviews = {(r.user_id, r.book_id): r.rating for r in Review.query.all()}
+    # Load all borrows and reviews in two bulk queries, scoped to this library's
+    # catalogue so cross-library reading history never leaks into the similarity model.
+    all_borrows = (Borrow.query
+                    .join(Book, Borrow.book_id == Book.id)
+                    .filter(Book.library_id == g.library_id)
+                    .all())
+    all_reviews = {
+        (r.user_id, r.book_id): r.rating
+        for r in (Review.query
+                  .join(Book, Review.book_id == Book.id)
+                  .filter(Book.library_id == g.library_id)
+                  .all())
+    }
 
     # Build implicit rating vectors: {uid: {book_id: weight}}
     # Rated borrow  → weight = rating / 5   (captures expressed preference)
@@ -627,7 +646,7 @@ def collaborative_recommendations():
 
     top_ids = sorted(book_scores, key=book_scores.__getitem__, reverse=True)[:20]
 
-    books_q = Book.query.filter(Book.id.in_(top_ids)).all()
+    books_q = Book.query.filter(Book.id.in_(top_ids), Book.library_id == g.library_id).all()
 
     rating_rows = (
         db.session.query(Review.book_id, func.avg(Review.rating), func.count(Review.id))
@@ -672,7 +691,7 @@ def ai_search():
     if not query:
         return jsonify({'error': 'Query is required'}), 400
 
-    books = Book.query.all()
+    books = Book.query.filter_by(library_id=g.library_id).all()
     if not books:
         return jsonify([])
 
@@ -758,7 +777,7 @@ def generate_field(book_id):
     from groq import Groq
 
     book = db.session.get(Book, book_id)
-    if not book:
+    if not book or book.library_id != g.library_id:
         return jsonify({'error': 'Book not found'}), 404
 
     field = (request.json or {}).get('field', '')
@@ -797,7 +816,7 @@ def generate_field(book_id):
 def patch_metadata(book_id):
     """Save admin-provided or AI-generated description, author_bio, or cover_url."""
     book = db.session.get(Book, book_id)
-    if not book:
+    if not book or book.library_id != g.library_id:
         return jsonify({'error': 'Book not found'}), 404
 
     data = request.json or {}
@@ -842,10 +861,24 @@ def patch_metadata(book_id):
 @books_bp.route('/books/<int:book_id>/logs')
 @admin_required
 def book_logs(book_id):
-    if not db.session.get(Book, book_id):
+    book = db.session.get(Book, book_id)
+    if not book or book.library_id != g.library_id:
         return jsonify({'error': 'Book not found'}), 404
     logs = (BookLog.query
             .filter_by(book_id=book_id)
             .order_by(BookLog.timestamp.desc())
             .all())
     return jsonify([l.to_dict() for l in logs])
+
+
+@books_bp.route('/books/<int:book_id>/borrows')
+@admin_required
+def book_borrows(book_id):
+    book = db.session.get(Book, book_id)
+    if not book or book.library_id != g.library_id:
+        return jsonify({'error': 'Book not found'}), 404
+    borrows = (Borrow.query
+               .filter_by(book_id=book_id)
+               .order_by(Borrow.borrow_date.desc())
+               .all())
+    return jsonify([b.to_dict() for b in borrows])

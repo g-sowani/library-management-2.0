@@ -1,3 +1,4 @@
+from models.library import Library
 from models.user import User
 from models.book import Book
 from models.borrow import Borrow
@@ -18,31 +19,37 @@ from models.genre import Genre
 def seed_data():
     from werkzeug.security import generate_password_hash
     from extensions import db
+    from models.library import generate_library_code
 
     if User.query.first():
-        _seed_settings(db)
         return
 
-    admin = User(username='admin', password_hash=generate_password_hash('admin123'), role='admin')
-    member = User(username='member', password_hash=generate_password_hash('member123'), role='member')
+    library = Library(name='Default Library', code=generate_library_code())
+    db.session.add(library)
+    db.session.flush()  # assign library.id before referencing it below
+
+    admin = User(username='admin', password_hash=generate_password_hash('admin123'),
+                 role='admin', library_id=library.id)
+    member = User(username='member', password_hash=generate_password_hash('member123'),
+                  role='member', library_id=library.id)
     db.session.add_all([admin, member])
 
     books = [
-        Book(title='The Hobbit', author='J.R.R. Tolkien', isbn='978-0547928227', total_copies=4, available_copies=4, genre='Fantasy'),
-        Book(title='1984', author='George Orwell', isbn='978-0451524935', total_copies=3, available_copies=3, genre='Science Fiction'),
-        Book(title='To Kill a Mockingbird', author='Harper Lee', isbn='978-0061120084', total_copies=2, available_copies=2, genre='Fiction'),
-        Book(title='Pride and Prejudice', author='Jane Austen', isbn='978-0141439518', total_copies=5, available_copies=5, genre='Romance'),
-        Book(title='The Great Gatsby', author='F. Scott Fitzgerald', isbn='978-0743273565', total_copies=3, available_copies=3, genre='Fiction'),
+        Book(title='The Hobbit', author='J.R.R. Tolkien', isbn='978-0547928227', total_copies=4, available_copies=4, genre='Fantasy', library_id=library.id),
+        Book(title='1984', author='George Orwell', isbn='978-0451524935', total_copies=3, available_copies=3, genre='Science Fiction', library_id=library.id),
+        Book(title='To Kill a Mockingbird', author='Harper Lee', isbn='978-0061120084', total_copies=2, available_copies=2, genre='Fiction', library_id=library.id),
+        Book(title='Pride and Prejudice', author='Jane Austen', isbn='978-0141439518', total_copies=5, available_copies=5, genre='Romance', library_id=library.id),
+        Book(title='The Great Gatsby', author='F. Scott Fitzgerald', isbn='978-0743273565', total_copies=3, available_copies=3, genre='Fiction', library_id=library.id),
     ]
     db.session.add_all(books)
-    _seed_settings(db)
-    _seed_genres(db)
+    _seed_settings(db, library.id)
+    _seed_genres(db, library.id)
     db.session.commit()
     # Real accounts pick a tier themselves via the membership-request flow —
     # random auto-assignment is only used explicitly by seed_extra.py for demo data.
 
 
-def _seed_settings(db):
+def _seed_settings(db, library_id):
     defaults = {
         'fine_per_day': '1.00',
         'borrow_days': '14',
@@ -51,28 +58,31 @@ def _seed_settings(db):
         'membership_family_rate': '29.99',
     }
     for key, value in defaults.items():
-        if not db.session.get(Setting, key):
-            db.session.add(Setting(key=key, value=value))
+        if not Setting.query.filter_by(library_id=library_id, key=key).first():
+            db.session.add(Setting(library_id=library_id, key=key, value=value))
     db.session.commit()
 
 
-def _seed_genres(db):
+def _seed_genres(db, library_id):
     defaults = [
         'Fiction', 'Fantasy', 'Mystery', 'Thriller', 'Romance',
         'Biography', 'History', 'Science', 'Horror', 'Other',
         'Nonfiction', 'Selfhelp', 'Scifi',
     ]
     for name in defaults:
-        if not Genre.query.filter_by(name=name).first():
-            db.session.add(Genre(name=name))
+        if not Genre.query.filter_by(library_id=library_id, name=name).first():
+            db.session.add(Genre(library_id=library_id, name=name))
     db.session.commit()
 
 
-def _seed_memberships(db):
+def _seed_memberships(db, library_id=None):
     import random
     from sqlalchemy import func
 
-    members = User.query.filter_by(role='member').all()
+    members_q = User.query.filter_by(role='member')
+    if library_id is not None:
+        members_q = members_q.filter_by(library_id=library_id)
+    members = members_q.all()
     unassigned = [m for m in members if not Membership.query.filter_by(user_id=m.id).first()]
     if not unassigned:
         return
@@ -80,7 +90,13 @@ def _seed_memberships(db):
     random.shuffle(unassigned)
     tiers = ['silver', 'gold', 'family']
 
-    max_group = db.session.query(func.max(Membership.family_group_id)).scalar() or 0
+    # Scope the group-numbering search to members of the same library so
+    # family group ids never collide/leak across libraries.
+    group_query = (db.session.query(func.max(Membership.family_group_id))
+                   .join(User, Membership.user_id == User.id))
+    if library_id is not None:
+        group_query = group_query.filter(User.library_id == library_id)
+    max_group = group_query.scalar() or 0
     family_group_id = max_group + 1
     family_count = 0
 

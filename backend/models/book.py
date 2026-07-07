@@ -2,10 +2,13 @@ from extensions import db
 
 
 class Book(db.Model):
+    __table_args__ = (db.UniqueConstraint('library_id', 'isbn', name='uq_book_library_isbn'),)
+
     id = db.Column(db.Integer, primary_key=True)
+    library_id = db.Column(db.Integer, db.ForeignKey('library.id'), nullable=True)
     title = db.Column(db.String(200), nullable=False)
     author = db.Column(db.String(200), nullable=False)
-    isbn = db.Column(db.String(20), unique=True, nullable=False)
+    isbn = db.Column(db.String(20), nullable=False)
     total_copies = db.Column(db.Integer, nullable=False, default=1)
     available_copies = db.Column(db.Integer, nullable=False, default=1)
     genre = db.Column(db.String(100), nullable=True)

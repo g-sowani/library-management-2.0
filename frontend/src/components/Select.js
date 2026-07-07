@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 
 function Select({ value, onChange, children, className = '', disabled = false }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const ref = useRef(null);
+  const searchRef = useRef(null);
 
   const options = React.Children.toArray(children).map(child => ({
     value: child.props.value ?? '',
@@ -12,6 +14,10 @@ function Select({ value, onChange, children, className = '', disabled = false })
   const strVal = String(value ?? '');
   const selected = options.find(o => String(o.value) === strVal);
 
+  const filteredOptions = query.trim()
+    ? options.filter(o => String(o.label).toLowerCase().includes(query.trim().toLowerCase()))
+    : options;
+
   useEffect(() => {
     function close(e) {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
@@ -19,6 +25,13 @@ function Select({ value, onChange, children, className = '', disabled = false })
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, []);
+
+  useEffect(() => {
+    if (open) {
+      setQuery('');
+      searchRef.current?.focus();
+    }
+  }, [open]);
 
   function pick(val) {
     onChange({ target: { value: val } });
@@ -36,22 +49,47 @@ function Select({ value, onChange, children, className = '', disabled = false })
         onClick={() => !disabled && setOpen(o => !o)}
         disabled={disabled}
       >
-        <span className="custom-select-value">{selected ? selected.label : ''}</span>
+        <span className={`custom-select-value${selected && selected.value === '' ? ' custom-select-value-placeholder' : ''}`}>
+          {selected ? selected.label : ''}
+        </span>
         <svg className="custom-select-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none">
           <path d="M1.5 3.5l3.5 3 3.5-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
       {open && (
         <div className="custom-select-dropdown">
-          {options.map((opt, i) => (
-            <div
-              key={`${opt.value}-${i}`}
-              className={`custom-select-option${String(opt.value) === strVal ? ' custom-select-option-active' : ''}`}
-              onMouseDown={() => pick(opt.value)}
-            >
-              {opt.label}
-            </div>
-          ))}
+          <div className="custom-select-search-wrap">
+            <input
+              ref={searchRef}
+              type="text"
+              className="custom-select-search"
+              placeholder="Search…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setOpen(false);
+                else if (e.key === 'Enter' && filteredOptions.length === 1) {
+                  e.preventDefault();
+                  pick(filteredOptions[0].value);
+                }
+              }}
+            />
+          </div>
+          <div className="custom-select-options">
+            {filteredOptions.length === 0 ? (
+              <div className="custom-select-no-match">No matches</div>
+            ) : (
+              filteredOptions.map((opt, i) => (
+                <div
+                  key={`${opt.value}-${i}`}
+                  className={`custom-select-option${String(opt.value) === strVal ? ' custom-select-option-active' : ''}${opt.value === '' ? ' custom-select-option-placeholder' : ''}`}
+                  onMouseDown={() => pick(opt.value)}
+                >
+                  {opt.label}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>

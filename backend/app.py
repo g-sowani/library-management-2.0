@@ -37,7 +37,7 @@ def _migrate_db():
             return
         for col, col_type in additions.items():
             if col not in existing:
-                db.session.execute(text(f'ALTER TABLE {table} ADD COLUMN {col} {col_type}'))
+                db.session.execute(text(f'ALTER TABLE "{table}" ADD COLUMN {col} {col_type}'))
 
     add_missing_cols('book', {
         'genre': 'VARCHAR(100)',
@@ -54,7 +54,7 @@ def _migrate_db():
     add_missing_cols('comment_reaction', {'created_at': 'DATETIME'})
     add_missing_cols('borrow', {'return_requested_at': 'DATETIME'})
     db.session.execute(text(
-        'CREATE UNIQUE INDEX IF NOT EXISTS ix_user_google_sub ON user (google_sub) WHERE google_sub IS NOT NULL'
+        'CREATE UNIQUE INDEX IF NOT EXISTS ix_user_google_sub ON "user" (google_sub) WHERE google_sub IS NOT NULL'
     ))
     db.session.commit()
 
@@ -95,7 +95,7 @@ def _migrate_to_multi_library(get_cols):
         db.session.flush()
     default_library_id = default_library.id
 
-    db.session.execute(text('UPDATE user SET library_id = :lid WHERE library_id IS NULL'),
+    db.session.execute(text('UPDATE "user" SET library_id = :lid WHERE library_id IS NULL'),
                         {'lid': default_library_id})
     db.session.commit()
 
@@ -162,7 +162,7 @@ def _migrate_username_email_split():
 
     # Idempotent regardless of whether any rows needed backfilling above —
     # a fresh install with no email-shaped usernames still needs the index.
-    db.session.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ix_user_email ON user (email)'))
+    db.session.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ix_user_email ON "user" (email)'))
     db.session.commit()
 
 

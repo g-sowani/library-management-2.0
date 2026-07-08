@@ -14,7 +14,7 @@ class Book(db.Model):
     genre = db.Column(db.String(100), nullable=True)
     description = db.Column(db.Text, nullable=True)
     author_bio = db.Column(db.Text, nullable=True)
-    cover_url = db.Column(db.String(500), nullable=True)
+    cover_url = db.Column(db.Text, nullable=True)
     cover_color = db.Column(db.String(7), nullable=True)
     borrows = db.relationship('Borrow', backref='book', lazy=True)
     logs = db.relationship('BookLog', lazy=True, cascade='all, delete-orphan')

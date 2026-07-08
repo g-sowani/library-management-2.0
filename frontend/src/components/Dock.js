@@ -121,7 +121,7 @@ const ICONS = {
   donations: DonationsIcon,
 };
 
-function Dock({ tabs, active, onChange, badges = {} }) {
+function Dock({ tabs, active, onChange, badges = {}, dots = {} }) {
   return (
     <div className="dock-wrap">
       <div className="dock">
@@ -140,6 +140,7 @@ function Dock({ tabs, active, onChange, badges = {} }) {
               {badges[id] > 0 && (
                 <span className="dock-badge">{badges[id] > 99 ? '99+' : badges[id]}</span>
               )}
+              {dots[id] && <span className="dock-pending-dot" aria-label="Pending approvals" />}
               <span className="dock-dot" />
               <span className="dock-tooltip">{label}</span>
             </button>

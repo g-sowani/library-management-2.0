@@ -22,7 +22,7 @@ import { useTheme } from "../context/ThemeContext";
 import { GENRES } from "../constants";
 
 const TABS = [
-  { id: "home", label: "Home" },
+  { id: "home", label: "My Stuff" },
   { id: "books", label: "Available Books" },
   { id: "community", label: "Community" },
   { id: "games", label: "Games" },
@@ -78,44 +78,6 @@ function contrastRatio(l1, l2) {
 // Preferred "danger" red shades, darkest-context first; falls back to pure
 // black/white (always WCAG-safe against any background) if neither clears 4.5:1.
 const HERO_ERROR_REDS = ["#8c1c1c", "#ffb4ab"];
-
-// Vivid, editorial-style section colors for the Home tab. Each text tier's
-// opacity is the max of the desired visual alpha and the minimum alpha
-// required to clear WCAG AA (4.5:1) against that specific background —
-// same technique as coverPalette below, just for a fixed set of colors
-// instead of a per-book cover_color.
-function paletteFromHex(hex) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const text = wcagTextColor(r, g, b);
-  const fgVal = text === "#ffffff" ? 255 : 0;
-  const alphaMin = minAlphaForContrast(fgVal, r, g, b, 4.5);
-  const isLight = fgVal === 255;
-  const mk = (desired) => {
-    const a = Math.max(desired, alphaMin).toFixed(2);
-    return isLight ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
-  };
-  return {
-    bg: hex,
-    text,
-    label: mk(isLight ? 0.85 : 0.7),
-    subtle: mk(isLight ? 0.75 : 0.62),
-    chip: isLight ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.1)",
-  };
-}
-
-const HOME_COLORS = {
-  hero: "#0B3FBF",
-  borrowed: "#C62F27",
-  reservations: "#00A66E",
-  wishlist: "#7C1FA0",
-  collection: "#FFB100",
-};
-
-const HOME_PALETTE = Object.fromEntries(
-  Object.entries(HOME_COLORS).map(([key, hex]) => [key, paletteFromHex(hex)])
-);
 
 const REACTIONS = [
   { key: "like", label: "Like" },
@@ -1273,6 +1235,25 @@ function ChevronDown() {
   );
 }
 
+function AlertTriangleIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+}
+
 function BookLoader() {
   return (
     <div className="book-loader">
@@ -1453,7 +1434,8 @@ function MemberDashboard() {
   const [bookReviews, setBookReviews] = useState(null);
 
   // Return + review modal
-  const [returnModal, setReturnModal] = useState(null); // { borrowId, bookTitle }
+  const [returnModal, setReturnModal] = useState(null); // { borrowId, bookTitle, fine, finePaid }
+  const [payFineWithReturn, setPayFineWithReturn] = useState(false);
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewHover, setReviewHover] = useState(0);
   const [reviewText, setReviewText] = useState("");
@@ -1461,6 +1443,7 @@ function MemberDashboard() {
 
   // Avatar
   const avatarInputRef = useRef(null);
+  const borrowedSectionRef = useRef(null);
   const [avatarError, setAvatarError] = useState("");
 
   // Donation
@@ -1495,10 +1478,15 @@ function MemberDashboard() {
   const [postLoading, setPostLoading] = useState(false);
   const [showCreateCommunity, setShowCreateCommunity] = useState(false);
   const [communityForm, setCommunityForm] = useState({
+    id: null,
     name: "",
     description: "",
+    icon_url: "",
+    banner_url: "",
   });
   const [communityFormError, setCommunityFormError] = useState("");
+  const communityIconInputRef = useRef(null);
+  const communityBannerInputRef = useRef(null);
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [postForm, setPostForm] = useState({ title: "", content: "" });
   const [postFormError, setPostFormError] = useState("");
@@ -1653,8 +1641,14 @@ function MemberDashboard() {
     }
   };
 
-  const openReturnModal = (borrowId, bookTitle) => {
-    setReturnModal({ borrowId, bookTitle });
+  const openReturnModal = (borrow) => {
+    setReturnModal({
+      borrowId: borrow.id,
+      bookTitle: borrow.book_title,
+      fine: borrow.fine || 0,
+      finePaid: borrow.fine_paid,
+    });
+    setPayFineWithReturn(false);
     setReviewRating(0);
     setReviewHover(0);
     setReviewText("");
@@ -1663,15 +1657,31 @@ function MemberDashboard() {
 
   const closeReturnModal = () => setReturnModal(null);
 
+  const goToOverdueBooks = () => {
+    if (overdueBorrows.length === 1) {
+      openReturnModal(overdueBorrows[0]);
+      return;
+    }
+    setOpenHomeSection("borrowed");
+    borrowedSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+
+  const returnHasUnpaidFine =
+    returnModal && returnModal.fine > 0 && !returnModal.finePaid;
+
   const handleReturn = async () => {
-    const payload =
-      reviewRating > 0
-        ? {
-            rating: reviewRating,
-            review_text: reviewText.trim(),
-            is_anonymous: reviewAnonymous,
-          }
-        : {};
+    const payload = {};
+    if (reviewRating > 0) {
+      payload.rating = reviewRating;
+      payload.review_text = reviewText.trim();
+      payload.is_anonymous = reviewAnonymous;
+    }
+    if (returnHasUnpaidFine) {
+      payload.pay_fine = payFineWithReturn;
+    }
     try {
       await api.post(
         `/return/${returnModal.borrowId}`,
@@ -1680,7 +1690,9 @@ function MemberDashboard() {
       setReturnModal(null);
       load();
       toast(
-        reviewRating > 0
+        returnHasUnpaidFine
+          ? "Return & fine payment submitted — awaiting admin approval!"
+          : reviewRating > 0
           ? "Review submitted — return requested, awaiting admin approval!"
           : "Return requested — awaiting admin approval!"
       );
@@ -1785,18 +1797,82 @@ function MemberDashboard() {
     }
   };
 
-  const submitCreateCommunity = async (e) => {
+  const openEditCommunity = (c) => {
+    setCommunityForm({
+      id: c.id,
+      name: c.name,
+      description: c.description || "",
+      icon_url: c.icon_url || "",
+      banner_url: c.banner_url || "",
+    });
+    setCommunityFormError("");
+    setShowCreateCommunity(true);
+  };
+
+  const handleCommunityIconChange = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setCommunityFormError("Icon image must be under 5 MB");
+      return;
+    }
+    try {
+      const base64 = await resizeImageToBase64(file, 200);
+      setCommunityForm((f) => ({ ...f, icon_url: base64 }));
+    } catch {
+      setCommunityFormError("Failed to process icon image");
+    }
+  };
+
+  const handleCommunityBannerChange = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setCommunityFormError("Banner image must be under 5 MB");
+      return;
+    }
+    try {
+      const base64 = await resizeImageToBase64(file, 1000);
+      setCommunityForm((f) => ({ ...f, banner_url: base64 }));
+    } catch {
+      setCommunityFormError("Failed to process banner image");
+    }
+  };
+
+  const submitCommunityForm = async (e) => {
     e.preventDefault();
     setCommunityFormError("");
+    const payload = {
+      name: communityForm.name,
+      description: communityForm.description,
+      icon_url: communityForm.icon_url,
+      banner_url: communityForm.banner_url,
+    };
     try {
-      await api.post("/communities", communityForm);
+      if (communityForm.id) {
+        await api.put(`/communities/${communityForm.id}`, payload);
+        toast("Community updated");
+      } else {
+        await api.post("/communities", payload);
+        toast("Community submitted for review");
+      }
       setShowCreateCommunity(false);
-      setCommunityForm({ name: "", description: "" });
+      setCommunityForm({
+        id: null,
+        name: "",
+        description: "",
+        icon_url: "",
+        banner_url: "",
+      });
       loadCommunities();
-      toast("Community submitted for review");
     } catch (err) {
       setCommunityFormError(
-        err.response?.data?.error || "Failed to create community"
+        err.response?.data?.error ||
+          (communityForm.id
+            ? "Failed to update community"
+            : "Failed to create community")
       );
     }
   };
@@ -2138,6 +2214,14 @@ function MemberDashboard() {
   const activeBorrows = borrows.filter((b) => !b.return_date);
   const borrowedBookIds = new Set(activeBorrows.map((b) => b.book_id));
 
+  const overdueBorrows = activeBorrows.filter((b) => b.is_overdue);
+  const unpaidFines = fines.filter((f) => !f.fine_paid && f.fine > 0);
+  const totalUnpaidFines = unpaidFines.reduce((sum, f) => sum + f.fine, 0);
+
+  const pastBorrows = borrows
+    .filter((b) => b.return_date)
+    .sort((a, b) => new Date(b.return_date) - new Date(a.return_date));
+
   // Tint the UI with the cover colour of the most recently borrowed book
   const accentColor = useMemo(() => {
     if (!borrows.length || !books.length) return null;
@@ -2286,7 +2370,7 @@ function MemberDashboard() {
           className="btn btn-outline"
           onClick={() => {
             closeBook();
-            openReturnModal(activeBorrow.id, book.title);
+            openReturnModal(activeBorrow);
           }}
         >
           Return
@@ -2442,22 +2526,8 @@ function MemberDashboard() {
           {tab === "home" && (
             <div className="home-tab">
               {/* Hero */}
-              <div
-                className="home-hero home-slant-bottom"
-                style={{
-                  background: HOME_PALETTE.hero.bg,
-                  color: HOME_PALETTE.hero.text,
-                }}
-              >
-                <div
-                  className="home-hero-eyebrow"
-                  style={{
-                    color: HOME_PALETTE.hero.label,
-                    background: HOME_PALETTE.hero.chip,
-                  }}
-                >
-                  {user.username}
-                </div>
+              <div className="home-hero">
+                <div className="home-hero-eyebrow">{user.username}</div>
                 <h2 className="home-hero-title">
                   {(() => {
                     const h = new Date().getHours();
@@ -2467,14 +2537,53 @@ function MemberDashboard() {
                     return "Hello, night owl";
                   })()}
                 </h2>
-                <p
-                  className="home-hero-sub"
-                  style={{ color: HOME_PALETTE.hero.subtle }}
-                >
+                <p className="home-hero-sub">
                   Browse the catalogue, borrow books, and connect with fellow
                   readers.
                 </p>
               </div>
+
+              {/* Overdue books / unpaid fines alert */}
+              {(overdueBorrows.length > 0 || unpaidFines.length > 0) && (
+                <div className="home-section">
+                  <div className="overdue-alert">
+                    <div className="overdue-alert-icon">
+                      <AlertTriangleIcon />
+                    </div>
+                    <div className="overdue-alert-body">
+                      <div className="overdue-alert-title">
+                        {overdueBorrows.length > 0 && unpaidFines.length > 0
+                          ? `You have ${overdueBorrows.length} overdue book${
+                              overdueBorrows.length !== 1 ? "s" : ""
+                            } and $${totalUnpaidFines.toFixed(2)} in unpaid fines`
+                          : overdueBorrows.length > 0
+                          ? `You have ${overdueBorrows.length} overdue book${
+                              overdueBorrows.length !== 1 ? "s" : ""
+                            }`
+                          : `You have $${totalUnpaidFines.toFixed(
+                              2
+                            )} in unpaid fines`}
+                      </div>
+                      <div className="overdue-alert-desc">
+                        {overdueBorrows.length > 0 &&
+                          "Please return your overdue books as soon as possible. "}
+                        {unpaidFines.length > 0 &&
+                          "Outstanding fines must be paid to keep borrowing."}
+                      </div>
+                      {overdueBorrows.length > 0 && (
+                        <button
+                          className="overdue-alert-link"
+                          onClick={goToOverdueBooks}
+                        >
+                          {overdueBorrows.length === 1
+                            ? "Return this book →"
+                            : "Return your books →"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Book request notifications */}
               {unnotifiedBookRequests.length > 0 && (
@@ -2534,19 +2643,13 @@ function MemberDashboard() {
               )}
 
               {/* My Borrowed Books */}
-              <div
-                className="home-section home-color-block"
-                style={{
-                  background: HOME_PALETTE.borrowed.bg,
-                  color: HOME_PALETTE.borrowed.text,
-                }}
-              >
+              <div className="home-section home-card" ref={borrowedSectionRef}>
                 <button
                   className="home-section-toggle"
                   onClick={() => toggleHomeSection("borrowed")}
                   aria-expanded={openHomeSection === "borrowed"}
                 >
-                  <span className="home-color-block-heading">
+                  <span className="home-card-heading">
                     My Borrowed Books
                   </span>
                   <span
@@ -2586,9 +2689,7 @@ function MemberDashboard() {
                                 className="rec-card-cover"
                               />
                             )}
-                            <div className="rec-card-title">
-                              {b.book_title}
-                            </div>
+                            <div className="rec-card-title">{b.book_title}</div>
                             <div className="rec-card-author">
                               {b.book_author}
                             </div>
@@ -2602,7 +2703,8 @@ function MemberDashboard() {
                               {b.return_requested_at && (
                                 <>
                                   {" "}
-                                  · <Badge variant="queue">
+                                  ·{" "}
+                                  <Badge variant="queue">
                                     Return Requested
                                   </Badge>
                                 </>
@@ -2615,9 +2717,7 @@ function MemberDashboard() {
                               {!b.return_requested_at && (
                                 <button
                                   className="btn btn-sm btn-outline"
-                                  onClick={() =>
-                                    openReturnModal(b.id, b.book_title)
-                                  }
+                                  onClick={() => openReturnModal(b)}
                                 >
                                   Return
                                 </button>
@@ -2630,20 +2730,87 @@ function MemberDashboard() {
                   ))}
               </div>
 
+              {/* Past Borrows */}
+              <div className="home-section home-card">
+                <button
+                  className="home-section-toggle"
+                  onClick={() => toggleHomeSection("history")}
+                  aria-expanded={openHomeSection === "history"}
+                >
+                  <span className="home-card-heading">Past Borrows</span>
+                  <span
+                    className={`home-section-chevron${
+                      openHomeSection === "history" ? " open" : ""
+                    }`}
+                  >
+                    <ChevronDown />
+                  </span>
+                </button>
+                {openHomeSection === "history" &&
+                  (pastBorrows.length === 0 ? (
+                    <div className="empty">No past borrows yet</div>
+                  ) : (
+                    <div className="books-grid">
+                      {pastBorrows.map((b) => {
+                        const coverUrl = books.find(
+                          (bk) => bk.id === b.book_id
+                        )?.cover_url;
+                        return (
+                          <div
+                            key={b.id}
+                            className="rec-card"
+                            onClick={() => setSelectedBookId(b.book_id)}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            {coverUrl ? (
+                              <img
+                                src={coverUrl}
+                                alt=""
+                                className="rec-card-cover"
+                              />
+                            ) : (
+                              <NoCoverPlaceholder
+                                title={b.book_title}
+                                className="rec-card-cover"
+                              />
+                            )}
+                            <div className="rec-card-title">{b.book_title}</div>
+                            <div className="rec-card-author">
+                              {b.book_author}
+                            </div>
+                            <div className="rec-card-avail">
+                              <Badge variant="returned">Returned</Badge>{" "}
+                              · {new Date(b.return_date).toLocaleDateString()}
+                              {b.fine > 0 && (
+                                <>
+                                  {" "}
+                                  ·{" "}
+                                  <Badge
+                                    variant={b.fine_paid ? "returned" : "overdue"}
+                                  >
+                                    {b.fine_paid
+                                      ? `Fine paid $${b.fine.toFixed(2)}`
+                                      : `Unpaid $${b.fine.toFixed(2)}`}
+                                  </Badge>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+              </div>
+
               {/* My Reservations */}
-              <div
-                className="home-section home-color-block home-slant-top home-slant-bottom"
-                style={{
-                  background: HOME_PALETTE.reservations.bg,
-                  color: HOME_PALETTE.reservations.text,
-                }}
-              >
+              <div className="home-section home-card">
                 <button
                   className="home-section-toggle"
                   onClick={() => toggleHomeSection("reservations")}
                   aria-expanded={openHomeSection === "reservations"}
                 >
-                  <span className="home-color-block-heading">
+                  <span className="home-card-heading">
                     My Reservations
                   </span>
                   <span
@@ -2683,9 +2850,7 @@ function MemberDashboard() {
                                 className="rec-card-cover"
                               />
                             )}
-                            <div className="rec-card-title">
-                              {r.book_title}
-                            </div>
+                            <div className="rec-card-title">{r.book_title}</div>
                             <div className="rec-card-author">
                               {r.book_author}
                             </div>
@@ -2719,21 +2884,13 @@ function MemberDashboard() {
               </div>
 
               {/* My Wishlist */}
-              <div
-                className="home-section home-color-block"
-                style={{
-                  background: HOME_PALETTE.wishlist.bg,
-                  color: HOME_PALETTE.wishlist.text,
-                }}
-              >
+              <div className="home-section home-card">
                 <button
                   className="home-section-toggle"
                   onClick={() => toggleHomeSection("wishlist")}
                   aria-expanded={openHomeSection === "wishlist"}
                 >
-                  <span className="home-color-block-heading">
-                    My Wishlist
-                  </span>
+                  <span className="home-card-heading">My Wishlist</span>
                   <span
                     className={`home-section-chevron${
                       openHomeSection === "wishlist" ? " open" : ""
@@ -2800,20 +2957,14 @@ function MemberDashboard() {
 
               {/* Book preview */}
               {books.length > 0 && (
-                <div
-                  className="home-section home-color-block home-slant-top"
-                  style={{
-                    background: HOME_PALETTE.collection.bg,
-                    color: HOME_PALETTE.collection.text,
-                  }}
-                >
+                <div className="home-section home-card">
                   <div className="home-section-header">
                     <button
                       className="home-section-toggle"
                       onClick={() => toggleHomeSection("collection")}
                       aria-expanded={openHomeSection === "collection"}
                     >
-                      <span className="home-color-block-heading">
+                      <span className="home-card-heading">
                         From the collection
                       </span>
                       <span
@@ -3902,7 +4053,13 @@ function MemberDashboard() {
                     <button
                       className="btn btn-sm"
                       onClick={() => {
-                        setCommunityForm({ name: "", description: "" });
+                        setCommunityForm({
+                          id: null,
+                          name: "",
+                          description: "",
+                          icon_url: "",
+                          banner_url: "",
+                        });
                         setCommunityFormError("");
                         setShowCreateCommunity(true);
                       }}
@@ -3918,40 +4075,66 @@ function MemberDashboard() {
                       <div className="community-section-label">
                         Your pending requests
                       </div>
-                      {myCommunities
-                        .filter((c) => c.status !== "approved")
-                        .map((c) => (
-                          <div key={c.id} className="community-card">
-                            <div className="community-card-header">
-                              <div>
-                                <div className="community-card-name">
-                                  {c.name}
+                      <div className="communities-grid">
+                        {myCommunities
+                          .filter((c) => c.status !== "approved")
+                          .map((c) => (
+                            <div key={c.id} className="community-card">
+                              <div
+                                className="community-card-banner"
+                                style={
+                                  c.banner_url
+                                    ? { backgroundImage: `url(${c.banner_url})` }
+                                    : undefined
+                                }
+                              >
+                                <div className="community-card-icon-wrap">
+                                  {c.icon_url ? (
+                                    <img
+                                      src={c.icon_url}
+                                      alt=""
+                                      className="community-card-icon"
+                                    />
+                                  ) : (
+                                    <div className="community-card-icon-placeholder">
+                                      {c.name.charAt(0).toUpperCase()}
+                                    </div>
+                                  )}
                                 </div>
-                                {c.description && (
-                                  <div className="community-card-desc">
-                                    {c.description}
+                              </div>
+                              <div className="community-card-body">
+                                <div className="community-card-header">
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div className="community-card-name">
+                                      {c.name}
+                                    </div>
+                                    {c.description && (
+                                      <div className="community-card-desc">
+                                        {c.description}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <Badge
+                                    variant={
+                                      c.status === "rejected"
+                                        ? "overdue"
+                                        : "returned"
+                                    }
+                                  >
+                                    {c.status === "rejected"
+                                      ? "Rejected"
+                                      : "Pending approval"}
+                                  </Badge>
+                                </div>
+                                {c.admin_notes && (
+                                  <div className="community-admin-note">
+                                    Admin note: {c.admin_notes}
                                   </div>
                                 )}
                               </div>
-                              <Badge
-                                variant={
-                                  c.status === "rejected"
-                                    ? "overdue"
-                                    : "returned"
-                                }
-                              >
-                                {c.status === "rejected"
-                                  ? "Rejected"
-                                  : "Pending approval"}
-                              </Badge>
                             </div>
-                            {c.admin_notes && (
-                              <div className="community-admin-note">
-                                Admin note: {c.admin_notes}
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                          ))}
+                      </div>
                     </div>
                   )}
 
@@ -3962,16 +4145,52 @@ function MemberDashboard() {
                       No communities yet — be the first to create one!
                     </div>
                   ) : (
-                    communities.map((c) => (
-                      <div key={c.id} className="community-card">
-                        <div className="community-card-header">
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div className="community-card-name">{c.name}</div>
-                            {c.description && (
-                              <div className="community-card-desc">
-                                {c.description}
+                    <div className="communities-grid">
+                      {communities.map((c) => (
+                        <div key={c.id} className="community-card">
+                          <div
+                            className="community-card-banner"
+                            style={
+                              c.banner_url
+                                ? { backgroundImage: `url(${c.banner_url})` }
+                                : undefined
+                            }
+                          >
+                            <div className="community-card-icon-wrap">
+                              {c.icon_url ? (
+                                <img
+                                  src={c.icon_url}
+                                  alt=""
+                                  className="community-card-icon"
+                                />
+                              ) : (
+                                <div className="community-card-icon-placeholder">
+                                  {c.name.charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="community-card-body">
+                            <div className="community-card-header">
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div className="community-card-name">
+                                  {c.name}
+                                </div>
+                                {c.description && (
+                                  <div className="community-card-desc">
+                                    {c.description}
+                                  </div>
+                                )}
                               </div>
-                            )}
+                              {c.user_role === "moderator" && (
+                                <button
+                                  className="btn btn-sm btn-outline"
+                                  onClick={() => openEditCommunity(c)}
+                                >
+                                  Edit
+                                </button>
+                              )}
+                            </div>
                             <div className="community-card-meta">
                               {c.member_count} member
                               {c.member_count !== 1 ? "s" : ""} · {c.post_count}{" "}
@@ -3982,35 +4201,35 @@ function MemberDashboard() {
                                 </span>
                               )}
                             </div>
-                          </div>
-                          <div className="btn-row" style={{ flexShrink: 0 }}>
-                            {c.is_member ? (
-                              <>
+                            <div className="btn-row">
+                              {c.is_member ? (
+                                <>
+                                  <button
+                                    className="btn btn-sm"
+                                    onClick={() => openCommunity(c)}
+                                  >
+                                    View
+                                  </button>
+                                  <button
+                                    className="btn btn-sm btn-outline"
+                                    onClick={() => leaveCommunity(c.id)}
+                                  >
+                                    Leave
+                                  </button>
+                                </>
+                              ) : (
                                 <button
                                   className="btn btn-sm"
-                                  onClick={() => openCommunity(c)}
+                                  onClick={() => joinCommunity(c)}
                                 >
-                                  View
+                                  Join
                                 </button>
-                                <button
-                                  className="btn btn-sm btn-outline"
-                                  onClick={() => leaveCommunity(c.id)}
-                                >
-                                  Leave
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                className="btn btn-sm"
-                                onClick={() => joinCommunity(c)}
-                              >
-                                Join
-                              </button>
-                            )}
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
+                      ))}
+                    </div>
                   )}
                 </>
               ) : communityView === "community" ? (
@@ -5030,20 +5249,96 @@ function MemberDashboard() {
           </Modal>
         )}
 
-        {/* Create Community Modal */}
+        {/* Create / Edit Community Modal */}
         {showCreateCommunity && (
           <Modal
-            title="Create a Community"
+            title={communityForm.id ? "Edit Community" : "Create a Community"}
             onClose={() => setShowCreateCommunity(false)}
           >
-            <p style={{ fontSize: "0.85rem", color: "#666", marginBottom: 16 }}>
-              Communities require admin approval before members can join. You'll
-              be notified once reviewed.
-            </p>
-            <form onSubmit={submitCreateCommunity}>
+            {!communityForm.id && (
+              <p
+                style={{ fontSize: "0.85rem", color: "#666", marginBottom: 16 }}
+              >
+                Communities require admin approval before members can join.
+                You'll be notified once reviewed.
+              </p>
+            )}
+            <form onSubmit={submitCommunityForm}>
               {communityFormError && (
                 <div className="error">{communityFormError}</div>
               )}
+              <div className="form-group">
+                <label>
+                  Banner{" "}
+                  <span
+                    className="muted"
+                    style={{ textTransform: "none", fontSize: "0.75rem" }}
+                  >
+                    (optional)
+                  </span>
+                </label>
+                <div
+                  className="community-banner-picker"
+                  style={
+                    communityForm.banner_url
+                      ? { backgroundImage: `url(${communityForm.banner_url})` }
+                      : undefined
+                  }
+                  onClick={() => communityBannerInputRef.current?.click()}
+                >
+                  {!communityForm.banner_url && (
+                    <span className="community-banner-picker-hint">
+                      Click to upload a banner image
+                    </span>
+                  )}
+                </div>
+                <input
+                  ref={communityBannerInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={handleCommunityBannerChange}
+                />
+              </div>
+              <div className="form-group">
+                <label>
+                  Icon{" "}
+                  <span
+                    className="muted"
+                    style={{ textTransform: "none", fontSize: "0.75rem" }}
+                  >
+                    (optional)
+                  </span>
+                </label>
+                <div className="community-icon-picker-row">
+                  <div
+                    className="community-icon-picker"
+                    onClick={() => communityIconInputRef.current?.click()}
+                  >
+                    {communityForm.icon_url ? (
+                      <img
+                        src={communityForm.icon_url}
+                        alt=""
+                        className="community-icon-picker-img"
+                      />
+                    ) : (
+                      <span className="community-icon-picker-placeholder">
+                        {(communityForm.name || "?").charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <span className="community-icon-picker-hint">
+                    Click to upload an icon
+                  </span>
+                </div>
+                <input
+                  ref={communityIconInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={handleCommunityIconChange}
+                />
+              </div>
               <div className="form-group">
                 <label>Name *</label>
                 <input
@@ -5087,7 +5382,7 @@ function MemberDashboard() {
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-sm">
-                  Submit for Approval
+                  {communityForm.id ? "Save Changes" : "Submit for Approval"}
                 </button>
               </div>
             </form>
@@ -5145,6 +5440,32 @@ function MemberDashboard() {
             <p style={{ marginBottom: 20, fontSize: "0.9rem", color: "#555" }}>
               Returning <strong>{returnModal.bookTitle}</strong>
             </p>
+
+            {returnHasUnpaidFine && (
+              <div className="return-fine-notice">
+                <div className="return-fine-amount">
+                  Fine due: <strong>${returnModal.fine.toFixed(2)}</strong>
+                </div>
+                <div className="anonymous-row">
+                  <input
+                    type="checkbox"
+                    id="pay-fine-check"
+                    checked={payFineWithReturn}
+                    onChange={(e) => setPayFineWithReturn(e.target.checked)}
+                  />
+                  <label htmlFor="pay-fine-check">
+                    I'm paying this fine now — submit for admin verification
+                  </label>
+                </div>
+                {!payFineWithReturn && (
+                  <p className="return-fine-hint">
+                    This book has an unpaid fine. Check the box above to
+                    submit your fine payment along with the return for the
+                    library to verify.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div style={{ marginBottom: 16 }}>
               <div className="book-detail-label" style={{ marginBottom: 10 }}>
@@ -5210,8 +5531,16 @@ function MemberDashboard() {
               >
                 Cancel
               </button>
-              <button className="btn btn-sm" onClick={handleReturn}>
-                {reviewRating > 0 ? "Submit & Return" : "Return"}
+              <button
+                className="btn btn-sm"
+                onClick={handleReturn}
+                disabled={returnHasUnpaidFine && !payFineWithReturn}
+              >
+                {returnHasUnpaidFine
+                  ? "Submit Return & Fine Payment"
+                  : reviewRating > 0
+                  ? "Submit & Return"
+                  : "Return"}
               </button>
             </div>
           </Modal>

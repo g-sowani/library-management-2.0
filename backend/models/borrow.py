@@ -10,6 +10,7 @@ class Borrow(db.Model):
     due_date = db.Column(db.DateTime)
     return_date = db.Column(db.DateTime, nullable=True)
     return_requested_at = db.Column(db.DateTime, nullable=True)
+    fine_payment_requested_at = db.Column(db.DateTime, nullable=True)
     fine = db.Column(db.Float, default=0.0)
     fine_paid = db.Column(db.Boolean, default=False)
 
@@ -32,6 +33,9 @@ class Borrow(db.Model):
             'due_date': self.due_date.isoformat(),
             'return_date': self.return_date.isoformat() if self.return_date else None,
             'return_requested_at': self.return_requested_at.isoformat() if self.return_requested_at else None,
+            'fine_payment_requested_at': (
+                self.fine_payment_requested_at.isoformat() if self.fine_payment_requested_at else None
+            ),
             'fine': self.fine, 'fine_paid': self.fine_paid,
             'is_overdue': not self.return_date and datetime.utcnow() > self.due_date,
         }

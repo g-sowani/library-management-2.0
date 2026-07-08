@@ -3,7 +3,7 @@
 ## Overview
 A full-stack, **multi-library** management app — a single deployment hosts any number of independent libraries, each with its own catalogue, genres, members/admins, fine policy, and membership pricing. Admins register by creating a brand-new library (getting back a shareable join code) or joining an existing one via that code; members join an existing library the same way. Everything below (books, genres, borrows, fines, donations, communities, etc.) is scoped to the caller's own library — see "Multi-Library System" for details.
 
-Admins manage the book catalogue, monitor borrows, configure fines, track inventory changes, review incoming book donations and book-add requests, and approve member membership-tier requests. Members browse books, borrow/return them, reserve books when all copies are out, save books to a wishlist, view their fines, leave optional ratings and reviews when returning a book, donate books to the library in exchange for credit, request that a missing book be added to the catalogue (and get notified on the Home tab once an admin reviews it), and request a membership tier from My Profile (any time after signing up) that activates once an admin approves it. The Books tab surfaces personalised recommendations and trending content to help members discover what to read next. The Home tab is a bold, colour-blocked collapsible dashboard of the member's own borrows/reservations/wishlist/collection highlights. Members can also switch between a classic tab bar and a Mac-style floating dock for navigation. Gold members additionally get community spaces and a set of book-themed word games (Hangman, Word Scramble, Wordle) that build toward a cumulative XP score.
+Admins manage the book catalogue, monitor borrows, configure fines, track inventory changes, review incoming book donations and book-add requests, and approve member membership-tier requests; every admin tab that can have something awaiting review (Books, Borrows, Fines, Members, Communities, Donations) shows a small notification dot next to its label/icon whenever it does. Members browse books, borrow/return them (an overdue borrow can bundle its fine payment into the same return request for admin verification), reserve books when all copies are out, save books to a wishlist, view their fines, leave optional ratings and reviews when returning a book, donate books to the library in exchange for credit, request that a missing book be added to the catalogue (and get notified on the Home tab once an admin reviews it), and request a membership tier from My Profile (any time after signing up) that activates once an admin approves it. The Books tab surfaces personalised recommendations and trending content to help members discover what to read next. The Home tab is a collapsible dashboard — themed the same as the rest of the app (no bespoke colours) — of the member's own borrows/past-borrows/reservations/wishlist/collection, with a warning banner and a direct link to return overdue books. Members can also switch between a classic tab bar and a Mac-style floating dock for navigation (from either My Profile or the TopBar profile dropdown — the dropdown toggle is also how an admin sets it, since the admin dashboard has no Profile tab of its own). Gold members additionally get community spaces — communities can carry a creator/moderator-set icon and banner image, shown as cards in the Community tab — and a set of book-themed word games (Hangman, Word Scramble, Wordle) that build toward a cumulative XP score.
 
 ---
 
@@ -128,7 +128,10 @@ backend/
     borrow.py         # Borrow (user↔book, borrow/due/return dates, fine, fine_paid,
                       #   return_requested_at nullable DateTime — set when a member requests a
                       #   return, cleared on admin reject; return_date stays NULL until an admin
-                      #   approves — see "Return Approval Workflow" below)
+                      #   approves; fine_payment_requested_at nullable DateTime — set alongside
+                      #   return_requested_at when the member opts to submit fine payment together
+                      #   with an overdue return, cleared (and fine_paid flipped True) on admin
+                      #   approve, or just cleared on reject — see "Return Approval Workflow" below)
     reservation.py    # Reservation (user↔book, created_at, status: pending|ready)
     book_log.py       # BookLog (audit log per book — action, details, admin, timestamp)
     setting.py        # Setting (id, library_id FK, key, value; UNIQUE(library_id, key)) — every
@@ -163,8 +166,11 @@ backend/
                       #   member-submitted "please add this book" request, surfaced when a
                       #   catalogue search returns no results — see "Book Request System" below
     community.py      # 6 models for the Gold-member community feature:
-                      #   Community (id, name, description, creator_id FK, library_id FK,
-                      #     status: pending|approved|rejected, admin_notes, created_at)
+                      #   Community (id, name, description, icon_url, banner_url, creator_id FK,
+                      #     library_id FK, status: pending|approved|rejected, admin_notes, created_at)
+                      #     icon_url/banner_url: nullable TEXT — base64 data-URL images, same
+                      #       storage convention as User.avatar; settable at creation and editable
+                      #       later by the creator or a moderator (see "Community System" below)
                       #     UNIQUE(library_id, name) — communities are scoped per library, so two
                       #     libraries can each have their own "Book Club"
                       #   CommunityMembership (community_id, user_id, role: member|moderator, joined_at)
@@ -263,9 +269,11 @@ backend/
                       #     the optional rating/review body, applied immediately regardless of
                       #     approval since a review doesn't touch book availability). 400s if a
                       #     request is already pending, or if the borrow has an unpaid fine
-                      #     (checks `fine > 0 and not fine_paid` after a fresh calculate_fine() —
-                      #     blocks the request outright rather than letting it sit pending
-                      #     unapprovable). See "Return Approval Workflow" below for the admin side
+                      #     (checks `fine > 0 and not fine_paid` after a fresh calculate_fine())
+                      #     UNLESS the body includes `pay_fine: true`, in which case
+                      #     fine_payment_requested_at is stamped alongside return_requested_at so
+                      #     the same admin approval finalizes both. See "Return Approval Workflow"
+                      #     below for the admin side
     reservations.py   # /api/reserve/, /api/cancel-reservation/, /api/my-reservations
                       #   reserve_book() verifies the target book belongs to the caller's library
     wishlist.py       # GET /api/my-wishlist — caller's saved books, newest first
@@ -304,9 +312,13 @@ backend/
                       #     admin), recalculates the fine, then either promotes the next pending
                       #     Reservation to 'ready' or increments available_copies — identical
                       #     copy-release logic to what the old member-facing return_book() used
-                      #     to do inline before this became a two-step approval flow
+                      #     to do inline before this became a two-step approval flow. If
+                      #     fine_payment_requested_at is set (member bundled a fine payment with
+                      #     this return), also flips fine_paid=True and clears that timestamp — one
+                      #     admin action verifies both the return and the payment
                       #   PUT /api/admin/returns/<borrow_id>/reject — clears return_requested_at
-                      #     (back to a normal active borrow) so the member can request again;
+                      #     and fine_payment_requested_at (back to a normal active borrow, fine
+                      #     still unpaid if there was one) so the member can request again;
                       #     same 400/404 guards as approve
                       #   members list now includes membership_tier and family_group_id
                       #   update_member_tier / admin_member_borrows — 404 if the target member
@@ -367,7 +379,13 @@ backend/
                       #     caller's before proceeding — 404 otherwise
                       # GET  /api/communities              — all approved communities in the
                       #   caller's own library
-                      # POST /api/communities              — create community (Gold; status=pending)
+                      # POST /api/communities              — create community (Gold; status=pending);
+                      #   body may include icon_url/banner_url (base64 data-URL, validated same as
+                      #   User.avatar: must start with "data:image/", size-capped — 2MB icon / 4MB
+                      #   banner)
+                      # PUT  /api/communities/:id           — edit name/description/icon_url/
+                      #   banner_url; creator or a moderator only (403 otherwise), any subset of
+                      #   fields may be sent
                       # GET  /api/my-communities           — communities the caller has joined
                       # POST /api/communities/:id/join     — join an approved community
                       # DEL  /api/communities/:id/leave    — leave a community
@@ -392,7 +410,7 @@ backend/
 ### DB migrations
 `app.py` runs `_migrate_db()` on every startup. It uses a reusable `add_missing_cols(table, additions)` helper that calls `ALTER TABLE` for any column in models not yet present in the SQLite file. New tables (e.g. `community`, `community_membership`, `membership_request`, `book_request`, `library`) are created automatically by `db.create_all()`. `_seed_memberships()` is no longer called automatically on startup — see "Membership Request System" below.
 
-Tables currently patched via simple `ALTER TABLE ADD COLUMN` by `add_missing_cols`: `book` (genre, description, author_bio, cover_url, cover_color), `user` (avatar, xp, library_id, email, google_sub), `post_reaction` (created_at), `comment_reaction` (created_at), `borrow` (return_requested_at). A `CREATE UNIQUE INDEX IF NOT EXISTS` (partial, `WHERE google_sub IS NOT NULL`) backs `user.google_sub` on every startup, same pattern as the `email` index below. All raw SQL touching the `user` table double-quotes it (`"user"`) since `user` is a reserved keyword in Postgres — see "Deployment" above.
+Tables currently patched via simple `ALTER TABLE ADD COLUMN` by `add_missing_cols`: `book` (genre, description, author_bio, cover_url, cover_color), `user` (avatar, xp, library_id, email, google_sub), `post_reaction` (created_at), `comment_reaction` (created_at), `borrow` (return_requested_at, fine_payment_requested_at), `community` (icon_url, banner_url). A `CREATE UNIQUE INDEX IF NOT EXISTS` (partial, `WHERE google_sub IS NOT NULL`) backs `user.google_sub` on every startup, same pattern as the `email` index below. All raw SQL touching the `user` table double-quotes it (`"user"`) since `user` is a reserved keyword in Postgres — see "Deployment" above.
 
 **Multi-library migration** (`_migrate_to_multi_library()`) — four tables (`book`, `genre`, `community`, `setting`) each had a *global* unique constraint (or, for `setting`, a bare-string primary key) that had to become per-library, and SQLite can't `ALTER` a constraint in place. Each is rebuilt: rename the old table aside, `db.create_all()` recreates it fresh with the new schema (composite `UNIQUE(library_id, ...)`), copy every row across while backfilling `library_id`, drop the renamed original. A "Default Library" is created (or reused if one already exists) to backfill onto every pre-existing row. Detected via column-presence (`library_id` missing) so it's a no-op on both a fresh DB (already has the new schema from `db.create_all()`) and an already-migrated one (safe to run on every startup).
 
@@ -447,6 +465,13 @@ frontend/src/
                             #     Appearance row — 3 compact pd-option buttons: Light / System / Dark
                             #     Reader Themes row — 4 compact pd-option buttons: Sepia / Forest /
                             #       Ocean / Rose; clicking an active theme toggles it off (back to base)
+                            #     Navigation row — 2 compact pd-option buttons: Tab Bar / Dock, calls
+                            #       ThemeContext's setNavStyle('tabs' | 'dock'); this is the *only*
+                            #       nav-style toggle available on the admin dashboard (which has no
+                            #       Profile tab of its own — see AdminDashboard.js below); a second,
+                            #       equivalent picker with fuller previews still lives in the member
+                            #       My Profile tab (see "Preferences" below) — either one changes the
+                            #       same global preference
                             #     Replay Tour row (pd-item, only rendered if onReplayTour passed) —
                             #       re-opens the Onboarding tour on demand
                             #     Sign Out row
@@ -461,12 +486,16 @@ frontend/src/
     NavTabs.js              # Tab bar driven by a tabs config array
                             #   accepts `badges = {}` prop: { [tabId]: number }
                             #   renders a red pill badge next to the tab label when count > 0
+                            #   accepts `dots = {}` prop: { [tabId]: boolean } — renders a small
+                            #     6px `.nav-tab-dot` next to the label when true; independent of
+                            #     `badges` (a presence indicator, not a count) — used by
+                            #     AdminDashboard's per-tab pending-approval dots (see above)
                             #   Shown when navStyle === 'tabs' (default); Dock.js replaces it entirely
                             #     when navStyle === 'dock' (see below) — both take the same
-                            #     tabs/active/onChange/badges props so dashboards swap one for the
+                            #     tabs/active/onChange/badges/dots props so dashboards swap one for the
                             #     other with no other changes
     Dock.js                 # Mac-style floating icon dock — alternative to NavTabs when the user's
-                            #   navStyle preference is 'dock'; same tabs/active/onChange/badges props
+                            #   navStyle preference is 'dock'; same tabs/active/onChange/badges/dots props
                             #   Renders as a `position: fixed`, bottom-centered rounded pill
                             #     (`.dock-wrap` > `.dock`) with one icon button per tab, no text labels
                             #   ICONS — a hardcoded map of tab id → inline stroke-SVG icon; every tab id
@@ -482,7 +511,11 @@ frontend/src/
                             #     competing browser tooltip); `aria-label` still set for a11y
                             #   Active tab gets an accent-coloured icon + a small dot indicator;
                             #     hover lifts the icon slightly (translateY + scale)
-                            #   Badge counts render as a small red circle on the icon's corner
+                            #   Badge counts render as a small red circle on the icon's corner;
+                            #     `dots[id]` renders a smaller unlabeled `.dock-pending-dot` in the
+                            #     same corner instead (distinct class from the always-present
+                            #     active-state `.dock-dot` above, which is the current-tab indicator,
+                            #     not a notification)
                             #   Both dashboards add a `layout-nav-dock` class to `.layout` when active,
                             #     which pads `.content` at the bottom so page content never sits under
                             #     the fixed dock
@@ -667,65 +700,70 @@ frontend/src/
                             #     --accent-text CSS vars on the layout root; WCAG-safe text
                             #     colour computed via wcagTextColor(); null if no borrow history
                             #
-                            # Home tab (default landing tab) — bold, colour-blocked, editorial
-                            #   layout (vivid backgrounds + oversized type), not the earlier flat
-                            #   "What we offer" services-strip design, which was removed entirely
-                            #   (SERVICES const, servicesRef/servicesTimerRef/servicesActive state,
-                            #   and its CSS are all gone — replaced by the sections below):
+                            # Home tab (default landing tab) — themed the same as every other tab
+                            #   (plain .home-card boxes using --bg/--text/--border etc., no bespoke
+                            #   colours), not the earlier flat "What we offer" services-strip design
+                            #   either (SERVICES const, servicesRef/servicesTimerRef/servicesActive
+                            #   state, and its CSS are all gone — replaced by the sections below).
+                            #   An earlier "vivid, colour-blocked" redesign (a fixed HOME_PALETTE of
+                            #   5 hand-picked hex colours run through wcagTextColor()/
+                            #   minAlphaForContrast(), diagonal clip-path slants between sections,
+                            #   negative-margin overlap) was reverted in full — the Home tab had
+                            #   drifted from the rest of the app's neutral theme system, so it now
+                            #   uses the exact same CSS variables as every other tab instead of its
+                            #   own palette:
                             #
-                            #   HOME_PALETTE (module scope) — 5 hand-picked vivid hex colours (hero/
-                            #     borrowed/reservations/wishlist/collection), each run through
-                            #     wcagTextColor() + minAlphaForContrast() (the same helpers the Book
-                            #     Detail hero uses for cover_color) to pick black-or-white text and
-                            #     alpha-tune label/subtle text tiers so every tier clears 4.5:1
-                            #     against that exact background — a fixed palette, not per-book data
-                            #   1. Hero banner (home-hero, HOME_PALETTE.hero: cobalt blue bg, white
-                            #      text) — username eyebrow chip, oversized (3.25rem/800) time-aware
-                            #      greeting ("Good morning/afternoon/evening/Hello night owl"),
-                            #      subtitle; bottom edge cut on a diagonal via clip-path
-                            #      (.home-slant-bottom)
-                            #   2. Book-request notification banners (conditional; see "Book Request
+                            #   1. Hero banner (home-hero) — username eyebrow chip, oversized
+                            #      (3.25rem/800) time-aware greeting ("Good morning/afternoon/
+                            #      evening/Hello night owl"), subtitle; plain themed box, no slant
+                            #   2. Overdue books / unpaid fines alert (conditional; AlertTriangleIcon
+                            #      + red-accented .overdue-alert box, same red used by
+                            #      .status-tag-overdue) — shown whenever the caller has any active
+                            #      overdue borrow (activeBorrows.filter(is_overdue)) or unpaid fine
+                            #      (fines.filter(!fine_paid && fine>0)); title combines both counts
+                            #      when both apply (e.g. "You have 2 overdue books and $8.00 in
+                            #      unpaid fines"). A "Return this book →" / "Return your books →"
+                            #      link (goToOverdueBooks()) only renders when there's an actual
+                            #      overdue borrow to act on: with exactly one, it opens the Return
+                            #      modal for that borrow directly; with more than one, it expands the
+                            #      My Borrowed Books section (setOpenHomeSection("borrowed")) and
+                            #      smooth-scrolls to it (borrowedSectionRef)
+                            #   3. Book-request notification banners (conditional; see "Book Request
                             #      System" below) — dismissible approve/reject outcome cards for the
                             #      caller's own book requests that haven't been acknowledged yet
-                            #   3–6. Four collapsible, colour-blocked sections — My Borrowed Books,
-                            #      My Reservations, My Wishlist (all three moved here from the My
+                            #   4–8. Five collapsible .home-card sections — My Borrowed Books, Past
+                            #      Borrows, My Reservations, My Wishlist (all moved here from the My
                             #      Profile tab; My Fines and Donate a Book stayed in My Profile), and
                             #      From the collection (6-book grid, first 6 books from API, "View
-                            #      all →" link to Available Books). Borrowed/Reservations/Wishlist
-                            #      render the same .books-grid/.rec-card markup as the Available
-                            #      Books grid (Collection uses .home-books-grid/.home-book-card
-                            #      instead) — the exact same cover/title/author/meta markup either
-                            #      way, so "my stuff" looks identical to browsing the catalogue:
+                            #      all →" link to Available Books). Borrowed/Past
+                            #      Borrows/Reservations/Wishlist render the same .books-grid/.rec-card
+                            #      markup as the Available Books grid (Collection uses
+                            #      .home-books-grid/.home-book-card instead) — the exact same
+                            #      cover/title/author/meta markup either way, so "my stuff" looks
+                            #      identical to browsing the catalogue:
                             #      - card is a div (role="button", not a <button>) so it can host a
                             #        stopPropagation'd .admin-card-actions row (Return / Cancel /
                             #        Remove) inside it while the rest of the card still opens the
                             #        Book Detail modal on click
                             #      - Borrowed Books shows Active/Overdue Badge + due date in the
-                            #        .rec-card-avail line; Reservations shows Ready/Queue #N Badge;
-                            #        Wishlist shows Available/Unavailable
+                            #        .rec-card-avail line (plus a Return Requested badge once
+                            #        pending); Past Borrows (pastBorrows = borrows.filter(return_date),
+                            #        newest-return-first) shows a Returned badge + return date, plus a
+                            #        paid/unpaid fine badge when the borrow had one; Reservations shows
+                            #        Ready/Queue #N Badge; Wishlist shows Available/Unavailable
                             #      - cover art is looked up by book_id against the already-loaded
                             #        `books` array (borrow/reservation/wishlist API responses don't
                             #        carry cover_url themselves, wishlist's does via book_cover)
                             #      - Section accordion: openHomeSection state (default "borrowed")
-                            #        — only one of borrowed/reservations/wishlist/collection is
-                            #        expanded at a time; toggleHomeSection(key) flips it, or closes
+                            #        — only one of borrowed/history/reservations/wishlist/collection
+                            #        is expanded at a time; toggleHomeSection(key) flips it, or closes
                             #        it entirely if it's already open. Header is a clickable
                             #        .home-section-toggle button (bold heading + ChevronDown that
                             #        rotates 180° via .home-section-chevron.open); collapsed sections
                             #        show only their header bar
-                            #      - Sections overlap: .home-color-block has margin-top: -40px, so
-                            #        each section (and each collapsed header bar) is pulled up over
-                            #        the one above it — combined with .home-tab's gap: 0, sections
-                            #        visually pile/stack rather than floating with whitespace between
-                            #      - Diagonal accents: Reservations has both .home-slant-top and
-                            #        .home-slant-bottom (a full parallelogram tilt); Collection has
-                            #        .home-slant-top; Borrowed and Wishlist stay plain rounded blocks
-                            #        for contrast. clip-path replaces border-radius on cut sides, and
-                            #        those sides get extra padding so content clears the slant
-                            #      - .empty state text and the "View all →" link inside a colour
-                            #        block use `color: inherit` (the block's WCAG-verified text
-                            #        colour) instead of the normal muted grey, since --text-5 isn't
-                            #        guaranteed to contrast against an arbitrary vivid background
+                            #      - Sections just stack with normal spacing (.home-tab gap, no
+                            #        overlap/negative-margin trick, no diagonal clip-path accents —
+                            #        both were part of the reverted vivid redesign)
                             #
                             # Available Books tab (top → bottom):
                             #   1. Search trigger row — magnifying-glass icon button; book count
@@ -816,7 +854,13 @@ frontend/src/
                             #   Donate a Book section — Donate button opens modal; table of past
                             #     donations with status, estimated value, and credit earned;
                             #     total credits earned card (approved donations only)
-                            # Return modal: optional 5-star picker, review text, anonymous toggle
+                            # Return modal: optional 5-star picker, review text, anonymous toggle;
+                            #   if the borrow has an unpaid fine (returnHasUnpaidFine), also shows a
+                            #   .return-fine-notice with the amount and a "I'm paying this fine now"
+                            #   checkbox (payFineWithReturn) — submit is disabled until it's checked,
+                            #   sends { pay_fine: true } to POST /api/return/:id so the same admin
+                            #   approval finalizes the return and the fine payment together (see
+                            #   "Return Approval Workflow" below)
                             # Donate modal: title, author, ISBN (optional), genre (optional),
                             #   condition — all dropdowns use the custom Select component
                             #   estimated value field with live credit preview (value/4);
@@ -872,9 +916,26 @@ frontend/src/
                             #
                             # Community tab (Gold members only; non-gold sees a locked card):
                             #   3-level view: list → community → post
-                            #   List view: Browse all approved communities + My Communities strip;
-                            #     Create Community button → modal (name, description); submitted
-                            #     as pending until admin approves
+                            #   List view: approved communities render as `.communities-grid` cards
+                            #     (`.community-card` — a `.community-card-banner` image strip with a
+                            #     circular `.community-card-icon` overlapping its bottom-left corner,
+                            #     falling back to the community's first-letter initial when no
+                            #     icon/banner is set) instead of a plain list row; pending/rejected
+                            #     requests (from My Communities) render the same card shape above the
+                            #     grid, badge showing status instead of Join/Leave. Create Community
+                            #     button → modal (banner picker, icon picker, name, description);
+                            #     submitted as pending until admin approves
+                            #   Icon/banner upload — same base64-resize-then-PUT pattern as the
+                            #     profile avatar editor (resizeImageToBase64(file, maxPx)): icon
+                            #     resized to 200px, banner to 1000px, both client-resized before
+                            #     POST/PUT so the payload stays well under the backend's per-field
+                            #     size cap (2MB icon / 4MB banner, see communities.py above). Settable
+                            #     at creation and editable later — an "Edit" button appears on a
+                            #     community's card whenever `user_role === "moderator"` (the creator
+                            #     is auto-added as a moderator on admin approval, so "owner" and
+                            #     "moderator" are the same permission check client-side); the same
+                            #     Create/Edit modal is reused for both (communityForm.id set = edit
+                            #     mode, PUT instead of POST, title/button text swap accordingly)
                             #   Community view: community header, member count, Join/Leave button,
                             #     post list with SVG reaction mini-previews; Create Post button
                             #   Post view: full post content, SVG reaction bar (like/love/haha/wow/sad/angry),
@@ -891,6 +952,16 @@ frontend/src/
                             # TopBar receives onReplayTour (reopens onboarding)
                             # navStyle (from useTheme()) picks NavTabs vs Dock for the tab bar,
                             #   same as MemberDashboard — see Dock.js and ThemeContext.js above
+                            # Pending-approval dots — `tabDots` is a plain object computed each
+                            #   render (`{ books, borrows, fines, members, communities, donations }`,
+                            #   each a boolean) and passed as the `dots` prop to whichever of
+                            #   NavTabs/Dock is active (see their entries above): books = any pending
+                            #   book request; borrows = any active borrow with return_requested_at
+                            #   set; fines = memberStats.finesPending > 0; members = any pending
+                            #   membership request; communities/donations = any Kanban card still in
+                            #   the Pending column. Purely a presence indicator (a small dot, not a
+                            #   count) — unlike the member Community tab's numeric badge, this is
+                            #   "something needs your attention" rather than "here's how many"
                             # showOnboarding state — set true on mount if
                             #   localStorage["onboarding_seen_<username>"] is unset; renders
                             #   <Onboarding role="admin" .../> as a sibling above .layout
@@ -1046,7 +1117,10 @@ frontend/src/
                             #   Tags column — a `.status-tag` pill (green "Due in N day(s)"/"Due
                             #     today", or red "Overdue"; `dueInDaysLabel()` computes the day
                             #     count) plus, if a return is pending, a second amber
-                            #     `.status-tag-queue` "Return Requested" pill
+                            #     `.status-tag-queue` "Return Requested" pill, and a third
+                            #     "Fine Payment $X Pending" pill if the member bundled a fine
+                            #     payment claim with that same return request
+                            #     (`fine_payment_requested_at` set)
                             #   Return approval workflow (see "Return Approval Workflow" below for
                             #     the full backend spec) — a member's return no longer finalizes
                             #     anything; once `return_requested_at` is set on a Borrow, this
@@ -1054,8 +1128,15 @@ frontend/src/
                             #     buttons (`approveReturn`/`rejectReturn`, disabled while
                             #     `processingReturnId` matches that row). Approve calls
                             #     `PUT /api/admin/returns/:id/approve` and removes the row from
-                            #     `borrows` (it's no longer active); Reject calls .../reject and
-                            #     just clears `return_requested_at` on that row in place
+                            #     `borrows` (it's no longer active) — if a fine payment was bundled,
+                            #     this same call also marks it paid; Reject calls .../reject and
+                            #     just clears `return_requested_at` (and any bundled
+                            #     `fine_payment_requested_at`) on that row in place
+                            #   `filteredBorrows` sorts pending requests first (any row with
+                            #     `return_requested_at` set sorts ahead of ordinary active borrows,
+                            #     stable otherwise) — so rows needing an Approve/Reject decision
+                            #     surface at the top of the table instead of being buried among
+                            #     regular active borrows
                             #   `table-layout: fixed` with per-column % widths (`.borrows-table`)
                             #     so column widths never reflow as filters change which rows show
                             #
@@ -1199,7 +1280,7 @@ Unless noted otherwise, every endpoint below is scoped to the caller's own libra
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | POST | `/api/borrow/:bookId` | member | Borrow a book |
-| POST | `/api/return/:borrowId` | member | **Files a return request** (doesn't finalize the return — see "Return Approval Workflow"); sets `return_requested_at`. Optional JSON body `{ rating, review_text, is_anonymous }` still submits a review immediately. 400 if already requested, or if there's an unpaid fine |
+| POST | `/api/return/:borrowId` | member | **Files a return request** (doesn't finalize the return — see "Return Approval Workflow"); sets `return_requested_at`. Optional JSON body `{ rating, review_text, is_anonymous }` still submits a review immediately. If the borrow has an unpaid fine, the body must also include `{ pay_fine: true }` (sets `fine_payment_requested_at` alongside the return request) or the call 400s. 400 if a return is already requested |
 | GET | `/api/my-borrows` | member | Caller's borrow history |
 | GET | `/api/my-fines` | member | Caller's unpaid fines |
 
@@ -1235,8 +1316,8 @@ Unless noted otherwise, every endpoint below is scoped to the caller's own libra
 | GET | `/api/admin/fines` | admin | All unpaid fines |
 | PUT | `/api/admin/fines/:borrow_id/mark-paid` | admin | Mark a fine as paid |
 | GET | `/api/admin/fines/history` | admin | All *paid* fines, newest due-date first |
-| PUT | `/api/admin/returns/:borrow_id/approve` | admin | Approve a pending return request — finalizes `return_date` (frozen at the original request time), releases the copy or promotes the next reservation |
-| PUT | `/api/admin/returns/:borrow_id/reject` | admin | Reject a pending return request — clears `return_requested_at`, member can request again |
+| PUT | `/api/admin/returns/:borrow_id/approve` | admin | Approve a pending return request — finalizes `return_date` (frozen at the original request time), releases the copy or promotes the next reservation; also marks the fine paid if a payment was bundled in (`fine_payment_requested_at` set) |
+| PUT | `/api/admin/returns/:borrow_id/reject` | admin | Reject a pending return request — clears `return_requested_at` and any bundled `fine_payment_requested_at`, member can request again |
 | GET | `/api/admin/policy` | admin | Current fine policy |
 | PUT | `/api/admin/policy` | admin | Update `fine_per_day` and `borrow_days` |
 | GET | `/api/admin/members` | admin | All members; each entry includes `membership_tier` and `family_group_id` |
@@ -1283,7 +1364,8 @@ Unless noted otherwise, every endpoint below is scoped to the caller's own libra
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/api/communities` | gold | All approved communities with caller's membership status |
-| POST | `/api/communities` | gold | Create a community (status = pending until admin approves) |
+| POST | `/api/communities` | gold | Create a community (status = pending until admin approves); optional `icon_url`/`banner_url` (base64 data-URL, 2MB/4MB cap) |
+| PUT | `/api/communities/:id` | gold (creator/moderator) | Edit `name`/`description`/`icon_url`/`banner_url` (any subset); 403 if the caller isn't the creator or a moderator |
 | GET | `/api/my-communities` | gold | Communities the caller has joined |
 | POST | `/api/communities/:id/join` | gold | Join an approved community |
 | DELETE | `/api/communities/:id/leave` | gold | Leave a community |
@@ -1464,19 +1546,19 @@ Optional OAuth login/registration alongside the existing username+password flow 
 
 ## Return Approval Workflow
 
-Members can no longer finalize their own returns — every return now goes through an admin approval step, and an overdue borrow with an unpaid fine can't even be *requested* for return until the fine is settled.
+Members can no longer finalize their own returns — every return now goes through an admin approval step. An overdue borrow with an unpaid fine can still be *requested* for return, but only if the member bundles a fine payment claim into the same request; both then wait on the same admin approval.
 
-**Why:** returning a book has always released the copy back into circulation (or promoted the next reservation) and locked in the final fine amount — both are consequential, library-facing actions that shouldn't happen purely on a member's say-so with no verification the book was actually handed back.
+**Why:** returning a book has always released the copy back into circulation (or promoted the next reservation) and locked in the final fine amount — both are consequential, library-facing actions that shouldn't happen purely on a member's say-so with no verification the book was actually handed back (or the fine actually paid).
 
 **Member flow:**
-1. Clicking **Return** on an active borrow calls `POST /api/return/:borrowId` as before (still accepts an optional rating/review, applied immediately regardless of what happens to the return itself).
-2. If the borrow is overdue with an unpaid fine (`fine > 0 and not fine_paid`, checked via a fresh `calculate_fine()`), the request is rejected outright with an error telling the member to settle the fine first — no pending request is created. (An admin can mark the fine paid — `PUT /api/admin/fines/:id/mark-paid` — even before the book is returned, since fine calculation for an active overdue borrow is already live/read-only up to that point.)
-3. Otherwise, `return_requested_at` is set and the borrow stays **active** (`return_date` still NULL) — the book remains unavailable, no copy is released yet. The member sees a disabled "Return Requested" state instead of the Return button (both in the borrowed-books card list and the book detail modal's action button).
-4. If an admin rejects the request, `return_requested_at` is cleared and the member can request again.
+1. Clicking **Return** on an active borrow opens the Return modal (optional rating/review, applied immediately regardless of what happens to the return itself).
+2. If the borrow is overdue with an unpaid fine (`fine > 0 and not fine_paid`, checked via a fresh `calculate_fine()`), the modal shows the fine amount and a required "I'm paying this fine now" checkbox; Return/Submit is disabled until it's checked. Confirming calls `POST /api/return/:borrowId` with `{ pay_fine: true }` (plus any review fields) — the backend stamps `fine_payment_requested_at` alongside `return_requested_at`. Submitting with `pay_fine` omitted/false is rejected outright (400) with an error telling the member to include the fine payment; no pending request is created in that case.
+3. If there's no unpaid fine, the request proceeds as a plain return — `return_requested_at` is set and the borrow stays **active** (`return_date` still NULL); the book remains unavailable, no copy is released yet. The member sees a disabled "Return Requested" state instead of the Return button (both in the borrowed-books card list and the book detail modal's action button).
+4. If an admin rejects the request, `return_requested_at` (and `fine_payment_requested_at`, if set) is cleared and the member can request again.
 
-**Admin flow (Borrowed Books tab):** a pending request shows an amber "Return Requested" `.status-tag` next to the book's normal due/overdue tag, plus Approve/Reject buttons in the row's action column. Approving calls `PUT /api/admin/returns/:id/approve`, which does everything the old member-facing `return_book()` used to do inline: lock the book row, set `return_date = return_requested_at` (frozen at the moment the member requested it, so the fine doesn't keep accruing while the request sits waiting on the admin), recalculate the fine, and either promote the next pending `Reservation` to `'ready'` or increment `available_copies`. Rejecting just clears `return_requested_at`.
+**Admin flow (Borrowed Books tab):** a pending request shows an amber "Return Requested" `.status-tag` next to the book's normal due/overdue tag — plus a second "Fine Payment $X Pending" tag if a fine payment was bundled in — and Approve/Reject buttons in the row's action column. Pending rows sort to the top of the table (see "Borrowed Books tab" above). Approving calls `PUT /api/admin/returns/:id/approve`, which does everything the old member-facing `return_book()` used to do inline: lock the book row, set `return_date = return_requested_at` (frozen at the moment the member requested it, so the fine doesn't keep accruing while the request sits waiting on the admin), recalculate the fine, and either promote the next pending `Reservation` to `'ready'` or increment `available_copies` — and, if `fine_payment_requested_at` is set, also flips `fine_paid = True` and clears it, so one Approve click verifies both the return and the payment. Rejecting clears both `return_requested_at` and `fine_payment_requested_at` (the fine itself stays unpaid either way — only `mark-paid` or a fresh bundled request can clear it).
 
-**Schema:** `Borrow.return_requested_at` (nullable DateTime) — NULL means no pending request; set means pending; cleared again (by reject) or superseded by a real `return_date` (by approve).
+**Schema:** `Borrow.return_requested_at` (nullable DateTime) — NULL means no pending request; set means pending; cleared again (by reject) or superseded by a real `return_date` (by approve). `Borrow.fine_payment_requested_at` (nullable DateTime) — mirrors `return_requested_at` but only ever set alongside it (never standalone — bundled fine payment is only offered inside the Return flow, not as its own action); cleared by reject, or turned into `fine_paid = True` by approve. `PUT /api/admin/fines/:id/mark-paid` (unbundled, admin-initiated) is unaffected by any of this — it stays the path for an admin recording an in-person cash payment on a borrow that isn't going through a return request at all.
 
 ---
 
@@ -1572,6 +1654,8 @@ Gold members can create communities, which go through admin approval before beco
 
 **Roles within a community:** `member` (default on join) · `moderator` (creator is auto-assigned on approval).
 
+**Branding (icon/banner):** a community can carry `icon_url` and `banner_url` — nullable TEXT columns storing base64 data-URL images, same convention and validation as `User.avatar` (must start with `data:image/`, size-capped: 2MB icon / 4MB banner). Settable at creation (`POST /api/communities`) and editable later via `PUT /api/communities/:id`, restricted to the creator or a moderator (403 otherwise) — since the creator is auto-assigned `moderator` on approval, "owner" and "moderator" collapse to one permission check. The frontend resizes the source image client-side (icon to 200px, banner to 1000px via the same `resizeImageToBase64()` helper the avatar editor uses) before sending it, so the payload stays well under the backend cap regardless of the original file size. Communities render as cards (banner strip + overlapping circular icon, falling back to the community's first-letter initial when unset) in the Community tab's list view instead of plain rows.
+
 **Threaded comments:** `CommunityComment.parent_id` is a self-referential FK. The backend `to_dict()` recursively serialises replies at any depth. The frontend `CommentItem` component is recursive with a `depth` prop; visual indentation is capped at depth 4 (uses `replies-list-flat` CSS class for lighter styling) but nesting continues in data.
 
 **Reactions:** Six types — `like`, `love`, `haha`, `wow`, `sad`, `angry`. Stored as VARCHAR string keys (not emoji characters) in `PostReaction.emoji` / `CommentReaction.emoji`. Each user can have at most one reaction per post or comment (unique constraint); submitting the same reaction again toggles it off. Frontend renders stroke-based inline SVG icons (no icon library), 12–15 px, via the `ReactionIcon` component.
@@ -1601,7 +1685,7 @@ A public marketing page (`pages/LandingPage.js`) rendered at `/` for logged-out 
 **Sections (top → bottom):**
 1. Nav — "Library" wordmark + Sign In / Get Started buttons
 2. Hero — eyebrow, headline, subtext, dual CTA row
-3. Feature photo grid — its own 6-card `SERVICES`-style array (Borrow Books, Reserve a Copy, AI Search, Personalised Picks, Reading Communities, Donate & Earn) using the same `/service_*.jpg` images the member Home tab's services strip used to; rendered with `filter: grayscale(1)` and a bottom gradient overlay (title + description) to keep the public page strictly monochrome. Independent of `MemberDashboard.js`, which removed its own services strip in favour of the colour-blocked Home tab sections — see Home tab notes above
+3. Feature photo grid — its own 6-card `SERVICES`-style array (Borrow Books, Reserve a Copy, AI Search, Personalised Picks, Reading Communities, Donate & Earn) using the same `/service_*.jpg` images the member Home tab's services strip used to; rendered with `filter: grayscale(1)` and a bottom gradient overlay (title + description) to keep the public page strictly monochrome. Independent of `MemberDashboard.js`, which removed its own services strip entirely in favour of the Home tab sections described above (My Borrowed Books, Past Borrows, Reservations, Wishlist, Collection) — this landing-page grid is the only place those service images/descriptions still appear
 4. Membership Tiers — 3-column pricing grid (`.landing-tiers`), one card per tier (Silver/Gold/Family) with a tagline and a benefits checklist; Gold is visually featured (`.landing-tier-featured`, "Most Popular" tag). Price per tier is fetched from `GET /api/membership/pricing` on mount so it can never drift from the real, admin-configurable rate; renders "—" until that request resolves. **Since multi-library:** this page has no library context (a logged-out visitor hasn't picked one yet), so the call is made with no `library_code` — it shows the shared *default* rates every new library starts with (9.99/19.99/29.99), not any specific existing library's admin-customized pricing. Once signed in, My Profile's membership card shows the caller's actual library's rates.
 5. "For Members" / "For Admins" two-column bullet cards (reuses `.onboarding-list` styling)
 6. Inverted CTA banner — `background: var(--text); color: var(--bg)` so it flips correctly across all 10 theme combinations without hardcoded colours
@@ -1649,6 +1733,10 @@ A role-aware, interactive tour (`components/Onboarding.js`) introduces new sessi
 - **Community reactions as string keys, not emoji chars** — storing `like`/`love`/etc. instead of emoji characters avoids encoding issues and makes the validation set (`VALID_REACTIONS`) unambiguous. The frontend resolves keys to SVG icons.
 - **SVG reaction icons inline, no icon library** — avoids adding a dependency; the `ReactionIcon` component renders stroke-based 24×24 viewBox SVGs sized via a `size` prop (default 13). Icons are feather-style paths for visual consistency.
 - **Notification badge via polling, not WebSockets** — 60-second polling via `setInterval` is simple and stateless. The activity-count endpoint is a single aggregating query; polling only runs when the Community tab is not active (to avoid counting events the user is already seeing).
+- **Community icon/banner storage reuses the avatar's base64-in-column pattern, not a file/object store** — the app already has one convention for user-uploaded images (`User.avatar`: validated `data:image/` string, size-capped, stored directly as TEXT) from before this session; `Community.icon_url`/`banner_url` follow the same shape instead of introducing S3/local file storage for what is, at this app's scale, the same kind of small profile-style image.
+- **Community edit permission is "creator or moderator," checked as one thing, not two** — since the community-approval flow already auto-assigns the creator a `moderator` `CommunityMembership` row, checking `user_role === "moderator"` client-side (and `creator_id == user.id or membership.role == 'moderator'` server-side) covers both "owner" and "moderator" with one condition rather than special-casing the creator separately.
+- **Admin's nav-style toggle lives in the shared `TopBar` dropdown, not a new admin-only settings panel** — the admin dashboard has no Profile/Settings tab of its own (unlike the member dashboard, where a fuller picker already lived in My Profile), and `navStyle` is already a global `ThemeContext` preference read by both dashboards. Adding a compact two-button picker to `TopBar.js` (shared by both) gives admins a way to set it without inventing an admin-specific preferences surface, and gives members a second, quicker path to the same setting for free.
+- **Admin per-tab pending indicator is a boolean dot, not a reused numeric badge** — `NavTabs`/`Dock` already had a `badges` prop (a count, used by the member Community tab's unseen-activity number); admin tabs got a separate `dots` prop instead of overloading `badges` with a `1`, since the product ask was "is there anything pending," not "how many" — a plain presence indicator reads more clearly for that question and doesn't imply a number worth reading closely.
 - **Admin tab merging (Fines + Members)** — Pending Fines and Fine Policy share a tab; All Members, Membership Pricing, and Member Tiers share a tab. Reduces nav clutter without hiding functionality.
 - **Comment depth capped visually at 4, not structurally** — nesting in data is unlimited; only the CSS indentation class switches at depth 4. This prevents the UI from becoming too narrow on deep threads while preserving full reply history.
 - **AI search is a frontend toggle, not a separate page** — the AI button lives inside the existing collapsible search panel so the feature is discoverable but not intrusive. Activating it clears normal filters (and vice-versa) so the two modes never conflict. Results use the same `books-grid` / `rec-card` layout as keyword results for visual consistency.
@@ -1669,7 +1757,7 @@ A role-aware, interactive tour (`components/Onboarding.js`) introduces new sessi
 - **Landing page reuses Home tab imagery in grayscale rather than new assets** — the public page needed to feel visually consistent with "clean monochrome" while still showing real product photography; applying `filter: grayscale(1)` to the existing `/service_*.jpg` files (already used by the member Home tab) avoided sourcing new images or adding an illustration system.
 - **XP is a single server-side counter, not per-game/session state** — `User.xp` is the only source of truth; the frontend never trusts a locally-accumulated total. Each game POSTs one small, range-checked amount per win (`routes/games.py` clamps to `0 < amount <= 100`) rather than the client sending a cumulative score, so a stale tab or a replayed request can only ever add one more valid win's worth of XP, not an arbitrary total.
 - **Lit Wordle guesses are validated against a hardcoded word list, not a dictionary API** — `WORDLE_VALID_WORDS` (the answer list ∪ ~350 common words) is bundled client-side like `SCRAMBLE_WORDS`/`HANGMAN_FALLBACK_TITLES`, keeping every Gold Game dependency-free and instant, at the cost of not accepting every valid English word (acceptable for a bonus feature, unlike the core catalogue).
-- **"My stuff" grids reuse the Available Books tab's exact `rec-card` markup** — My Borrowed Books, My Reservations, and My Wishlist render as `.books-grid`/`.rec-card` divs (not the original one-off `.wishlist-card`/`.profile-table` styles) so a book looks identical whether it's being browsed or already yours; the per-row action (Return/Cancel/Remove) sits in a `stopPropagation`'d `.admin-card-actions` row reused from the admin book-card pattern, since a `rec-card` can't itself be a `<button>` once it needs a nested interactive action.
+- **"My stuff" grids reuse the Available Books tab's exact `rec-card` markup** — My Borrowed Books, Past Borrows, My Reservations, and My Wishlist render as `.books-grid`/`.rec-card` divs (not the original one-off `.wishlist-card`/`.profile-table` styles) so a book looks identical whether it's being browsed or already yours; the per-row action (Return/Cancel/Remove) sits in a `stopPropagation`'d `.admin-card-actions` row reused from the admin book-card pattern, since a `rec-card` can't itself be a `<button>` once it needs a nested interactive action. Past Borrows has no per-row action at all (nothing left to do with an already-returned book), so it's just the badge/meta line without the actions row.
 - **Toast action links reuse the existing toast infrastructure** — `useToast`'s `toast(msg, type, action)` takes an optional `{ label, onClick }` instead of introducing a separate "toast with CTA" component; every existing two-argument call site is unaffected, and Borrow/Reserve/Add-to-wishlist toasts just pass a third argument that closes the book modal and jumps to My Profile.
 - **No emoji anywhere in the UI, by convention** — pictographic emoji (🔒🎉✨ etc.) were removed app-wide in favour of the existing inline stroke-SVG icon convention (`ReactionIcon`, `FilterIcon`, `LockIcon`, the Games icons, etc.) or plain text where no icon is needed. Established text/dingbat symbols already used as icons throughout (★/☆ ratings, ✕ close, ✓/✗, ♥/♡ wishlist) are a separate, pre-existing convention and were left as-is.
 - **Hero-context error colour is computed, not a fixed red** — the borrow/reserve error banner inside the Book Detail modal's cover-tinted hero can't safely use the app's normal fixed `#c00` error red, since an arbitrary cover colour might not contrast with it. `heroErrorColor` tries a small ordered list of red shades (`HERO_ERROR_REDS`) and picks the first that clears 4.5:1 against the cover colour, falling back to the same guaranteed-safe black/white `coverPalette.text` already used for hero labels — no fixed hue can pass WCAG against literally any background, so the fallback is what keeps the "always" guarantee.
@@ -1677,9 +1765,9 @@ A role-aware, interactive tour (`components/Onboarding.js`) introduces new sessi
 - **Navigation style is a third `ThemeContext` axis, not a separate context** — `navStyle` persists in `localStorage` and applies globally exactly like `appearance`/`readerTheme`, so Dock vs NavTabs "just works" on both dashboards without a second provider or prop-drilling a preference that's conceptually the same kind of thing (a persisted UI choice).
 - **Book Request System reuses the Donation/Membership Request `pending → approved/rejected` shape** — same problem (member submits something that needs admin sign-off before it takes effect), so the same lifecycle, admin-tab-with-status-filter, and approve/reject-modal pattern was reused rather than inventing a new one.
 - **Book request outcomes are tracked server-side (`notified` column), not in `localStorage`** — unlike onboarding's `seen`/`not seen` flag, an unacknowledged approval/rejection needs to survive a login from a different browser or device, so it's a real column the dismiss endpoint flips, not a client-only flag.
-- **Home tab's vivid section colours reuse the existing WCAG helpers, not a new colour system** — `HOME_PALETTE` runs a small fixed set of hex colours through the same `wcagTextColor()` + `minAlphaForContrast()` functions already used to derive the Book Detail hero's `coverPalette` from a book's `cover_color`, so "pick black or white text, then alpha-tune secondary text tiers to guarantee 4.5:1" has one implementation shared by both a per-book dynamic colour and a fixed design palette.
+- **Home tab's vivid, colour-blocked redesign was reverted back to the app's shared theme, not kept as a special case** — the earlier `HOME_PALETTE` design (fixed hex colours run through `wcagTextColor()`/`minAlphaForContrast()`, diagonal clip-path slants, negative-margin section overlap) made the Home tab visually inconsistent with every other tab, which uses `--bg`/`--text`/`--border` etc. and adapts across all 10 theme combinations. Rather than reworking the vivid palette to be theme-aware, the simplest fix was to drop it entirely and let Home tab sections use the same plain `.home-card` box style as everything else.
 - **AI generation bail-out uses a request-id ref, not `AbortController`** — Groq's Python SDK call happens server-side, so the frontend can't actually cancel the in-flight request; instead `aiGenRequestIdRef` is bumped on every new generate call, manual bail-out, or modal close, and any response is checked against the id it was issued under before touching state, so a slow response arriving after the admin has already moved on is silently discarded rather than overwriting their typed content.
-- **Home tab sections overlap and collapse instead of stacking with whitespace** — `.home-tab` has `gap: 0` and each colour block has `margin-top: -40px`, so sections visually pile against each other (later DOM siblings paint over earlier ones automatically, no z-index needed); combined with the accordion (`openHomeSection`, one section expanded at a time), collapsed sections shrink to just their header bar and stack tightly under whichever section is open, rather than the page showing four always-expanded grids at once.
+- **Home tab sections collapse via a single-key accordion, not five independent toggles** — `openHomeSection` holds at most one open section id at a time (`toggleHomeSection(key)` flips it, or closes it if it's already the open one); collapsed sections shrink to just their header bar. This is simpler than five independent booleans and matches the actual UX intent — only one "my stuff" list needs to be expanded at once. (An earlier version of this accordion also visually overlapped sections via negative margins and diagonal clip-path cuts, as part of the vivid redesign described above — that visual trick was removed along with the colours; sections now just stack with normal spacing.)
 - **"More actions" dropdowns are portaled, not plain `position: absolute`** — a menu absolutely-positioned inside a small trigger wrapper only stays on-screen if that wrapper happens to sit at the true edge of its container, which isn't true for the admin book card (the kebab button sits mid-card, not at its right edge) or any menu inside `.rec-card:hover` (the hover `transform` there creates a new containing block, breaking `position: fixed` too). `ActionMenu` (`components/ActionMenu.js`) instead portals into `document.body` and computes/clamps its own `position: fixed` coordinates from the trigger's `getBoundingClientRect()`, so it's correct regardless of ancestor layout or transforms — a general fix rather than special-casing each menu's container.
 - **Admin book grid uses CSS Grid, not flex-wrap, specifically for edge alignment** — `flex-wrap` with fixed-width cards leaves a ragged gap after the last card in a partial row, which reads as inconsistent against the full-width search bar and genre strip above it. `repeat(auto-fill, minmax(210px, 1fr))` makes every column stretch to fill the row exactly, so the last column's right edge always lines up with its siblings above. Scoped to `.admin-books-grid` rather than changing the shared `.books-grid` class, since the member dashboard's card grids don't have this same "everything above it is full-width" visual context.
 - **Modal body-scroll lock uses a module-level reference count, not a single boolean** — if a second `Modal` ever mounts while one is already open (or one unmounts slightly out of order), a plain "set on mount / clear on unmount" would risk re-enabling scroll while a modal is still showing. Counting mounts and only clearing `overflow: hidden` when the count returns to zero makes the lock correct regardless of how many modals are open at once or the order they close in.
@@ -1699,7 +1787,9 @@ A role-aware, interactive tour (`components/Onboarding.js`) introduces new sessi
 - **Google account linking is by verified email, not a separate "link account" flow** — if a Google sign-in's verified email matches an existing password account with no `google_sub` yet, that `google_sub` is attached right then. This is safe specifically because Google already verified the email belongs to that person — the same shortcut would not be safe for an unverified claim.
 - **Return finalization is a separate admin-approval step, not folded into the member's return call** — the old `return_book()` did everything (set `return_date`, recalc fine, release the copy/promote a reservation) in one member-initiated request. Splitting "member requests a return" (`return_requested_at`) from "admin approves it" (`return_date` + copy release) means a book only leaves circulation once someone on the library side has actually confirmed it came back, without adding a new model — one nullable timestamp on `Borrow` is enough to represent "pending."
 - **A pending return freezes its fine at request time, not approval time** — `approve_return()` sets `return_date = return_requested_at` rather than `datetime.utcnow()`, so a member isn't penalized for however long their request happens to sit waiting on an admin.
-- **Overdue-with-unpaid-fine blocks the return *request* itself, not just the admin's approval** — rejecting the request outright (rather than accepting it and leaving it un-approvable) means there's never a pending-but-stuck state sitting in the admin's queue for a reason the admin can't resolve from that screen; the member gets the actionable error immediately.
+- **Overdue-with-unpaid-fine blocks the return *request* itself unless a fine payment is bundled in, not just the admin's approval** — a plain return request with an unpaid fine and no `pay_fine` flag is rejected outright (rather than accepted and left un-approvable), so there's never a pending-but-stuck state sitting in the admin's queue for a reason the admin can't resolve from that screen; the member gets the actionable error immediately, and the fix (check the "I'm paying this fine now" box) is right there in the same modal.
+- **Fine payment rides along on the return request instead of being its own endpoint** — `fine_payment_requested_at` is set in the exact same `POST /api/return/:id` call as `return_requested_at` (via `pay_fine: true`), and resolved by the exact same `approve`/`reject` admin actions, rather than adding a parallel `/pay-fine` request-and-approve flow. A fine payment claim only ever exists in service of returning the book (this app has no standalone "pay a fine while still holding the book" feature), so giving it its own lifecycle would just be two approval queues an admin has to reconcile against each other instead of one.
+- **Borrowed Books table sorts pending requests first, not by borrow/due date** — `filteredBorrows` sorts rows with `return_requested_at` set ahead of ordinary active borrows (stable otherwise), since a pending Approve/Reject decision is the thing that actually needs the admin's attention "right now"; without this, a pending request could easily be scrolled past a page of ordinary active borrows sorted chronologically.
 - **Communities and Donations moved from a status-pill-filtered table to a 3-column Kanban board** — both are `pending → approved/rejected` review queues where an admin's real question is usually "what's still pending," "what did I approve," and "what did I reject" simultaneously, not one status at a time. Seeing all three side by side removed the need for the pill filter entirely; both tabs' loaders now always fetch every status in one request instead of a `?status=` round-trip per pill click.
 - **Membership Requests and Book Requests folded into Members/Books instead of keeping their own tabs** — both are a secondary, occasional-admin-attention concern about an entity (a member's tier, the catalogue) that already has its own primary tab; splitting pending-only (shown by default, hidden entirely when empty) from a collapsed History section (Approved/Rejected/All, opened on demand) keeps the common case — nothing pending — from cluttering either tab, without losing the ability to look up past decisions.
 - **Pending vs. History for both request types is fetch-once-filter-client-side, not two separate API calls** — `loadBookRequests()`/`loadMembershipRequests()` now always fetch every status; `pendingBookRequests`/`historyBookRequests` (and the membership equivalents) are just `.filter()`s over the one array. Simpler than keeping two loading states in sync, and the dataset per library is small enough that filtering client-side has no real cost.

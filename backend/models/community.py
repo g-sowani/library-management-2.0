@@ -12,6 +12,8 @@ class Community(db.Model):
     library_id = db.Column(db.Integer, db.ForeignKey('library.id'), nullable=True)
     name = db.Column(db.String(120), nullable=False)
     description = db.Column(db.Text, nullable=True)
+    icon_url = db.Column(db.Text, nullable=True)
+    banner_url = db.Column(db.Text, nullable=True)
     creator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     status = db.Column(db.String(20), default='pending')  # pending|approved|rejected
     admin_notes = db.Column(db.Text, nullable=True)
@@ -29,6 +31,8 @@ class Community(db.Model):
             'id': self.id,
             'name': self.name,
             'description': self.description,
+            'icon_url': self.icon_url,
+            'banner_url': self.banner_url,
             'creator_id': self.creator_id,
             'creator_username': self.creator.username if self.creator else None,
             'status': self.status,

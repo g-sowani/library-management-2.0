@@ -256,6 +256,10 @@ def approve_return(borrow_id):
     borrow.return_date = borrow.return_requested_at
     borrow.calculate_fine()
 
+    if borrow.fine_payment_requested_at:
+        borrow.fine_paid = True
+        borrow.fine_payment_requested_at = None
+
     next_pending = (Reservation.query
                     .filter_by(book_id=borrow.book_id, status='pending')
                     .order_by(Reservation.created_at)
@@ -283,6 +287,7 @@ def reject_return(borrow_id):
     if borrow.return_date or not borrow.return_requested_at:
         return jsonify({'error': 'No pending return request for this borrow'}), 400
     borrow.return_requested_at = None
+    borrow.fine_payment_requested_at = None
     db.session.commit()
     return jsonify(borrow.to_dict())
 

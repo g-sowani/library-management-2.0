@@ -42,6 +42,27 @@ function CompassIcon() {
   );
 }
 
+function TabsNavIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="5" rx="1.5"/>
+      <line x1="2" y1="15" x2="22" y2="15"/>
+      <line x1="2" y1="20" x2="22" y2="20"/>
+    </svg>
+  );
+}
+
+function DockNavIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="15" width="20" height="7" rx="3.5"/>
+      <circle cx="8" cy="18.5" r="0.9" fill="currentColor" stroke="none"/>
+      <circle cx="12" cy="18.5" r="0.9" fill="currentColor" stroke="none"/>
+      <circle cx="16" cy="18.5" r="0.9" fill="currentColor" stroke="none"/>
+    </svg>
+  );
+}
+
 function SignOutIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -107,6 +128,11 @@ const READER_THEMES = [
   { key: 'rose',   label: 'Rose',   Icon: FlowerIcon },
 ];
 
+const NAV_STYLES = [
+  { key: 'tabs', label: 'Tab Bar', Icon: TabsNavIcon },
+  { key: 'dock', label: 'Dock',    Icon: DockNavIcon },
+];
+
 const TIER_LABEL = { silver: 'Silver', gold: 'Gold', family: 'Family' };
 const TIER_CLASS = {
   silver: 'membership-badge-silver',
@@ -124,7 +150,7 @@ function TierBadge({ tier }) {
 // ── TopBar ────────────────────────────────────────────────────────────────────
 
 function TopBar({ title, username, avatar, tier, xp, library, onLogout, onReplayTour }) {
-  const { appearance, setAppearance, readerTheme, setReaderTheme } = useTheme();
+  const { appearance, setAppearance, readerTheme, setReaderTheme, navStyle, setNavStyle } = useTheme();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
@@ -196,6 +222,24 @@ function TopBar({ title, username, avatar, tier, xp, library, onLogout, onReplay
                   key={key}
                   className={`pd-option${readerTheme === key ? ' pd-option-active' : ''}`}
                   onClick={() => setReaderTheme(readerTheme === key ? '' : key)}
+                  title={label}
+                >
+                  <Icon />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="pd-divider" />
+
+            {/* Navigation style */}
+            <div className="pd-section-label">Navigation</div>
+            <div className="pd-options-row">
+              {NAV_STYLES.map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  className={`pd-option${navStyle === key ? ' pd-option-active' : ''}`}
+                  onClick={() => setNavStyle(key)}
                   title={label}
                 >
                   <Icon />

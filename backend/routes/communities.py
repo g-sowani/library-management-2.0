@@ -23,6 +23,16 @@ def _gold_user():
     return user, None
 
 
+def _validate_image(value, max_bytes, label):
+    if not value:
+        return None
+    if not value.startswith('data:image/'):
+        return f'Invalid {label} image format'
+    if len(value) > max_bytes:
+        return f'{label.capitalize()} image is too large'
+    return None
+
+
 def _community_for_member(cid, user):
     community = db.session.get(Community, cid)
     if not community or community.status != 'approved' or community.library_id != user.library_id:
@@ -57,16 +67,68 @@ def create_community():
     data = request.get_json() or {}
     name = (data.get('name') or '').strip()
     description = (data.get('description') or '').strip() or None
+    icon_url = data.get('icon_url') or None
+    banner_url = data.get('banner_url') or None
     if not name:
         return jsonify({'error': 'Name is required'}), 400
     if Community.query.filter(
         Community.library_id == user.library_id, db.func.lower(Community.name) == name.lower()
     ).first():
         return jsonify({'error': 'A community with this name already exists'}), 400
-    community = Community(name=name, description=description, creator_id=user.id, library_id=user.library_id)
+    err = (_validate_image(icon_url, 2 * 1024 * 1024, 'icon')
+           or _validate_image(banner_url, 4 * 1024 * 1024, 'banner'))
+    if err:
+        return jsonify({'error': err}), 400
+    community = Community(name=name, description=description, creator_id=user.id, library_id=user.library_id,
+                           icon_url=icon_url, banner_url=banner_url)
     db.session.add(community)
     db.session.commit()
     return jsonify(community.to_dict(user.id)), 201
+
+
+@communities_bp.put('/api/communities/<int:cid>')
+def update_community(cid):
+    user, err = _gold_user()
+    if err:
+        return err
+    community = db.session.get(Community, cid)
+    if not community or community.library_id != user.library_id:
+        return jsonify({'error': 'Community not found'}), 404
+    membership = CommunityMembership.query.filter_by(community_id=cid, user_id=user.id).first()
+    is_owner = community.creator_id == user.id
+    is_moderator = membership is not None and membership.role == 'moderator'
+    if not (is_owner or is_moderator):
+        return jsonify({'error': 'Only the creator or a moderator can edit this community'}), 403
+
+    data = request.get_json() or {}
+    if 'name' in data:
+        name = (data.get('name') or '').strip()
+        if not name:
+            return jsonify({'error': 'Name is required'}), 400
+        if Community.query.filter(
+            Community.library_id == user.library_id,
+            db.func.lower(Community.name) == name.lower(),
+            Community.id != cid,
+        ).first():
+            return jsonify({'error': 'A community with this name already exists'}), 400
+        community.name = name
+    if 'description' in data:
+        community.description = (data.get('description') or '').strip() or None
+    if 'icon_url' in data:
+        icon_url = data.get('icon_url') or None
+        err = _validate_image(icon_url, 2 * 1024 * 1024, 'icon')
+        if err:
+            return jsonify({'error': err}), 400
+        community.icon_url = icon_url
+    if 'banner_url' in data:
+        banner_url = data.get('banner_url') or None
+        err = _validate_image(banner_url, 4 * 1024 * 1024, 'banner')
+        if err:
+            return jsonify({'error': err}), 400
+        community.banner_url = banner_url
+
+    db.session.commit()
+    return jsonify(community.to_dict(user.id))
 
 
 @communities_bp.get('/api/my-communities')

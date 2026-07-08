@@ -85,7 +85,9 @@ def return_book(borrow_id):
     """Members can't finalize a return themselves — this only files a return
     request for an admin to approve (see admin.approve_return), which is when
     the copy is actually released and the fine is locked in. Overdue borrows
-    with an unpaid fine can't even request a return until the fine is paid.
+    with an unpaid fine can't request a return unless the member also submits
+    a fine payment claim (pay_fine=true) in the same request — both the
+    return and the fine payment then wait on the same admin approval.
     """
     from models.review import Review
 
@@ -98,13 +100,16 @@ def return_book(borrow_id):
         return jsonify({'error': 'Return already requested, awaiting admin approval'}), 400
 
     borrow.calculate_fine()
+    data = request.get_json(silent=True) or {}
+
     if borrow.fine > 0 and not borrow.fine_paid:
-        return jsonify({
-            'error': 'You have an unpaid fine on this book. Please settle it with the library before returning.'
-        }), 400
+        if not data.get('pay_fine'):
+            return jsonify({
+                'error': 'You have an unpaid fine on this book. Submit your fine payment along with the return for the library to verify.'
+            }), 400
+        borrow.fine_payment_requested_at = datetime.utcnow()
 
     # Optional review submitted at return-request time.
-    data = request.get_json(silent=True) or {}
     rating = data.get('rating')
     if rating is not None:
         rating = int(rating)

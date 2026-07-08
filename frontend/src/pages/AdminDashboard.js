@@ -1223,17 +1223,21 @@ function AdminDashboard() {
 
   const filteredBorrows = useMemo(
     () =>
-      borrows.filter((b) => {
-        const matchBook =
-          !borrowBookFilter || b.book_title === borrowBookFilter;
-        const matchBorrower =
-          !borrowBorrowerFilter || b.username === borrowBorrowerFilter;
-        const matchStatus =
-          !borrowStatusFilter ||
-          (borrowStatusFilter === "overdue" && b.is_overdue) ||
-          (borrowStatusFilter === "active" && !b.is_overdue);
-        return matchBook && matchBorrower && matchStatus;
-      }),
+      borrows
+        .filter((b) => {
+          const matchBook =
+            !borrowBookFilter || b.book_title === borrowBookFilter;
+          const matchBorrower =
+            !borrowBorrowerFilter || b.username === borrowBorrowerFilter;
+          const matchStatus =
+            !borrowStatusFilter ||
+            (borrowStatusFilter === "overdue" && b.is_overdue) ||
+            (borrowStatusFilter === "active" && !b.is_overdue);
+          return matchBook && matchBorrower && matchStatus;
+        })
+        // Pending return/fine-payment requests need admin action — surface
+        // them first so they aren't buried in the full borrows list.
+        .sort((a, b) => (b.return_requested_at ? 1 : 0) - (a.return_requested_at ? 1 : 0)),
     [borrows, borrowBookFilter, borrowBorrowerFilter, borrowStatusFilter]
   );
 
@@ -1376,6 +1380,17 @@ function AdminDashboard() {
       (!membershipRequestHistoryFilter ||
         r.status === membershipRequestHistoryFilter)
   );
+
+  const pendingReturnRequests = borrows.filter((b) => b.return_requested_at);
+
+  const tabDots = {
+    books: pendingBookRequests.length > 0,
+    borrows: pendingReturnRequests.length > 0,
+    fines: memberStats.finesPending > 0,
+    members: pendingMembershipRequests.length > 0,
+    communities: adminCommunities.some((c) => c.status === "pending"),
+    donations: donations.some((d) => d.status === "pending"),
+  };
 
   const memberFilterMenus = {
     username: {
@@ -1582,11 +1597,21 @@ function AdminDashboard() {
             onReplayTour={() => setShowOnboarding(true)}
           />
           {navStyle !== "dock" && (
-            <NavTabs tabs={TABS} active={tab} onChange={handleTabChange} />
+            <NavTabs
+              tabs={TABS}
+              active={tab}
+              onChange={handleTabChange}
+              dots={tabDots}
+            />
           )}
         </div>
         {navStyle === "dock" && (
-          <Dock tabs={TABS} active={tab} onChange={handleTabChange} />
+          <Dock
+            tabs={TABS}
+            active={tab}
+            onChange={handleTabChange}
+            dots={tabDots}
+          />
         )}
         <div className="content">
           {loadError && <div className="error">{loadError}</div>}
@@ -2223,6 +2248,11 @@ function AdminDashboard() {
                             {b.return_requested_at && (
                               <span className="status-tag status-tag-queue">
                                 Return Requested
+                              </span>
+                            )}
+                            {b.fine_payment_requested_at && (
+                              <span className="status-tag status-tag-queue">
+                                Fine Payment ${b.fine.toFixed(2)} Pending
                               </span>
                             )}
                           </td>

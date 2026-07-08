@@ -52,7 +52,11 @@ def _migrate_db():
     })
     add_missing_cols('post_reaction', {'created_at': 'TIMESTAMP'})
     add_missing_cols('comment_reaction', {'created_at': 'TIMESTAMP'})
-    add_missing_cols('borrow', {'return_requested_at': 'TIMESTAMP'})
+    add_missing_cols('borrow', {
+        'return_requested_at': 'TIMESTAMP',
+        'fine_payment_requested_at': 'TIMESTAMP',
+    })
+    add_missing_cols('community', {'icon_url': 'TEXT', 'banner_url': 'TEXT'})
     db.session.execute(text(
         'CREATE UNIQUE INDEX IF NOT EXISTS ix_user_google_sub ON "user" (google_sub) WHERE google_sub IS NOT NULL'
     ))

@@ -10,3 +10,9 @@ groq>=0.9.0
 python-dotenv>=1.0.0
 gunicorn>=21.0.0
 psycopg2-binary>=2.9.0
+
+from flask_cors import CORS
+CORS(app, origins=[
+    "http://localhost:3000",
+    "https://library-management-2-0.vercel.app",
+])

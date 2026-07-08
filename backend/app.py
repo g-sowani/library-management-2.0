@@ -43,16 +43,16 @@ def _migrate_db():
         'genre': 'VARCHAR(100)',
         'description': 'TEXT',
         'author_bio': 'TEXT',
-        'cover_url': 'VARCHAR(500)',
+        'cover_url': 'TEXT',
         'cover_color': 'VARCHAR(7)',
     })
     add_missing_cols('user', {
         'avatar': 'TEXT', 'xp': 'INTEGER DEFAULT 0', 'library_id': 'INTEGER', 'email': 'VARCHAR(120)',
         'google_sub': 'VARCHAR(255)',
     })
-    add_missing_cols('post_reaction', {'created_at': 'DATETIME'})
-    add_missing_cols('comment_reaction', {'created_at': 'DATETIME'})
-    add_missing_cols('borrow', {'return_requested_at': 'DATETIME'})
+    add_missing_cols('post_reaction', {'created_at': 'TIMESTAMP'})
+    add_missing_cols('comment_reaction', {'created_at': 'TIMESTAMP'})
+    add_missing_cols('borrow', {'return_requested_at': 'TIMESTAMP'})
     db.session.execute(text(
         'CREATE UNIQUE INDEX IF NOT EXISTS ix_user_google_sub ON "user" (google_sub) WHERE google_sub IS NOT NULL'
     ))

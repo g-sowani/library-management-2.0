@@ -1,5 +1,3 @@
+.env
+venv/
 .venv/
-.venv
-venv
-.env 
-# or root .gitignore

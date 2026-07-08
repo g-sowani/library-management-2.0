@@ -4,6 +4,55 @@ Full-stack, **multi-library** management app built with Flask and React — one 
 
 Members browse books, borrow/return/reserve them, rate and review, save books to a wishlist, get personalised recommendations, request that a missing book be added to the catalogue, donate books to the library, and — as Gold members — participate in community spaces and play a set of book-themed word games for XP. Admins manage the catalogue, monitor borrows, configure fine policy, manage membership tiers, review donations and book-add requests, and approve community requests.
 
+**Live app:** [library-management-2-0.vercel.app](https://library-management-2-0.vercel.app) · **API:** [library-management-2-0-1.onrender.com](https://library-management-2-0-1.onrender.com)
+
+---
+
+## Table of Contents
+
+- [Tech Stack](#tech-stack)
+- [Architecture](#architecture)
+- [Running Locally](#running-locally)
+- [Environment Variables](#environment-variables)
+- [Seed Accounts](#seed-accounts)
+- [Deployment](#deployment)
+- [Project Structure](#project-structure)
+- [Features](#features)
+- [Seed Data Script](#seed-data-script)
+
+---
+
+## Tech Stack
+
+| Layer     | Technology                                                |
+|-----------|------------------------------------------------------------|
+| Backend   | Python 3 · Flask 3 · SQLAlchemy · Gunicorn                 |
+| Database  | SQLite (dev) · PostgreSQL (production, Render)              |
+| Frontend  | React 18 (Create React App) · Axios                        |
+| Auth      | Flask session cookies (`withCredentials`) · optional Google Sign-In |
+| Metadata  | Open Library API (scraping) · Pillow (image processing)     |
+| AI Search | Groq API · `llama-3.1-8b-instant`                          |
+| Hosting   | Vercel (frontend) · Render (backend + Postgres)             |
+
+---
+
+## Architecture
+
+```
+Browser ── Vercel (React static build)
+              │  same-origin /api/* requests
+              ▼
+         vercel.json rewrite
+              │
+              ▼
+        Render (Flask + gunicorn)
+              │
+              ▼
+        Render Postgres
+```
+
+The frontend never calls the Render backend's URL directly — `frontend/vercel.json` rewrites `/api/*` to the Render service, so the browser only ever sees the Vercel origin. This keeps session cookies same-origin (`withCredentials`) without cross-site cookie/CORS complications on the client. Flask still sets `CORS_ORIGINS` for the cases (local dev, direct API calls) where the two origins do differ.
+
 ---
 
 ## Running Locally
@@ -24,6 +73,8 @@ python app.py
 # → http://localhost:5027
 ```
 
+No database setup needed — with no `DATABASE_URL` set, the app falls back to a local SQLite file (`backend/instance/library.db`), created automatically on first run.
+
 ### 2 — Frontend
 
 ```bash
@@ -39,6 +90,20 @@ Open **http://localhost:3000** in your browser. The React dev server proxies all
 
 ---
 
+## Environment Variables
+
+Create `backend/.env` (all optional except where noted):
+
+| Variable          | Required | Description |
+|-------------------|----------|-------------|
+| `DATABASE_URL`     | No       | Postgres connection string. Omit for local dev (falls back to SQLite). Render provides this as `postgres://…`; the app normalizes it to `postgresql://` for SQLAlchemy. |
+| `SECRET_KEY`       | No       | Flask session-signing key. Defaults to a dev key locally; set a real random value in production. |
+| `CORS_ORIGINS`     | No       | Comma-separated list of allowed origins. Defaults to `http://localhost:3000`. |
+| `GROQ_API_KEY`     | No       | Enables AI natural-language book search. Omit to disable the feature gracefully. |
+| `GOOGLE_CLIENT_ID` | No       | Enables the "Continue with Google" button. Get one from [Google Cloud Console](https://console.cloud.google.com/apis/credentials) (OAuth client, Web application) — add your frontend origin(s) under **Authorized JavaScript origins** (this app uses the client-side Google Identity Services button, not a server-side redirect, so no **Authorized redirect URI** is needed). |
+
+---
+
 ## Seed Accounts
 
 Created automatically on first run — no setup needed. Both accounts belong to an auto-created "Default Library".
@@ -50,19 +115,60 @@ Created automatically on first run — no setup needed. Both accounts belong to 
 
 Registering a new account requires an email address (unique, validated) plus a library: admins pick "Create a new library" (get a fresh join code) or "Join an existing library" (search by name or code); members always join an existing library. See **Multi-Library** under Features below.
 
-**Google Sign-In** *(optional)* — set `GOOGLE_CLIENT_ID` in `backend/.env` (a Google OAuth Web client id, with `http://localhost:3000` added as an authorized JavaScript origin) to enable a "Continue with Google" button on both the sign-in and register forms. Signing in matches an existing account by verified email (linking it automatically); registering fills in username/role/library first, then creates the account from the verified Google email — no password is ever collected for a Google-only account.
+**Google Sign-In** *(optional)* — set `GOOGLE_CLIENT_ID` (see Environment Variables above) to enable a "Continue with Google" button on both the sign-in and register forms. Signing in matches an existing account by verified email (linking it automatically); registering fills in username/role/library first, then creates the account from the verified Google email — no password is ever collected for a Google-only account.
 
 ---
 
-## Tech Stack
+## Deployment
 
-| Layer    | Technology                              |
-|----------|-----------------------------------------|
-| Backend  | Python 3 · Flask 3 · SQLAlchemy · SQLite |
-| Frontend | React 18 (Create React App) · Axios     |
-| Auth     | Flask session cookies (`withCredentials`) |
-| Metadata | Open Library API (scraping) · Pillow (image processing) |
-| AI Search | Groq API · `llama-3.1-8b-instant` |
+The live app is split across two platforms:
+
+**Frontend — Vercel**
+- Deploys `frontend/` on every push to `main`.
+- `frontend/vercel.json` rewrites `/api/:path*` to the Render backend, so the app talks to itself same-origin in production too.
+
+**Backend — Render (Web Service)**
+| Setting | Value |
+|---|---|
+| Root Directory | `backend` |
+| Build Command | `pip install -r requirements.txt` |
+| Start Command | `gunicorn app:app` |
+| Auto-Deploy | On push to `main` |
+
+Set the environment variables from the table above in the Render dashboard, using `DATABASE_URL` = your Postgres instance's **Internal Database URL** (same region, no egress cost).
+
+**Database — Render Postgres**
+Provision a Postgres instance in Render, then point the web service's `DATABASE_URL` at it. `psycopg2-binary` (already in `requirements.txt`) provides the driver. On first boot against an empty database, the app creates its full schema automatically (`db.create_all()`) — no manual migration step needed for a fresh deploy.
+
+> A `render.yaml` Blueprint exists in the repo root for reference, but the live service was provisioned manually via **New → Web Service** rather than **New → Blueprint**, so the Blueprint isn't guaranteed to match the live service's exact settings.
+
+---
+
+## Project Structure
+
+```
+library-management-2.0/
+├── backend/
+│   ├── app.py              # App factory, startup migrations
+│   ├── config.py           # Env-driven configuration
+│   ├── extensions.py       # SQLAlchemy instance
+│   ├── models/             # One file per SQLAlchemy model
+│   ├── routes/             # Blueprints, one per resource
+│   ├── decorators.py       # @login_required, @admin_required, etc.
+│   ├── utils.py
+│   ├── requirements.txt
+│   └── seed_extra.py       # Optional demo-data script (see below)
+├── frontend/
+│   ├── src/
+│   │   ├── api.js          # Axios instance (baseURL: /api)
+│   │   ├── components/
+│   │   └── pages/
+│   └── vercel.json         # /api/* rewrite to the Render backend
+├── render.yaml              # Reference Blueprint (see Deployment)
+└── context.md                # Detailed architecture / design-decision log
+```
+
+For a much deeper dive into the data model, API routes, and the reasoning behind specific implementation choices, see [`context.md`](./context.md).
 
 ---
 
@@ -149,6 +255,8 @@ Rates are admin-configurable at runtime per library (defaults: Silver $9.99 · G
 - **Placeholder text** — all input and textarea placeholders, and any dropdown's "unselected" option, use `--text-5` so they adapt to every theme rather than using browser-default grey
 - **Focused modals** — opening any modal blurs the page behind it and locks background scrolling until it's closed
 - **Icon-only, no emoji** — every icon in the UI is an inline stroke-SVG (reactions, filters, lock/close/chevrons, the Games icons, etc.); no pictographic emoji anywhere
+
+---
 
 ## Seed Data Script
 

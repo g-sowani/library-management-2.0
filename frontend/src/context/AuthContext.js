@@ -23,6 +23,10 @@ export function AuthProvider({ children }) {
         if (initializing.current) return Promise.reject(error);
         const status = error.response?.status;
         if (status === 401) {
+          // Any 401 here is treated as "session expired" and force-logs-out the user.
+          // Endpoints that re-check a password on an already-authenticated request
+          // (e.g. PUT /api/auth/profile) must NOT return 401 for "wrong password" —
+          // use 400 instead, or this fires and boots a still-valid session.
           setUser(null);
         } else if (status === 403) {
           // Session may have changed; re-sync React state with the real Flask session

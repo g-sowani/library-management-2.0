@@ -24,6 +24,7 @@ import { GENRES } from "../constants";
 const TABS = [
   { id: "home", label: "My Stuff" },
   { id: "books", label: "Available Books" },
+  { id: "donate", label: "Donate" },
   { id: "community", label: "Community" },
   { id: "games", label: "Games" },
   { id: "profile", label: "My Profile" },
@@ -1384,9 +1385,150 @@ function NoCoverPlaceholder({ title, className }) {
   );
 }
 
+function SunIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
+function MonitorIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+      <line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
+    </svg>
+  );
+}
+
+function ReaderBookIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+    </svg>
+  );
+}
+
+function LeafIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 20A7 7 0 0 1 4 13c0-7 7-11 7-11s7 4 7 11a7 7 0 0 1-7 7z" />
+      <line x1="11" y1="20" x2="11" y2="13" />
+    </svg>
+  );
+}
+
+function WavesIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2" />
+      <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2" />
+      <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2" />
+    </svg>
+  );
+}
+
+function FlowerIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4z" />
+      <path d="M12 14a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4z" />
+      <path d="M2 12a4 4 0 0 1 4-4 4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4z" />
+      <path d="M14 12a4 4 0 0 1 4-4 4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4z" />
+    </svg>
+  );
+}
+
+const APPEARANCE_OPTIONS = [
+  { key: "light", label: "Light", Icon: SunIcon },
+  { key: "system", label: "System", Icon: MonitorIcon },
+  { key: "dark", label: "Dark", Icon: MoonIcon },
+];
+
+const READER_THEME_OPTIONS = [
+  { key: "sepia", label: "Sepia", Icon: ReaderBookIcon },
+  { key: "forest", label: "Forest", Icon: LeafIcon },
+  { key: "ocean", label: "Ocean", Icon: WavesIcon },
+  { key: "rose", label: "Rose", Icon: FlowerIcon },
+];
+
+const ACCENT_PRESETS = [
+  { key: "red", label: "Red", color: "#e53935" },
+  { key: "maroon", label: "Maroon", color: "#6d1b2f" },
+  { key: "blue", label: "Blue", color: "#1e88e5" },
+  { key: "green", label: "Green", color: "#43a047" },
+  { key: "yellow", label: "Yellow", color: "#fdd835" },
+  { key: "purple", label: "Purple", color: "#8e24aa" },
+  { key: "white", label: "White", color: "#ffffff" },
+  { key: "gray", label: "Gray", color: "#757575" },
+  { key: "teal", label: "Teal", color: "#00897b" },
+  { key: "turquoise", label: "Turquoise", color: "#26c6da" },
+  { key: "amber", label: "Amber", color: "#ffb300" },
+  { key: "orange", label: "Orange", color: "#fb8c00" },
+].map((p) => ({
+  ...p,
+  text: wcagTextColor(
+    parseInt(p.color.slice(1, 3), 16),
+    parseInt(p.color.slice(3, 5), 16),
+    parseInt(p.color.slice(5, 7), 16)
+  ),
+}));
+
+function contrastTextFor(hex) {
+  if (!hex) return undefined;
+  return wcagTextColor(
+    parseInt(hex.slice(1, 3), 16),
+    parseInt(hex.slice(3, 5), 16),
+    parseInt(hex.slice(5, 7), 16)
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function PaletteIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a10 10 0 1 0 0 20 2.5 2.5 0 0 0 1.8-4.2 1.9 1.9 0 0 1 1.4-3.2H17a5 5 0 0 0 5-5c0-4.4-4.5-7.6-10-7.6z" />
+      <circle cx="7.5" cy="11" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="10.5" cy="7" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="8" r="1.3" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 function MemberDashboard() {
   const { user, logout, updateUser } = useAuth();
-  const { navStyle, setNavStyle } = useTheme();
+  const {
+    navStyle,
+    setNavStyle,
+    appearance,
+    setAppearance,
+    readerTheme,
+    setReaderTheme,
+    accentOverride,
+    setAccentOverride,
+  } = useTheme();
   const { toasts, toast } = useToast();
   const [tab, setTab] = useState("home");
   const [books, setBooks] = useState([]);
@@ -1453,6 +1595,24 @@ function MemberDashboard() {
   const avatarInputRef = useRef(null);
   const borrowedSectionRef = useRef(null);
   const [avatarError, setAvatarError] = useState("");
+
+  // Accent colour custom picker
+  const accentColorInputRef = useRef(null);
+  const isPresetAccent =
+    !accentOverride || ACCENT_PRESETS.some((p) => p.color === accentOverride);
+
+  // Account details (username / email / password) — locked until re-authenticated
+  const EMPTY_ACCOUNT_FORM = {
+    username: "",
+    email: "",
+    new_password: "",
+    confirm_password: "",
+    current_password: "",
+  };
+  const [accountEditing, setAccountEditing] = useState(false);
+  const [accountForm, setAccountForm] = useState(EMPTY_ACCOUNT_FORM);
+  const [accountError, setAccountError] = useState("");
+  const [accountSaving, setAccountSaving] = useState(false);
 
   // Donation
   const EMPTY_DONATION = {
@@ -1646,7 +1806,8 @@ function MemberDashboard() {
         label: "View",
         onClick: () => {
           closeBook();
-          handleTabChange("profile");
+          setOpenHomeSection("borrowed");
+          handleTabChange("home");
         },
       });
     } catch (e) {
@@ -1724,7 +1885,8 @@ function MemberDashboard() {
         label: "View",
         onClick: () => {
           closeBook();
-          handleTabChange("profile");
+          setOpenHomeSection("reservations");
+          handleTabChange("home");
         },
       });
     } catch (e) {
@@ -2171,6 +2333,56 @@ function MemberDashboard() {
     }
   };
 
+  const startAccountEdit = () => {
+    setAccountForm({
+      ...EMPTY_ACCOUNT_FORM,
+      username: user.username,
+      email: user.email || "",
+    });
+    setAccountError("");
+    setAccountEditing(true);
+  };
+
+  const cancelAccountEdit = () => {
+    setAccountEditing(false);
+    setAccountError("");
+    setAccountForm(EMPTY_ACCOUNT_FORM);
+  };
+
+  const saveAccountDetails = async () => {
+    setAccountError("");
+    if (!accountForm.current_password) {
+      setAccountError("Enter your current password to save changes");
+      return;
+    }
+    if (
+      accountForm.new_password &&
+      accountForm.new_password !== accountForm.confirm_password
+    ) {
+      setAccountError("New passwords do not match");
+      return;
+    }
+    setAccountSaving(true);
+    try {
+      const res = await api.put("/auth/profile", {
+        current_password: accountForm.current_password,
+        username: accountForm.username,
+        email: accountForm.email,
+        new_password: accountForm.new_password || undefined,
+      });
+      updateUser(res.data);
+      setAccountEditing(false);
+      setAccountForm(EMPTY_ACCOUNT_FORM);
+      toast("Account details updated");
+    } catch (err) {
+      setAccountError(
+        err.response?.data?.error || "Failed to update account details"
+      );
+    } finally {
+      setAccountSaving(false);
+    }
+  };
+
   const openDonateModal = () => {
     setDonationForm(EMPTY_DONATION);
     setDonationError("");
@@ -2259,7 +2471,8 @@ function MemberDashboard() {
           label: "View",
           onClick: () => {
             closeBook();
-            handleTabChange("profile");
+            setOpenHomeSection("wishlist");
+            handleTabChange("home");
           },
         });
       }
@@ -2281,8 +2494,8 @@ function MemberDashboard() {
     .filter((b) => b.return_date)
     .sort((a, b) => new Date(b.return_date) - new Date(a.return_date));
 
-  // Tint the UI with the cover colour of the most recently borrowed book
-  const accentColor = useMemo(() => {
+  // Default tint: the cover colour of the most recently borrowed book
+  const autoAccentColor = useMemo(() => {
     if (!borrows.length || !books.length) return null;
     const sorted = [...borrows].sort(
       (a, b) => new Date(b.borrow_date) - new Date(a.borrow_date)
@@ -2291,6 +2504,9 @@ function MemberDashboard() {
     const book = books.find((b) => b.id === recent?.book_id);
     return book?.cover_color || null;
   }, [borrows, books]);
+
+  // A user-picked accent colour wins over the borrowed-book default
+  const accentColor = accentOverride || autoAccentColor;
 
   // WCAG-safe text colour to render ON TOP of the accent background
   const accentText = useMemo(() => {
@@ -2791,6 +3007,74 @@ function MemberDashboard() {
                                   Return
                                 </button>
                               )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+              </div>
+
+              {/* My Fines */}
+              <div className="home-section home-card">
+                <button
+                  className="home-section-toggle"
+                  onClick={() => toggleHomeSection("fines")}
+                  aria-expanded={openHomeSection === "fines"}
+                >
+                  <span className="home-card-heading">My Fines</span>
+                  <span
+                    className={`home-section-chevron${
+                      openHomeSection === "fines" ? " open" : ""
+                    }`}
+                  >
+                    <ChevronDown />
+                  </span>
+                </button>
+                {openHomeSection === "fines" &&
+                  (fines.length === 0 ? (
+                    <div className="empty">No fines</div>
+                  ) : (
+                    <div className="books-grid">
+                      {fines.map((b) => {
+                        const coverUrl = books.find(
+                          (bk) => bk.id === b.book_id
+                        )?.cover_url;
+                        return (
+                          <div
+                            key={b.id}
+                            className="rec-card"
+                            onClick={() => setSelectedBookId(b.book_id)}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            {coverUrl ? (
+                              <img
+                                src={coverUrl}
+                                alt=""
+                                className="rec-card-cover"
+                              />
+                            ) : (
+                              <NoCoverPlaceholder
+                                title={b.book_title}
+                                className="rec-card-cover"
+                              />
+                            )}
+                            <div className="rec-card-title">{b.book_title}</div>
+                            <div className="rec-card-author">
+                              {b.book_author}
+                            </div>
+                            <div className="rec-card-avail">
+                              <Badge
+                                variant={b.fine_paid ? "returned" : "overdue"}
+                              >
+                                {b.fine_paid ? "Paid" : "Unpaid"}
+                              </Badge>{" "}
+                              · Due {new Date(b.due_date).toLocaleDateString()}
+                              {" · "}
+                              <span className="fine-amount">
+                                ${b.fine.toFixed(2)}
+                              </span>
                             </div>
                           </div>
                         );
@@ -3767,65 +4051,6 @@ function MemberDashboard() {
                 />
               </div>
 
-              {/* Preferences */}
-              <div className="section-header">
-                <h3>Preferences</h3>
-              </div>
-              <div style={{ marginBottom: 32 }}>
-                <div
-                  style={{
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    color: "var(--text-3)",
-                    marginBottom: 10,
-                  }}
-                >
-                  Navigation style
-                </div>
-                <div className="nav-style-picker">
-                  <button
-                    type="button"
-                    className={`nav-style-option${
-                      navStyle !== "dock" ? " active" : ""
-                    }`}
-                    onClick={() => setNavStyle("tabs")}
-                  >
-                    <div className="nav-style-preview">
-                      <div className="nav-style-preview-tabs">
-                        <span />
-                        <span />
-                        <span />
-                        <span />
-                      </div>
-                    </div>
-                    <div className="nav-style-option-name">Tab Bar</div>
-                    <div className="nav-style-option-desc">
-                      Tabs below the header, as it is now
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    className={`nav-style-option${
-                      navStyle === "dock" ? " active" : ""
-                    }`}
-                    onClick={() => setNavStyle("dock")}
-                  >
-                    <div className="nav-style-preview">
-                      <div className="nav-style-preview-dock">
-                        <span />
-                        <span />
-                        <span />
-                        <span />
-                      </div>
-                    </div>
-                    <div className="nav-style-option-name">Dock</div>
-                    <div className="nav-style-option-desc">
-                      A floating Mac-style icon dock
-                    </div>
-                  </button>
-                </div>
-              </div>
-
               {membershipInfo && (
                 <div className="membership-card" data-tour="member-membership">
                   <div className="membership-card-tier">
@@ -3970,44 +4195,338 @@ function MemberDashboard() {
                 )
               )}
 
+              {/* Account details */}
               <div className="section-header" style={{ marginTop: 32 }}>
-                <h3>My Fines</h3>
+                <h3>Account Details</h3>
+                {!accountEditing && (
+                  <button
+                    className="btn btn-sm btn-outline"
+                    onClick={startAccountEdit}
+                  >
+                    Edit
+                  </button>
+                )}
               </div>
-              {fines.length === 0 ? (
-                <div className="empty">No fines</div>
-              ) : (
-                <table className="profile-table">
-                  <thead>
-                    <tr>
-                      <th>Book</th>
-                      <th>Due Date</th>
-                      <th>Fine</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fines.map((b) => (
-                      <tr key={b.id}>
-                        <td>{b.book_title}</td>
-                        <td>{new Date(b.due_date).toLocaleDateString()}</td>
-                        <td className="fine-amount">${b.fine.toFixed(2)}</td>
-                        <td>
-                          <Badge variant={b.fine_paid ? "returned" : "overdue"}>
-                            {b.fine_paid ? "Paid" : "Unpaid"}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+              <div style={{ marginBottom: 32 }}>
+                <div className="form-group">
+                  <label>Username</label>
+                  <input
+                    type="text"
+                    value={accountEditing ? accountForm.username : user.username}
+                    disabled={!accountEditing}
+                    onChange={(e) =>
+                      setAccountForm({
+                        ...accountForm,
+                        username: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Email</label>
+                  <input
+                    type="email"
+                    value={accountEditing ? accountForm.email : user.email || ""}
+                    disabled={!accountEditing}
+                    onChange={(e) =>
+                      setAccountForm({ ...accountForm, email: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="form-group">
+                  <label>New Password</label>
+                  <input
+                    type="password"
+                    placeholder={
+                      accountEditing
+                        ? "Leave blank to keep current password"
+                        : "••••••••"
+                    }
+                    value={accountEditing ? accountForm.new_password : ""}
+                    disabled={!accountEditing}
+                    onChange={(e) =>
+                      setAccountForm({
+                        ...accountForm,
+                        new_password: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                {accountEditing && (
+                  <>
+                    <div className="form-group">
+                      <label>Confirm New Password</label>
+                      <input
+                        type="password"
+                        value={accountForm.confirm_password}
+                        onChange={(e) =>
+                          setAccountForm({
+                            ...accountForm,
+                            confirm_password: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Current Password (required to save changes)</label>
+                      <input
+                        type="password"
+                        value={accountForm.current_password}
+                        onChange={(e) =>
+                          setAccountForm({
+                            ...accountForm,
+                            current_password: e.target.value,
+                          })
+                        }
+                        autoFocus
+                      />
+                    </div>
+                    {accountError && <div className="error">{accountError}</div>}
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button
+                        className="btn btn-sm"
+                        onClick={saveAccountDetails}
+                        disabled={accountSaving}
+                      >
+                        {accountSaving ? "Saving…" : "Save Changes"}
+                      </button>
+                      <button
+                        className="btn btn-sm btn-outline"
+                        onClick={cancelAccountEdit}
+                        disabled={accountSaving}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
 
-              {/* Donate a Book */}
-              <div
-                className="section-header"
-                style={{ marginTop: 32 }}
-                data-tour="member-donations"
-              >
+              {/* Preferences */}
+              <div className="section-header" style={{ marginTop: 32 }}>
+                <h3>Preferences</h3>
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <div
+                  style={{
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                    color: "var(--text-3)",
+                    marginBottom: 10,
+                  }}
+                >
+                  Navigation style
+                </div>
+                <div className="nav-style-picker">
+                  <button
+                    type="button"
+                    className={`nav-style-option${
+                      navStyle !== "dock" ? " active" : ""
+                    }`}
+                    onClick={() => setNavStyle("tabs")}
+                  >
+                    <div className="nav-style-preview">
+                      <div className="nav-style-preview-tabs">
+                        <span />
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                    </div>
+                    <div className="nav-style-option-name">Tab Bar</div>
+                    <div className="nav-style-option-desc">
+                      Tabs below the header, as it is now
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={`nav-style-option${
+                      navStyle === "dock" ? " active" : ""
+                    }`}
+                    onClick={() => setNavStyle("dock")}
+                  >
+                    <div className="nav-style-preview">
+                      <div className="nav-style-preview-dock">
+                        <span />
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                    </div>
+                    <div className="nav-style-option-name">Dock</div>
+                    <div className="nav-style-option-desc">
+                      A floating Mac-style icon dock
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div className="pref-columns" style={{ marginBottom: 32 }}>
+                <div className="pref-column">
+                  <div
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "var(--text-3)",
+                      marginBottom: 10,
+                    }}
+                  >
+                    Appearance
+                  </div>
+                  <div className="pd-options-row pref-options-row">
+                    {APPEARANCE_OPTIONS.map(({ key, label, Icon }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        className={`pd-option${
+                          appearance === key ? " pd-option-active" : ""
+                        }`}
+                        onClick={() => setAppearance(key)}
+                        title={label}
+                      >
+                        <Icon />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pref-column">
+                  <div
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      color: "var(--text-3)",
+                      marginBottom: 10,
+                    }}
+                  >
+                    Reader theme
+                  </div>
+                  <div className="pd-options-row pref-options-row">
+                    {READER_THEME_OPTIONS.map(({ key, label, Icon }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        className={`pd-option${
+                          readerTheme === key ? " pd-option-active" : ""
+                        }`}
+                        onClick={() =>
+                          setReaderTheme(readerTheme === key ? "" : key)
+                        }
+                        title={label}
+                      >
+                        <Icon />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 32 }}>
+                <div
+                  style={{
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                    color: "var(--text-3)",
+                    marginBottom: 10,
+                  }}
+                >
+                  Accent color
+                </div>
+                <div className="accent-swatch-row">
+                  <button
+                    type="button"
+                    className={`accent-swatch accent-swatch-auto${
+                      !accentOverride ? " accent-swatch-selected" : ""
+                    }`}
+                    onClick={() => setAccentOverride("")}
+                    title={
+                      autoAccentColor
+                        ? "Default — matches your borrowed book's cover"
+                        : "Default — matches your borrowed book's cover (borrow a book to see it)"
+                    }
+                    style={
+                      autoAccentColor
+                        ? {
+                            background: autoAccentColor,
+                            color: contrastTextFor(autoAccentColor),
+                          }
+                        : undefined
+                    }
+                  >
+                    {!accentOverride ? (
+                      <CheckIcon />
+                    ) : (
+                      <ReaderBookIcon />
+                    )}
+                  </button>
+                  {ACCENT_PRESETS.map(({ key, label, color, text }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`accent-swatch${
+                        accentOverride === color
+                          ? " accent-swatch-selected"
+                          : ""
+                      }${color === "#ffffff" ? " accent-swatch-outlined" : ""}`}
+                      style={{ background: color, color: text }}
+                      onClick={() => setAccentOverride(color)}
+                      title={label}
+                    >
+                      {accentOverride === color && <CheckIcon />}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className={`accent-swatch accent-swatch-custom${
+                      accentOverride && !isPresetAccent
+                        ? " accent-swatch-selected"
+                        : ""
+                    }`}
+                    style={
+                      accentOverride && !isPresetAccent
+                        ? {
+                            background: accentOverride,
+                            color: contrastTextFor(accentOverride),
+                          }
+                        : undefined
+                    }
+                    onClick={() => accentColorInputRef.current?.click()}
+                    title="Pick a custom color"
+                  >
+                    {accentOverride && !isPresetAccent ? (
+                      <CheckIcon />
+                    ) : (
+                      <PaletteIcon />
+                    )}
+                  </button>
+                  <input
+                    ref={accentColorInputRef}
+                    type="color"
+                    value={
+                      accentOverride && !isPresetAccent
+                        ? accentOverride
+                        : "#000000"
+                    }
+                    onChange={(e) => setAccentOverride(e.target.value)}
+                    style={{
+                      position: "absolute",
+                      width: 1,
+                      height: 1,
+                      opacity: 0,
+                      pointerEvents: "none",
+                    }}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── Donate Tab ── */}
+          {tab === "donate" && (
+            <>
+              <div className="section-header" data-tour="member-donations">
                 <h3>Donate a Book</h3>
                 <button className="btn btn-sm" onClick={openDonateModal}>
                   Donate

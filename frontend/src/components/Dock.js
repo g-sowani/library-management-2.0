@@ -111,6 +111,7 @@ function FallbackIcon() {
 const ICONS = {
   home: HomeIcon,
   books: BooksIcon,
+  donate: DonationsIcon,
   community: CommunityIcon,
   games: GamesIcon,
   profile: ProfileIcon,

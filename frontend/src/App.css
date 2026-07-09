@@ -917,6 +917,13 @@ textarea::placeholder {
   border-color: var(--text);
 }
 
+.form-group input:disabled {
+  background: var(--bg-muted);
+  color: var(--text-4);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+
 .form-group .custom-select {
   display: block;
   width: 100%;
@@ -1433,6 +1440,99 @@ textarea::placeholder {
 
 .pd-option svg {
   flex-shrink: 0;
+}
+
+/* Reuse of .pd-option outside the TopBar dropdown, e.g. Profile > Preferences */
+.pref-options-row {
+  padding: 0;
+  gap: 8px;
+  width: 100%;
+}
+
+.pref-columns {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.pref-column {
+  flex: 1;
+  min-width: 220px;
+}
+
+/* ── Accent colour picker ─────────────────────────────────────────────────── */
+
+.accent-swatch-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding-top: 12px;
+}
+
+.accent-swatch {
+  width: 16px;
+  height: 46px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 3px 3px 0 0;
+  padding: 0 0 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.accent-swatch svg {
+  width: 10px;
+  height: 10px;
+}
+
+.accent-swatch:hover {
+  transform: translateY(-5px);
+}
+
+.accent-swatch-selected {
+  transform: translateY(-9px);
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.25));
+}
+
+.accent-swatch-selected:hover {
+  transform: translateY(-9px);
+}
+
+.accent-swatch-outlined {
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.accent-swatch-auto {
+  background: var(--bg-muted);
+  color: var(--text-3);
+}
+
+.accent-swatch-custom {
+  background: linear-gradient(
+    180deg,
+    #e53935,
+    #fdd835,
+    #43a047,
+    #26c6da,
+    #1e88e5,
+    #8e24aa
+  );
+  color: #fff;
+}
+
+.pref-options-row .pd-option {
+  padding: 10px 6px;
+  font-size: 0.78rem;
+  border-color: var(--border);
+}
+
+.pref-options-row .pd-option svg {
+  width: 18px;
+  height: 18px;
 }
 
 /* ── Theme toggle (kept for any future standalone use) ───────────────────────── */
@@ -3843,18 +3943,14 @@ td {
 }
 
 .home-card {
-  padding: 32px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  background: var(--bg-subtle);
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border-subtle);
   color: var(--text);
 }
 
 .home-card-heading {
-  font-size: 1.65rem;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  line-height: 1.1;
+  font-size: 1.1rem;
+  font-weight: 600;
 }
 
 .home-section-toggle {

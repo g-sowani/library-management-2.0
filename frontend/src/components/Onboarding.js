@@ -152,7 +152,7 @@ function buildMemberSteps(username) {
       icon: GiftIcon,
       eyebrow: 'Donations',
       title: 'Turn your old books into credit',
-      tab: 'profile',
+      tab: 'donate',
       target: '[data-tour="member-donations"]',
       body: "Submit books you own right here. Once an admin approves the donation, it's added to the catalogue and you earn credit toward your account.",
     },
@@ -160,7 +160,7 @@ function buildMemberSteps(username) {
       icon: UserCircleIcon,
       eyebrow: 'My Profile',
       title: 'Everything in one place',
-      body: 'Track your borrowed books, reservations, fines, and donation history — and update your avatar — right from your Profile tab.',
+      body: 'Track your borrowed books, reservations, and fines from My Stuff, your donation history from the Donate tab, and update your avatar or membership from Profile.',
       cta: 'Start exploring',
     },
   ];

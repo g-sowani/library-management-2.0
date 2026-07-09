@@ -12,6 +12,10 @@ export function ThemeProvider({ children }) {
   const [navStyle, setNavStyleState] = useState(
     () => localStorage.getItem('navStyle') || 'tabs'
   );
+  // Empty string means "no override" — fall back to the borrowed book's cover colour.
+  const [accentOverride, setAccentOverrideState] = useState(
+    () => localStorage.getItem('accentOverride') || ''
+  );
 
   useEffect(() => {
     const html = document.documentElement;
@@ -51,8 +55,13 @@ export function ThemeProvider({ children }) {
     setNavStyleState(s);
   };
 
+  const setAccentOverride = (c) => {
+    localStorage.setItem('accentOverride', c);
+    setAccentOverrideState(c);
+  };
+
   return (
-    <ThemeContext.Provider value={{ appearance, setAppearance, readerTheme, setReaderTheme, navStyle, setNavStyle }}>
+    <ThemeContext.Provider value={{ appearance, setAppearance, readerTheme, setReaderTheme, navStyle, setNavStyle, accentOverride, setAccentOverride }}>
       {children}
     </ThemeContext.Provider>
   );

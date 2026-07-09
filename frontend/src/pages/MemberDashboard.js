@@ -989,13 +989,21 @@ const GAMES_LIST = [
 ];
 
 function pickHangmanWord(books) {
-  const candidates = (books || [])
-    .map((b) => b.title.toUpperCase())
-    .filter(
-      (t) => t.length >= 3 && t.length <= 26 && /^[A-Z0-9' .,!?:-]+$/.test(t)
-    );
-  const pool = candidates.length >= 5 ? candidates : HANGMAN_FALLBACK_TITLES;
-  return pool[Math.floor(Math.random() * pool.length)];
+  const candidates = (books || []).filter(
+    (b) =>
+      b.title.length >= 3 &&
+      b.title.length <= 26 &&
+      /^[A-Za-z0-9' .,!?:-]+$/.test(b.title)
+  );
+  if (candidates.length >= 5) {
+    const book = candidates[Math.floor(Math.random() * candidates.length)];
+    return { answer: book.title.toUpperCase(), book };
+  }
+  const answer =
+    HANGMAN_FALLBACK_TITLES[
+      Math.floor(Math.random() * HANGMAN_FALLBACK_TITLES.length)
+    ];
+  return { answer, book: null };
 }
 
 function shuffleWord(word) {
@@ -1471,10 +1479,12 @@ function MemberDashboard() {
   const [communities, setCommunities] = useState([]);
   const [myCommunities, setMyCommunities] = useState([]);
   const [communitiesLoaded, setCommunitiesLoaded] = useState(false);
+  const [communitySearch, setCommunitySearch] = useState("");
   const [selectedCommunity, setSelectedCommunity] = useState(null);
   const [communityPosts, setCommunityPosts] = useState([]);
   const [postsLoading, setPostsLoading] = useState(false);
   const [selectedPost, setSelectedPost] = useState(null);
+  const [expandedPostId, setExpandedPostId] = useState(null);
   const [postLoading, setPostLoading] = useState(false);
   const [showCreateCommunity, setShowCreateCommunity] = useState(false);
   const [communityForm, setCommunityForm] = useState({
@@ -1499,7 +1509,10 @@ function MemberDashboard() {
   // Games (Gold perk) — client-side only, session score
   const [gameView, setGameView] = useState("menu"); // 'menu' | 'hangman' | 'scramble' | 'wordle'
   const [hangman, setHangman] = useState(null); // { answer, guessed:Set, wrong, status, xpEarned }
+  const [hangmanRevealDismissed, setHangmanRevealDismissed] = useState(false);
   const [scramble, setScramble] = useState(null); // { answer, scrambled, guess, status, hintRevealed, xpEarned }
+  const [scrambleHintCooldown, setScrambleHintCooldown] = useState(false);
+  const scrambleHintTimeoutRef = useRef(null);
   const [wordle, setWordle] = useState(null); // { answer, guesses:[], current, status, error, xpEarned }
 
   const tier = membershipInfo?.membership?.tier || null;
@@ -1748,6 +1761,8 @@ function MemberDashboard() {
     setSelectedCommunity(community);
     setCommunityView("community");
     setCommunityPosts([]);
+    setSelectedPost(null);
+    setExpandedPostId(null);
     setPostsLoading(true);
     try {
       const r = await api.get(`/communities/${community.id}/posts`);
@@ -1757,8 +1772,12 @@ function MemberDashboard() {
     }
   };
 
-  const openPost = async (post) => {
-    setCommunityView("post");
+  const togglePostComments = async (post) => {
+    if (expandedPostId === post.id) {
+      setExpandedPostId(null);
+      return;
+    }
+    setExpandedPostId(post.id);
     setSelectedPost(null);
     setPostLoading(true);
     setCommentContent("");
@@ -1908,6 +1927,11 @@ function MemberDashboard() {
         `/communities/${selectedCommunity.id}/posts/${selectedPost.id}`
       );
       setSelectedPost(r.data);
+      setCommunityPosts((prev) =>
+        prev.map((p) =>
+          p.id === r.data.id ? { ...p, comment_count: r.data.comment_count } : p
+        )
+      );
     } catch (err) {
       setCommentError(err.response?.data?.error || "Failed to post comment");
     }
@@ -1929,18 +1953,28 @@ function MemberDashboard() {
         `/communities/${selectedCommunity.id}/posts/${selectedPost.id}`
       );
       setSelectedPost(r.data);
+      setCommunityPosts((prev) =>
+        prev.map((p) =>
+          p.id === r.data.id ? { ...p, comment_count: r.data.comment_count } : p
+        )
+      );
     } catch (err) {
       setCommentError(err.response?.data?.error || "Failed to post reply");
     }
   };
 
-  const reactPost = async (emoji) => {
+  const reactPost = async (post, emoji) => {
     try {
       const r = await api.post(
-        `/communities/${selectedCommunity.id}/posts/${selectedPost.id}/react`,
+        `/communities/${selectedCommunity.id}/posts/${post.id}/react`,
         { emoji }
       );
-      setSelectedPost((prev) => ({ ...prev, reactions: r.data }));
+      setCommunityPosts((prev) =>
+        prev.map((p) => (p.id === post.id ? { ...p, reactions: r.data } : p))
+      );
+      setSelectedPost((prev) =>
+        prev && prev.id === post.id ? { ...prev, reactions: r.data } : prev
+      );
     } catch {}
   };
 
@@ -1970,14 +2004,16 @@ function MemberDashboard() {
   };
 
   const startHangman = () => {
-    const answer = pickHangmanWord(books);
+    const { answer, book } = pickHangmanWord(books);
     setHangman({
       answer,
+      book,
       guessed: new Set(),
       wrong: 0,
       status: "playing",
       xpEarned: null,
     });
+    setHangmanRevealDismissed(false);
   };
 
   const guessHangmanLetter = (letter) => {
@@ -2003,6 +2039,20 @@ function MemberDashboard() {
     });
   };
 
+  useEffect(() => {
+    if (gameView !== "hangman") return;
+    const handleKeydown = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const letter = e.key.toUpperCase();
+      if (/^[A-Z]$/.test(letter)) {
+        e.preventDefault();
+        guessHangmanLetter(letter);
+      }
+    };
+    window.addEventListener("keydown", handleKeydown);
+    return () => window.removeEventListener("keydown", handleKeydown);
+  }, [gameView]); // eslint-disable-line
+
   const startScramble = () => {
     const answer =
       SCRAMBLE_WORDS[Math.floor(Math.random() * SCRAMBLE_WORDS.length)];
@@ -2014,6 +2064,8 @@ function MemberDashboard() {
       hintRevealed: 0,
       xpEarned: null,
     });
+    clearTimeout(scrambleHintTimeoutRef.current);
+    setScrambleHintCooldown(false);
   };
 
   const reshuffleScramble = () => {
@@ -2023,6 +2075,7 @@ function MemberDashboard() {
   };
 
   const revealScrambleHint = () => {
+    if (scrambleHintCooldown) return;
     setScramble((prev) =>
       prev && prev.status === "playing"
         ? {
@@ -2033,6 +2086,12 @@ function MemberDashboard() {
             ),
           }
         : prev
+    );
+    setScrambleHintCooldown(true);
+    clearTimeout(scrambleHintTimeoutRef.current);
+    scrambleHintTimeoutRef.current = setTimeout(
+      () => setScrambleHintCooldown(false),
+      2000
     );
   };
 
@@ -2295,6 +2354,16 @@ function MemberDashboard() {
     [trending]
   );
 
+  const filteredCommunities = useMemo(() => {
+    const q = communitySearch.trim().toLowerCase();
+    if (!q) return communities;
+    return communities.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.description || "").toLowerCase().includes(q)
+    );
+  }, [communities, communitySearch]);
+
   const hasActiveFilters =
     aiMode ||
     search ||
@@ -2555,7 +2624,9 @@ function MemberDashboard() {
                         {overdueBorrows.length > 0 && unpaidFines.length > 0
                           ? `You have ${overdueBorrows.length} overdue book${
                               overdueBorrows.length !== 1 ? "s" : ""
-                            } and $${totalUnpaidFines.toFixed(2)} in unpaid fines`
+                            } and $${totalUnpaidFines.toFixed(
+                              2
+                            )} in unpaid fines`
                           : overdueBorrows.length > 0
                           ? `You have ${overdueBorrows.length} overdue book${
                               overdueBorrows.length !== 1 ? "s" : ""
@@ -2649,9 +2720,7 @@ function MemberDashboard() {
                   onClick={() => toggleHomeSection("borrowed")}
                   aria-expanded={openHomeSection === "borrowed"}
                 >
-                  <span className="home-card-heading">
-                    My Borrowed Books
-                  </span>
+                  <span className="home-card-heading">My Borrowed Books</span>
                   <span
                     className={`home-section-chevron${
                       openHomeSection === "borrowed" ? " open" : ""
@@ -2780,14 +2849,16 @@ function MemberDashboard() {
                               {b.book_author}
                             </div>
                             <div className="rec-card-avail">
-                              <Badge variant="returned">Returned</Badge>{" "}
-                              · {new Date(b.return_date).toLocaleDateString()}
+                              <Badge variant="returned">Returned</Badge> ·{" "}
+                              {new Date(b.return_date).toLocaleDateString()}
                               {b.fine > 0 && (
                                 <>
                                   {" "}
                                   ·{" "}
                                   <Badge
-                                    variant={b.fine_paid ? "returned" : "overdue"}
+                                    variant={
+                                      b.fine_paid ? "returned" : "overdue"
+                                    }
                                   >
                                     {b.fine_paid
                                       ? `Fine paid $${b.fine.toFixed(2)}`
@@ -2810,9 +2881,7 @@ function MemberDashboard() {
                   onClick={() => toggleHomeSection("reservations")}
                   aria-expanded={openHomeSection === "reservations"}
                 >
-                  <span className="home-card-heading">
-                    My Reservations
-                  </span>
+                  <span className="home-card-heading">My Reservations</span>
                   <span
                     className={`home-section-chevron${
                       openHomeSection === "reservations" ? " open" : ""
@@ -4068,6 +4137,15 @@ function MemberDashboard() {
                     </button>
                   </div>
 
+                  <div className="search-trigger-row">
+                    <SearchBar
+                      value={communitySearch}
+                      onChange={setCommunitySearch}
+                      placeholder="Search communities…"
+                      className="search-bar-wide"
+                    />
+                  </div>
+
                   {/* Pending / rejected requests */}
                   {myCommunities.filter((c) => c.status !== "approved").length >
                     0 && (
@@ -4084,7 +4162,9 @@ function MemberDashboard() {
                                 className="community-card-banner"
                                 style={
                                   c.banner_url
-                                    ? { backgroundImage: `url(${c.banner_url})` }
+                                    ? {
+                                        backgroundImage: `url(${c.banner_url})`,
+                                      }
                                     : undefined
                                 }
                               >
@@ -4144,10 +4224,20 @@ function MemberDashboard() {
                     <div className="empty">
                       No communities yet — be the first to create one!
                     </div>
+                  ) : filteredCommunities.length === 0 ? (
+                    <div className="empty">
+                      No communities match "{communitySearch}"
+                    </div>
                   ) : (
                     <div className="communities-grid">
-                      {communities.map((c) => (
-                        <div key={c.id} className="community-card">
+                      {filteredCommunities.map((c) => (
+                        <div
+                          key={c.id}
+                          className={`community-card${
+                            c.is_member ? " community-card-clickable" : ""
+                          }`}
+                          onClick={c.is_member ? () => openCommunity(c) : undefined}
+                        >
                           <div
                             className="community-card-banner"
                             style={
@@ -4185,7 +4275,10 @@ function MemberDashboard() {
                               {c.user_role === "moderator" && (
                                 <button
                                   className="btn btn-sm btn-outline"
-                                  onClick={() => openEditCommunity(c)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openEditCommunity(c);
+                                  }}
                                 >
                                   Edit
                                 </button>
@@ -4203,24 +4296,22 @@ function MemberDashboard() {
                             </div>
                             <div className="btn-row">
                               {c.is_member ? (
-                                <>
-                                  <button
-                                    className="btn btn-sm"
-                                    onClick={() => openCommunity(c)}
-                                  >
-                                    View
-                                  </button>
-                                  <button
-                                    className="btn btn-sm btn-outline"
-                                    onClick={() => leaveCommunity(c.id)}
-                                  >
-                                    Leave
-                                  </button>
-                                </>
+                                <button
+                                  className="btn btn-sm btn-outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    leaveCommunity(c.id);
+                                  }}
+                                >
+                                  Leave
+                                </button>
                               ) : (
                                 <button
                                   className="btn btn-sm"
-                                  onClick={() => joinCommunity(c)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    joinCommunity(c);
+                                  }}
                                 >
                                   Join
                                 </button>
@@ -4234,21 +4325,65 @@ function MemberDashboard() {
                 </>
               ) : communityView === "community" ? (
                 <>
-                  <div className="community-nav">
-                    <button
-                      className="btn btn-sm btn-outline"
-                      onClick={() => {
-                        setCommunityView("list");
-                        loadCommunities();
-                      }}
+                  <button
+                    className="back-nav-link community-page-back"
+                    onClick={() => {
+                      setCommunityView("list");
+                      loadCommunities();
+                    }}
+                  >
+                    <ChevronLeft /> Back to communities
+                  </button>
+
+                  <div className="community-page-header">
+                    <div
+                      className="community-page-banner"
+                      style={
+                        selectedCommunity?.banner_url
+                          ? {
+                              backgroundImage: `url(${selectedCommunity.banner_url})`,
+                            }
+                          : undefined
+                      }
                     >
-                      ← Back
-                    </button>
-                    <div>
-                      <div className="community-nav-title">
-                        {selectedCommunity?.name}
+                      <div className="community-page-icon-wrap">
+                        {selectedCommunity?.icon_url ? (
+                          <img
+                            src={selectedCommunity.icon_url}
+                            alt=""
+                            className="community-page-icon"
+                          />
+                        ) : (
+                          <div className="community-page-icon-placeholder">
+                            {selectedCommunity?.name?.charAt(0).toUpperCase()}
+                          </div>
+                        )}
                       </div>
-                      <div className="community-nav-meta">
+                    </div>
+                    <div className="community-page-info">
+                      <div className="community-page-title-row">
+                        <div>
+                          <div className="community-page-title">
+                            {selectedCommunity?.name}
+                          </div>
+                          {selectedCommunity?.description && (
+                            <div className="community-page-desc">
+                              {selectedCommunity.description}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => {
+                            setPostForm({ title: "", content: "" });
+                            setPostFormError("");
+                            setShowCreatePost(true);
+                          }}
+                        >
+                          + New Post
+                        </button>
+                      </div>
+                      <div className="community-page-meta">
                         {selectedCommunity?.member_count} member
                         {selectedCommunity?.member_count !== 1 ? "s" : ""}
                         {selectedCommunity?.user_role === "moderator" && (
@@ -4261,17 +4396,6 @@ function MemberDashboard() {
                         )}
                       </div>
                     </div>
-                    <button
-                      className="btn btn-sm"
-                      style={{ marginLeft: "auto" }}
-                      onClick={() => {
-                        setPostForm({ title: "", content: "" });
-                        setPostFormError("");
-                        setShowCreatePost(true);
-                      }}
-                    >
-                      + New Post
-                    </button>
                   </div>
 
                   {postsLoading ? (
@@ -4281,156 +4405,123 @@ function MemberDashboard() {
                       No posts yet — start the conversation!
                     </div>
                   ) : (
-                    communityPosts.map((post) => (
-                      <div
-                        key={post.id}
-                        className="post-card"
-                        onClick={() => openPost(post)}
-                      >
-                        <div className="post-card-title">{post.title}</div>
-                        <div className="post-card-meta">
-                          <span>{post.author_username}</span>
-                          <span className="muted">·</span>
-                          <span className="muted">
-                            {new Date(post.created_at).toLocaleDateString()}
-                          </span>
-                          <span className="muted">·</span>
-                          <span className="muted">
-                            {post.comment_count} comment
-                            {post.comment_count !== 1 ? "s" : ""}
-                          </span>
-                        </div>
-                        {Object.keys(post.reactions.counts).length > 0 && (
-                          <div className="post-reactions-preview">
-                            {REACTIONS.filter(
-                              ({ key }) => post.reactions.counts[key] > 0
-                            ).map(({ key, label }) => (
-                              <span
-                                key={key}
-                                className="reaction-mini"
-                                title={label}
-                              >
-                                <ReactionIcon type={key} size={11} />
-                                <span className="reaction-count">
-                                  {post.reactions.counts[key]}
-                                </span>
-                              </span>
-                            ))}
+                    communityPosts.map((post) => {
+                      const isExpanded = expandedPostId === post.id;
+                      return (
+                        <div key={post.id} className="post-card">
+                          <div className="post-card-title">{post.title}</div>
+                          <div className="post-card-meta">
+                            <span>{post.author_username}</span>
+                            <span className="muted">·</span>
+                            <span className="muted">
+                              {new Date(post.created_at).toLocaleDateString()}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </>
-              ) : communityView === "post" ? (
-                <>
-                  <div className="community-nav" style={{ marginBottom: 24 }}>
-                    <button
-                      className="btn btn-sm btn-outline"
-                      onClick={() => {
-                        setCommunityView("community");
-                      }}
-                    >
-                      ← {selectedCommunity?.name}
-                    </button>
-                  </div>
+                          <div className="post-card-content">
+                            {post.content}
+                          </div>
 
-                  {postLoading || !selectedPost ? (
-                    <div className="empty">Loading…</div>
-                  ) : (
-                    <>
-                      <div className="post-detail">
-                        <h2 className="post-detail-title">
-                          {selectedPost.title}
-                        </h2>
-                        <div className="post-detail-meta">
-                          <span>{selectedPost.author_username}</span>
-                          <span className="muted">·</span>
-                          <span className="muted">
-                            {new Date(selectedPost.created_at).toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="post-detail-content">
-                          {selectedPost.content}
-                        </div>
-                        <div className="reaction-bar">
-                          {REACTIONS.map(({ key, label }) => {
-                            const count =
-                              selectedPost.reactions.counts[key] || 0;
-                            const active =
-                              selectedPost.reactions.user_reaction === key;
-                            return (
-                              <button
-                                key={key}
-                                className={`reaction-btn${
-                                  active ? " reaction-active" : ""
-                                }`}
-                                onClick={() => reactPost(key)}
-                                title={label}
-                              >
-                                <ReactionIcon type={key} size={15} />
-                                {count > 0 && (
-                                  <span className="reaction-count">
-                                    {count}
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="comments-section">
-                        <div className="comments-header">
-                          {selectedPost.comment_count} Comment
-                          {selectedPost.comment_count !== 1 ? "s" : ""}
-                        </div>
-
-                        <form className="comment-form" onSubmit={submitComment}>
-                          {commentError && (
-                            <div className="error" style={{ marginBottom: 8 }}>
-                              {commentError}
-                            </div>
-                          )}
-                          <textarea
-                            className="comment-input"
-                            value={commentContent}
-                            onChange={(e) => setCommentContent(e.target.value)}
-                            placeholder="Write a comment…"
-                            rows={2}
-                          />
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "flex-end",
-                              marginTop: 6,
-                            }}
-                          >
+                          <div className="reaction-bar">
+                            {REACTIONS.map(({ key, label }) => {
+                              const count = post.reactions.counts[key] || 0;
+                              const active =
+                                post.reactions.user_reaction === key;
+                              return (
+                                <button
+                                  key={key}
+                                  className={`reaction-btn${
+                                    active ? " reaction-active" : ""
+                                  }`}
+                                  onClick={() => reactPost(post, key)}
+                                  title={label}
+                                >
+                                  <ReactionIcon type={key} size={15} />
+                                  {count > 0 && (
+                                    <span className="reaction-count">
+                                      {count}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
                             <button
-                              type="submit"
-                              className="btn btn-sm"
-                              disabled={!commentContent.trim()}
+                              className="post-comments-toggle"
+                              onClick={() => togglePostComments(post)}
                             >
-                              Comment
+                              {post.comment_count} comment
+                              {post.comment_count !== 1 ? "s" : ""}
+                              {isExpanded ? " ▲" : " ▼"}
                             </button>
                           </div>
-                        </form>
 
-                        {selectedPost.comments?.map((comment) => (
-                          <CommentItem
-                            key={comment.id}
-                            comment={comment}
-                            currentUserId={user.id}
-                            onReact={reactComment}
-                            onReply={setReplyingToId}
-                            replyingToId={replyingToId}
-                            replyContent={replyContent}
-                            setReplyContent={setReplyContent}
-                            onSubmitReply={submitReply}
-                          />
-                        ))}
-                      </div>
-                    </>
+                          {isExpanded && (
+                            <div className="comments-section">
+                              {postLoading ||
+                              !selectedPost ||
+                              selectedPost.id !== post.id ? (
+                                <div className="empty">
+                                  Loading comments…
+                                </div>
+                              ) : (
+                                <>
+                                  <form
+                                    className="comment-form"
+                                    onSubmit={submitComment}
+                                  >
+                                    {commentError && (
+                                      <div
+                                        className="error"
+                                        style={{ marginBottom: 8 }}
+                                      >
+                                        {commentError}
+                                      </div>
+                                    )}
+                                    <textarea
+                                      className="comment-input"
+                                      value={commentContent}
+                                      onChange={(e) =>
+                                        setCommentContent(e.target.value)
+                                      }
+                                      placeholder="Write a comment…"
+                                      rows={2}
+                                    />
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "flex-end",
+                                        marginTop: 6,
+                                      }}
+                                    >
+                                      <button
+                                        type="submit"
+                                        className="btn btn-sm"
+                                        disabled={!commentContent.trim()}
+                                      >
+                                        Comment
+                                      </button>
+                                    </div>
+                                  </form>
+
+                                  {selectedPost.comments?.map((comment) => (
+                                    <CommentItem
+                                      key={comment.id}
+                                      comment={comment}
+                                      currentUserId={user.id}
+                                      onReact={reactComment}
+                                      onReply={setReplyingToId}
+                                      replyingToId={replyingToId}
+                                      replyContent={replyContent}
+                                      setReplyContent={setReplyContent}
+                                      onSubmitReply={submitReply}
+                                    />
+                                  ))}
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
                   )}
                 </>
               ) : null}
@@ -4475,10 +4566,10 @@ function MemberDashboard() {
                   </div>
                 </>
               ) : (
-                <div className="game-panel">
+                <>
                   <div className="game-panel-header">
                     <button
-                      className="btn btn-sm btn-outline"
+                      className="back-nav-link"
                       onClick={() => setGameView("menu")}
                     >
                       <ChevronLeft /> Back to Games
@@ -4486,6 +4577,7 @@ function MemberDashboard() {
                     <h3>{GAMES_LIST.find((g) => g.id === gameView)?.name}</h3>
                   </div>
 
+                  <div className="game-panel">
                   {gameView === "hangman" && hangman && (
                     <div className="hangman-game">
                       <HangmanFigure wrong={hangman.wrong} />
@@ -4513,8 +4605,47 @@ function MemberDashboard() {
                           Out of guesses — it was "{hangman.answer}"
                         </div>
                       )}
+                      {hangman.status !== "playing" &&
+                        hangman.book &&
+                        !hangmanRevealDismissed && (
+                          <div className="hangman-reveal-card">
+                            <div className="hangman-reveal-cover-wrap">
+                              {hangman.book.cover_url ? (
+                                <img
+                                  src={hangman.book.cover_url}
+                                  alt=""
+                                  className="hangman-reveal-cover"
+                                />
+                              ) : (
+                                <NoCoverPlaceholder title={hangman.book.title} />
+                              )}
+                            </div>
+                            <div className="hangman-reveal-book-title">
+                              {hangman.book.title}
+                            </div>
+                            <div className="hangman-reveal-book-author">
+                              {hangman.book.author}
+                            </div>
+                            <div className="hangman-reveal-actions">
+                              <button
+                                className="btn btn-sm btn-outline"
+                                onClick={() => setHangmanRevealDismissed(true)}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                className="btn btn-sm"
+                                onClick={() => openBook(hangman.book.id)}
+                              >
+                                Explore
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       <div className="game-wrong-count">
                         Wrong guesses: {hangman.wrong} / {HANGMAN_MAX_WRONG}
+                        {hangman.status === "playing" &&
+                          " · type a letter to guess"}
                       </div>
                       <div className="hangman-keyboard">
                         {"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -4554,9 +4685,7 @@ function MemberDashboard() {
                       <div className="scramble-letters">
                         {scramble.scrambled.split("").map((ch, i) => (
                           <span key={i} className="scramble-tile">
-                            {i < scramble.hintRevealed
-                              ? scramble.answer[i]
-                              : ch}
+                            {ch}
                           </span>
                         ))}
                       </div>
@@ -4564,6 +4693,15 @@ function MemberDashboard() {
                         {scramble.answer.length} letters · library & literary
                         vocabulary
                       </div>
+                      {scramble.hintRevealed > 0 && (
+                        <div className="scramble-hint-word">
+                          {scramble.answer.split("").map((ch, i) => (
+                            <span key={i} className="scramble-hint-letter">
+                              {i < scramble.hintRevealed ? ch : "_"}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       <form
                         className="scramble-form"
                         onSubmit={submitScrambleGuess}
@@ -4604,20 +4742,23 @@ function MemberDashboard() {
                         </div>
                       )}
                       <div className="scramble-actions">
-                        <button
-                          className="btn btn-sm btn-outline"
-                          onClick={reshuffleScramble}
-                          disabled={scramble.status === "won"}
-                        >
-                          Reshuffle
-                        </button>
-                        <button
-                          className="btn btn-sm btn-outline"
-                          onClick={revealScrambleHint}
-                          disabled={scramble.status === "won"}
-                        >
-                          Hint
-                        </button>
+                        {scramble.status !== "won" && (
+                          <>
+                            <button
+                              className="btn btn-sm btn-outline"
+                              onClick={reshuffleScramble}
+                            >
+                              Reshuffle
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline"
+                              onClick={revealScrambleHint}
+                              disabled={scrambleHintCooldown}
+                            >
+                              Hint
+                            </button>
+                          </>
+                        )}
                         {scramble.status === "won" && (
                           <button
                             className="btn btn-sm"
@@ -4723,7 +4864,8 @@ function MemberDashboard() {
                       )}
                     </div>
                   )}
-                </div>
+                  </div>
+                </>
               )}
             </>
           )}
@@ -5459,9 +5601,9 @@ function MemberDashboard() {
                 </div>
                 {!payFineWithReturn && (
                   <p className="return-fine-hint">
-                    This book has an unpaid fine. Check the box above to
-                    submit your fine payment along with the return for the
-                    library to verify.
+                    This book has an unpaid fine. Check the box above to submit
+                    your fine payment along with the return for the library to
+                    verify.
                   </p>
                 )}
               </div>

@@ -1,0 +1,99 @@
+LIBRARY MANAGEMENT CLI — GUIDE
+================================
+
+This is a command-line admin tool for managing the library straight from the
+database, without going through the web UI or the HTTP API. It's built on
+Flask's built-in CLI (Click), so every command runs as `flask <command>`.
+
+
+HOW IT WAS BUILT
+-----------------
+
+File: backend/cli.py
+
+- Uses Flask's app.cli.add_command() mechanism (part of Flask core, backed
+  by the `click` library — already an existing dependency via Flask, so no
+  new packages were added to requirements.txt).
+- Each command is a plain @click.command() function that talks directly to
+  the existing SQLAlchemy models (User, Book, Borrow, Library) and the
+  shared `db` session from extensions.py — the same models the Flask routes
+  use, so behavior (fine calculation, borrow_days setting, etc.) stays
+  consistent with the web app.
+- A `register_cli(app)` function collects all the commands and registers
+  them on the Flask app's CLI group.
+- Wired in from backend/app.py: at the end of create_app(), after the app
+  is fully configured and the DB is migrated/seeded, it calls:
+      from cli import register_cli
+      register_cli(app)
+  This means the same one-time DB setup/migration/seed logic that runs for
+  the web server also runs before any CLI command executes, so the CLI
+  always sees an up-to-date schema.
+- Multi-library support: this app can host more than one library. Every
+  command that touches library-scoped data (books, users, borrows, stats)
+  accepts a `--library <code>` option. A shared `_resolve_library()` helper
+  auto-picks the library if there's only one in the database, and otherwise
+  requires the flag and lists the valid codes if omitted.
+
+
+HOW TO USE IT
+--------------
+
+Setup (run once per terminal session, from the backend/ directory):
+
+    cd backend
+    source .venv/bin/activate      # or call .venv/bin/python3 -m ... directly
+    export FLASK_APP=app.py
+
+See everything available:
+
+    flask --help
+
+
+Commands:
+
+  list-libraries
+      List every library (code, name, id) that exists in the DB.
+
+  list-books [--library CODE] [--search TEXT]
+      List books in a library. --search filters by title/author substring.
+
+  add-book [--library CODE] --title T --author A --isbn I [--copies N] [--genre G]
+      Add a new book. Fails if a book with that ISBN already exists in the
+      library.
+
+  list-users [--library CODE] [--role admin|member]
+      List users in a library, optionally filtered by role.
+
+  create-user [--library CODE] --username U --password P [--email E] [--role admin|member]
+      Create a new user. Fails if the username is already taken.
+
+  list-borrows [--library CODE] [--overdue]
+      List borrow records for a library. --overdue shows only unreturned,
+      past-due borrows.
+
+  checkout [--library CODE] --user USERNAME --book BOOK_ID
+      Check a book out to a user. Due date is computed from the library's
+      `borrow_days` setting. Fails if there are no available copies.
+
+  return-book --borrow-id ID
+      Mark a borrow as returned, decrement/settle its fine using the same
+      calculate_fine() logic the web app uses, and restock the copy.
+
+  stats [--library CODE]
+      Print book / user / active-borrow / overdue counts for a library.
+
+
+Examples:
+
+    flask list-libraries
+    flask stats --library F2VYCT
+    flask list-books --library F2VYCT --search dune
+    flask add-book --library F2VYCT --title "Dune" --author "Frank Herbert" \
+        --isbn "978-0441013593" --copies 3 --genre "Science Fiction"
+    flask create-user --library F2VYCT --username newmember --password pass123
+    flask checkout --library F2VYCT --user newmember --book 18
+    flask return-book --borrow-id 74
+    flask list-borrows --library F2VYCT --overdue
+
+Note: if your local database only has one library, --library can be
+omitted everywhere — it's auto-resolved.

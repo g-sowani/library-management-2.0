@@ -14,6 +14,7 @@ from models.community import (Community, CommunityMembership, CommunityPost,
                                CommunityComment, PostReaction, CommentReaction)
 from models.wishlist import Wishlist
 from models.genre import Genre
+from models.reading_goal import ReadingGoal
 
 
 def seed_data():

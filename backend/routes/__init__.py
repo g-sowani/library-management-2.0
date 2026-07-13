@@ -11,6 +11,7 @@ from routes.wishlist import wishlist_bp
 from routes.genres import genres_bp
 from routes.games import games_bp
 from routes.book_requests import book_requests_bp
+from routes.reading_goals import reading_goals_bp
 
 
 def register_blueprints(app):
@@ -28,3 +29,4 @@ def register_blueprints(app):
     app.register_blueprint(genres_bp)
     app.register_blueprint(games_bp)
     app.register_blueprint(book_requests_bp)
+    app.register_blueprint(reading_goals_bp)

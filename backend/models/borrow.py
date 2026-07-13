@@ -13,6 +13,8 @@ class Borrow(db.Model):
     fine_payment_requested_at = db.Column(db.DateTime, nullable=True)
     fine = db.Column(db.Float, default=0.0)
     fine_paid = db.Column(db.Boolean, default=False)
+    is_completed = db.Column(db.Boolean, default=False)
+    completed_at = db.Column(db.DateTime, nullable=True)
 
     def calculate_fine(self):
         from models.setting import get_setting
@@ -38,4 +40,6 @@ class Borrow(db.Model):
             ),
             'fine': self.fine, 'fine_paid': self.fine_paid,
             'is_overdue': not self.return_date and datetime.utcnow() > self.due_date,
+            'is_completed': self.is_completed,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
         }

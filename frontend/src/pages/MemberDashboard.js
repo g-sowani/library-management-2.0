@@ -1593,10 +1593,20 @@ function MemberDashboard() {
   // Return + review modal
   const [returnModal, setReturnModal] = useState(null); // { borrowId, bookTitle, fine, finePaid }
   const [payFineWithReturn, setPayFineWithReturn] = useState(false);
+  const [markComplete, setMarkComplete] = useState(true);
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewHover, setReviewHover] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [reviewAnonymous, setReviewAnonymous] = useState(false);
+
+  // Reading goals
+  const [readingGoal, setReadingGoal] = useState(null); // { period, target }
+  const [readingProgress, setReadingProgress] = useState(0);
+  const [booksReadThisYear, setBooksReadThisYear] = useState(0);
+  const [goalEditOpen, setGoalEditOpen] = useState(false);
+  const [goalPeriodDraft, setGoalPeriodDraft] = useState("yearly");
+  const [goalTargetDraft, setGoalTargetDraft] = useState(12);
+  const [savingGoal, setSavingGoal] = useState(false);
 
   // Avatar
   const avatarInputRef = useRef(null);
@@ -1737,6 +1747,18 @@ function MemberDashboard() {
           setWishlistIds(new Set(r.data.map((i) => i.book_id)));
         })
         .catch(() => {}),
+      api
+        .get("/reading-goal")
+        .then((r) => {
+          setReadingGoal(r.data.goal);
+          setReadingProgress(r.data.progress);
+          setBooksReadThisYear(r.data.books_read_this_year);
+          if (r.data.goal) {
+            setGoalPeriodDraft(r.data.goal.period);
+            setGoalTargetDraft(r.data.goal.target);
+          }
+        })
+        .catch(() => {}),
     ])
       .catch(() => setError("Failed to load data. Is the server running?"))
       .finally(() => setLoading(false));
@@ -1844,6 +1866,7 @@ function MemberDashboard() {
       finePaid: borrow.fine_paid,
     });
     setPayFineWithReturn(false);
+    setMarkComplete(true);
     setReviewRating(0);
     setReviewHover(0);
     setReviewText("");
@@ -1877,6 +1900,9 @@ function MemberDashboard() {
     if (returnHasUnpaidFine) {
       payload.pay_fine = payFineWithReturn;
     }
+    if (markComplete) {
+      payload.mark_complete = true;
+    }
     try {
       await api.post(
         `/return/${returnModal.borrowId}`,
@@ -1894,6 +1920,25 @@ function MemberDashboard() {
     } catch (e) {
       setReturnModal(null);
       toast(e.response?.data?.error || "Failed to return book", "error");
+    }
+  };
+
+  const saveReadingGoal = async () => {
+    setSavingGoal(true);
+    try {
+      const { data } = await api.post("/reading-goal", {
+        period: goalPeriodDraft,
+        target: Number(goalTargetDraft),
+      });
+      setReadingGoal(data.goal);
+      setReadingProgress(data.progress);
+      setBooksReadThisYear(data.books_read_this_year);
+      setGoalEditOpen(false);
+      toast("Reading goal updated!");
+    } catch (e) {
+      toast(e.response?.data?.error || "Failed to save reading goal", "error");
+    } finally {
+      setSavingGoal(false);
     }
   };
 
@@ -2988,6 +3033,94 @@ function MemberDashboard() {
                   ))}
                 </div>
               )}
+
+              {/* Reading Goals */}
+              <div className="home-section home-card reading-goal-card">
+                <div className="home-section-toggle">
+                  <span className="home-card-heading">Reading Goals</span>
+                </div>
+                <div className="reading-goal-body">
+                  {readingGoal ? (
+                    <>
+                      <div className="reading-goal-progress-row">
+                        <div className="reading-goal-progress-text">
+                          <strong>{readingProgress}</strong> / {readingGoal.target}{" "}
+                          books this{" "}
+                          {readingGoal.period === "weekly"
+                            ? "week"
+                            : readingGoal.period === "monthly"
+                            ? "month"
+                            : "year"}
+                        </div>
+                        <button
+                          className="btn btn-sm btn-outline"
+                          onClick={() => setGoalEditOpen((o) => !o)}
+                        >
+                          {goalEditOpen ? "Cancel" : "Edit Goal"}
+                        </button>
+                      </div>
+                      <div className="reading-goal-bar">
+                        <div
+                          className="reading-goal-bar-fill"
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              (readingProgress / readingGoal.target) * 100
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                      {readingProgress >= readingGoal.target && (
+                        <div className="reading-goal-achieved">
+                          🎉 Goal reached — nice work!
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="reading-goal-empty">
+                      <span>You haven't set a reading goal yet.</span>
+                      <button
+                        className="btn btn-sm btn-outline"
+                        onClick={() => setGoalEditOpen(true)}
+                      >
+                        Set a Goal
+                      </button>
+                    </div>
+                  )}
+                  <div className="reading-goal-year-stat">
+                    📚 {booksReadThisYear} book
+                    {booksReadThisYear !== 1 ? "s" : ""} read this year
+                  </div>
+                  {goalEditOpen && (
+                    <div className="reading-goal-editor">
+                      <Select
+                        className="filter-select"
+                        value={goalPeriodDraft}
+                        onChange={(e) => setGoalPeriodDraft(e.target.value)}
+                      >
+                        <option value="weekly">Per week</option>
+                        <option value="monthly">Per month</option>
+                        <option value="yearly">Per year</option>
+                      </Select>
+                      <input
+                        type="number"
+                        min="1"
+                        className="reading-goal-target-input"
+                        value={goalTargetDraft}
+                        onChange={(e) => setGoalTargetDraft(e.target.value)}
+                        aria-label="Goal target (number of books)"
+                      />
+                      <button
+                        className="btn btn-sm btn-primary"
+                        disabled={savingGoal || !goalTargetDraft}
+                        onClick={saveReadingGoal}
+                      >
+                        {savingGoal ? "Saving…" : "Save"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* My Borrowed Books */}
               <div className="home-section home-card" ref={borrowedSectionRef}>
@@ -6166,6 +6299,18 @@ function MemberDashboard() {
             <p style={{ marginBottom: 20, fontSize: "0.9rem", color: "#555" }}>
               Returning <strong>{returnModal.bookTitle}</strong>
             </p>
+
+            <div className="anonymous-row" style={{ marginBottom: 20 }}>
+              <input
+                type="checkbox"
+                id="mark-complete-check"
+                checked={markComplete}
+                onChange={(e) => setMarkComplete(e.target.checked)}
+              />
+              <label htmlFor="mark-complete-check">
+                Mark as complete — count this toward my reading goals
+              </label>
+            </div>
 
             {returnHasUnpaidFine && (
               <div className="return-fine-notice">

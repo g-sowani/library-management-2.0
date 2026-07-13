@@ -63,6 +63,8 @@ def _migrate_db():
     add_missing_cols('borrow', {
         'return_requested_at': 'TIMESTAMP',
         'fine_payment_requested_at': 'TIMESTAMP',
+        'is_completed': 'BOOLEAN DEFAULT 0',
+        'completed_at': 'TIMESTAMP',
     })
     add_missing_cols('community', {'icon_url': 'TEXT', 'banner_url': 'TEXT'})
     db.session.execute(text(

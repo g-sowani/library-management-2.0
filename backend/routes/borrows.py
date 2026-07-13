@@ -126,6 +126,10 @@ def return_book(borrow_id):
             )
             db.session.add(review)
 
+    if data.get('mark_complete'):
+        borrow.is_completed = True
+        borrow.completed_at = datetime.utcnow()
+
     borrow.return_requested_at = datetime.utcnow()
     db.session.commit()
     return jsonify(borrow.to_dict())

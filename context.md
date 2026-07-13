@@ -3,7 +3,7 @@
 ## Overview
 A full-stack, **multi-library** management app — a single deployment hosts any number of independent libraries, each with its own catalogue, genres, members/admins, fine policy, and membership pricing. Admins register by creating a brand-new library (getting back a shareable join code) or joining an existing one via that code; members join an existing library the same way. Everything below (books, genres, borrows, fines, donations, communities, etc.) is scoped to the caller's own library — see "Multi-Library System" for details.
 
-Admins manage the book catalogue, monitor borrows, configure fines, track inventory changes, review incoming book donations and book-add requests, and approve member membership-tier requests; every admin tab that can have something awaiting review (Books, Borrows, Fines, Members, Communities, Donations) shows a small notification dot next to its label/icon whenever it does. Members browse books, borrow/return them (an overdue borrow can bundle its fine payment into the same return request for admin verification), reserve books when all copies are out, save books to a wishlist, view their fines, leave optional ratings and reviews when returning a book, donate books to the library in exchange for credit, request that a missing book be added to the catalogue (and get notified on the Home tab once an admin reviews it), and request a membership tier from My Profile (any time after signing up) that activates once an admin approves it. The Books tab surfaces personalised recommendations and trending content to help members discover what to read next. The Home tab is a collapsible dashboard — themed the same as the rest of the app (no bespoke colours, no card/box chrome — a plain divider list) — of the member's own borrows/fines/past-borrows/reservations/wishlist/collection, with a warning banner and a direct link to return overdue books. Members can also switch between a classic tab bar and a Mac-style floating dock for navigation (from either My Profile or the TopBar profile dropdown — the dropdown toggle is also how an admin sets it, since the admin dashboard has no Profile tab of its own). Gold members additionally get community spaces — communities can carry a creator/moderator-set icon and banner image, shown as cards in the Community tab — and a set of book-themed word games (Hangman, Word Scramble, Wordle) that build toward a cumulative XP score.
+Admins manage the book catalogue, monitor borrows, configure fines, track inventory changes, review incoming book donations and book-add requests, and approve member membership-tier requests; every admin tab that can have something awaiting review (Books, Borrows, Fines, Members, Communities, Donations) shows a small notification dot next to its label/icon whenever it does. Members browse books, borrow/return them (an overdue borrow can bundle its fine payment into the same return request for admin verification), reserve books when all copies are out, save books to a wishlist, view their fines, leave optional ratings and reviews when returning a book, donate books to the library in exchange for credit, request that a missing book be added to the catalogue (and get notified on the Home tab once an admin reviews it), and request a membership tier from My Profile (any time after signing up) that activates once an admin approves it. The Books tab surfaces personalised recommendations and trending content to help members discover what to read next — a brand-new member with no borrow history is first asked a one-question genre-preference quiz on their first login so those recommendations aren't empty from day one. The Home tab is a collapsible dashboard — themed the same as the rest of the app (no bespoke colours, no card/box chrome — a plain divider list) — of the member's own borrows/fines/past-borrows/reservations/wishlist/collection, with a warning banner and a direct link to return overdue books. Members can also switch between a classic tab bar and a Mac-style floating dock for navigation (from either My Profile or the TopBar profile dropdown — the dropdown toggle is also how an admin sets it, since the admin dashboard has no Profile tab of its own). Gold members additionally get community spaces — communities can carry a creator/moderator-set icon and banner image, shown as cards in the Community tab — and a set of book-themed word games (Hangman, Word Scramble, Wordle) that build toward a cumulative XP score.
 
 ---
 
@@ -103,6 +103,11 @@ backend/
                       #   avatar: TEXT nullable — base64 data-URL stored in DB; NULL = no photo
                       #   xp: INTEGER default 0 — cumulative Gold Games score, server-authoritative
                       #     (see "Gold Games & XP" below); included in to_dict() and /auth/me
+                      #   preferred_genres: TEXT nullable — comma-separated genre names picked in
+                      #     the onboarding preference quiz; to_dict() splits it back into a list
+                      #     ([] if unset). onboarded: BOOLEAN default False — flips True once the
+                      #     quiz is completed or skipped; drives whether MemberDashboard.js shows
+                      #     the quiz on login (see "Onboarding Preference Quiz" below)
                       #   email: nullable (pre-existing accounts may not have one — see the
                       #     username/email-split migration below) but unique when set (SQLite
                       #     allows multiple NULLs under a unique index); required for new registrations
@@ -219,6 +224,12 @@ backend/
                       #   NOTE: membership tier is no longer requested at registration — that
                       #     picker was removed from the signup form; members request a tier later
                       #     from My Profile only (see "Membership Request System")
+                      #   POST /api/auth/onboarding — body {genres: [...]}; saves up to 8 trimmed,
+                      #     non-empty genre names as a comma-joined User.preferred_genres and sets
+                      #     onboarded=True; 400 if genres is empty after filtering. Powers the
+                      #     onboarding preference quiz (see "Onboarding Preference Quiz" below)
+                      #   POST /api/auth/onboarding/skip — sets onboarded=True with no genres, for
+                      #     a member who dismisses the quiz without picking anything
                       #   _resolve_library(data, role) — the library-create-or-join branch shared
                       #     by register() and google_register(), extracted so both registration
                       #     paths keep identical library-creation/join-code logic in one place
@@ -417,7 +428,9 @@ backend/
 ### DB migrations
 `app.py` runs `_migrate_db()` on every startup. It uses a reusable `add_missing_cols(table, additions)` helper that calls `ALTER TABLE` for any column in models not yet present in the SQLite file. New tables (e.g. `community`, `community_membership`, `membership_request`, `book_request`, `library`) are created automatically by `db.create_all()`. `_seed_memberships()` is no longer called automatically on startup — see "Membership Request System" below.
 
-Tables currently patched via simple `ALTER TABLE ADD COLUMN` by `add_missing_cols`: `book` (genre, description, author_bio, cover_url, cover_color), `user` (avatar, xp, library_id, email, google_sub), `post_reaction` (created_at), `comment_reaction` (created_at), `borrow` (return_requested_at, fine_payment_requested_at), `community` (icon_url, banner_url). A `CREATE UNIQUE INDEX IF NOT EXISTS` (partial, `WHERE google_sub IS NOT NULL`) backs `user.google_sub` on every startup, same pattern as the `email` index below. All raw SQL touching the `user` table double-quotes it (`"user"`) since `user` is a reserved keyword in Postgres — see "Deployment" above.
+Tables currently patched via simple `ALTER TABLE ADD COLUMN` by `add_missing_cols`: `book` (genre, description, author_bio, cover_url, cover_color), `user` (avatar, xp, library_id, email, google_sub, preferred_genres, onboarded), `post_reaction` (created_at), `comment_reaction` (created_at), `borrow` (return_requested_at, fine_payment_requested_at), `community` (icon_url, banner_url). A `CREATE UNIQUE INDEX IF NOT EXISTS` (partial, `WHERE google_sub IS NOT NULL`) backs `user.google_sub` on every startup, same pattern as the `email` index below. All raw SQL touching the `user` table double-quotes it (`"user"`) since `user` is a reserved keyword in Postgres — see "Deployment" above.
+
+**Onboarding-quiz backfill** — `onboarded` is added with a `DEFAULT 0`, which would ambush every pre-existing account with the quiz on their next login. `_migrate_db()` checks whether `onboarded` was missing from `user` *before* `add_missing_cols` runs; if so, it immediately `UPDATE`s every existing row to `onboarded = 1` in the same pass, so the column addition and the backfill happen together, once, and only real new signups (created after this migration ran) start out `onboarded = False`.
 
 **Multi-library migration** (`_migrate_to_multi_library()`) — four tables (`book`, `genre`, `community`, `setting`) each had a *global* unique constraint (or, for `setting`, a bare-string primary key) that had to become per-library, and SQLite can't `ALTER` a constraint in place. Each is rebuilt: rename the old table aside, `db.create_all()` recreates it fresh with the new schema (composite `UNIQUE(library_id, ...)`), copy every row across while backfilling `library_id`, drop the renamed original. A "Default Library" is created (or reused if one already exists) to backfill onto every pre-existing row. Detected via column-presence (`library_id` missing) so it's a no-op on both a fresh DB (already has the new schema from `db.create_all()`) and an already-migrated one (safe to run on every startup).
 
@@ -608,6 +621,21 @@ frontend/src/
                             #     the rest of the page, pulsing border) plus a `.tour-tooltip` callout
                             #     anchored above/below the target; both animate smoothly (CSS
                             #     transitions) as the tour moves between steps or the page scrolls
+    PreferenceQuiz.js       # 3-step onboarding preference quiz (see "Onboarding Preference Quiz"
+                            #   section below) — welcome → pick genres (chips) → results
+                            #   Props: username, onFinish (no-arg — parent updates the auth user
+                            #     and closes), onOpenBook (bookId)
+                            #   Reuses `.onboarding-overlay`/`.onboarding-card` from Onboarding.js
+                            #     (wider `.quiz-card` modifier) and the `.rec-card`/`.books-grid`
+                            #     book-tile pattern for results, so it looks like part of the same
+                            #     onboarding system rather than a bespoke modal
+                            #   Genre chips (`.quiz-genre-chip`) use `--btn-bg`/`--btn-color` when
+                            #     active, the same accent-driven variables `.btn` uses — so the
+                            #     quiz already reflects a returning user's personalised accent color
+                            #   Skip (any step before results) and Done/opening a result book both
+                            #     call onFinish with no user data — the parent unconditionally
+                            #     applies `{ onboarded: true }` since every path that reaches
+                            #     onFinish has already persisted that server-side
   pages/
     (MemberDashboard.js exports one component but defines several helpers inline:)
     BookLoader              # Full-page animated CSS loader: open book with two halves
@@ -705,7 +733,16 @@ frontend/src/
                             #   fetches /api/membership on mount alongside books/borrows
                             #   while loading, renders <BookLoader /> (animated CSS open-book
                             #     with page-lines on left and right halves, plus a turning page)
-                            #   showOnboarding state — set true on mount if
+                            #   showQuiz state — set true on mount if !user.onboarded; renders
+                            #     <PreferenceQuiz .../> as a sibling above .layout, ahead of the
+                            #     feature tour below. closeQuiz() applies { onboarded: true } to
+                            #     the auth user via updateUser(), then falls through to the same
+                            #     tour check the mount effect runs, so a brand-new member sees the
+                            #     quiz first and the tour right after (never both at once — the
+                            #     tour only renders when showQuiz is false)
+                            #   showOnboarding state — set true (via the shared maybeShowTour()
+                            #     helper, called either on mount when the user is already
+                            #     onboarded, or from closeQuiz() once the quiz closes) if
                             #     localStorage["onboarding_seen_<username>"] is unset; renders
                             #     <Onboarding role="member" .../> as a sibling above .layout
                             #   global accent theming: autoAccentColor = cover_color of the user's
@@ -1411,6 +1448,8 @@ Unless noted otherwise, every endpoint below is scoped to the caller's own libra
 | GET | `/api/auth/google/config` | — | `{ client_id }` — the configured `GOOGLE_CLIENT_ID`, or `''` if unset |
 | POST | `/api/auth/google-login` | — | Body `{ credential }` (Google ID token). Verifies it, matches by `google_sub` then verified email; 404 `{ code: 'no_account' }` if no match |
 | POST | `/api/auth/google-register` | — | Body `{ credential, username, role, library_action, library_name\|library_code }`. Verifies the token and creates the account via the same library create/join logic as `register`; 400 if the verified email/`google_sub` already has an account |
+| POST | `/api/auth/onboarding` | session | Body `{ genres: [...] }`. Saves the onboarding quiz's picks and sets `onboarded=True`; 400 if `genres` is empty |
+| POST | `/api/auth/onboarding/skip` | session | Sets `onboarded=True` with no genres saved |
 
 ### Libraries
 | Method | Path | Auth | Description |
@@ -1595,7 +1634,7 @@ Builds a weighted preference profile from the caller's full borrow history:
 - Scores each unread book as `0.5 × genre_match + 0.3 × author_match + 0.2 × library_avg_rating` (all normalised to [0, 1]).
 - Books with score ≤ 0.15 (no meaningful genre/author connection) are filtered out.
 - Returns up to 8 books with a human-readable reason: `"More by [Author]"`, `"Because you read [Genre]"`, or `"Highly rated"`.
-- Empty if the user has no borrow history.
+- If the caller has no borrow history yet, falls back to `User.preferred_genres` (the onboarding quiz's picks, if any) with each picked genre weighted equally at `1.0` — so a brand-new member sees genre-matched picks (reason `"Because you read [Genre]"`) instead of an empty strip. Still empty if there's no borrow history *and* no quiz picks (skipped or not yet taken). See "Onboarding Preference Quiz" below.
 
 ### Collaborative Filtering (`/api/collaborative-recommendations`)
 User-based collaborative filtering using cosine similarity on implicit rating vectors:
@@ -1874,6 +1913,18 @@ A role-aware, interactive tour (`components/Onboarding.js`) introduces new sessi
 
 ---
 
+## Onboarding Preference Quiz
+
+A short, one-question quiz (`components/PreferenceQuiz.js`) that runs before the feature tour on a brand-new member's first login, so `/api/recommendations` has something to work with before they've borrowed anything — previously that endpoint just returned `[]` for every new signup.
+
+**Trigger & persistence:** unlike the feature tour (tracked client-only in `localStorage`), the quiz's completion state lives on the server — `User.onboarded`. `MemberDashboard.js` shows `<PreferenceQuiz>` on mount whenever `!user.onboarded`; it's the only onboarding surface gated on a database field rather than a browser flag (see "Key Design Decisions" below for why).
+
+**Flow:** welcome card → a chip grid of every genre in `constants.js`'s `GENRES` list (multi-select, `Show me books` disabled until at least one is picked) → a brief loading step → results. Submitting `POST`s the picked genres to `/api/auth/onboarding` (which saves them and flips `onboarded`), then immediately calls `GET /api/recommendations` — reusing the exact same scoring endpoint the Books tab's "Recommended for you" strip uses, rather than duplicating the genre-matching logic (see "Content-Based Recommendations" above for the fallback that makes this work for a user with zero borrows). Results render as `.rec-card` tiles with the same `reason` strings (`"Because you read [Genre]"`) the normal recommendations strip shows. Clicking a result closes the quiz and opens that book's detail modal (`onOpenBook`); **Skip** (available on the welcome/genre steps) calls `/api/auth/onboarding/skip` instead, marking the quiz done with no genres saved so recommendations stay empty until the member actually borrows something.
+
+**Sequencing with the feature tour:** `MemberDashboard.js` shows at most one onboarding overlay at a time — the quiz first (if `!user.onboarded`), then the existing tour once the quiz closes (subject to its own `localStorage` check, unchanged). A member who already completed the quiz in a previous session skips straight to the tour check, same as before this feature existed.
+
+---
+
 ## Responsive Design
 
 Before this pass, `App.css` only had scattered breakpoints (560/800/820/900px) for specific sections — landing-page grids, member overview charts, the admin Kanban board, admin list columns. The app shell itself (topbar, nav tabs, the Dock, modals, tables) had no mobile handling at all. This pass added it, plus a couple of narrower breakpoints (420/480/640px) for finer adjustments, without changing any JSX/markup structure.
@@ -1926,7 +1977,8 @@ Before this pass, `App.css` only had scattered breakpoints (560/800/820/900px) f
 - **Custom Select replaces all native dropdowns** — `Select.js` parses `<option>` children via `React.Children.toArray` and fires a synthetic `{ target: { value } }` event so all existing onChange handlers work without modification. Two size variants: default (form-group, full-width) and `.filter-select` (compact inline). Fully theme-aware via CSS custom properties.
 - **Toast system via `useToast` hook** — a module-level counter generates monotonic IDs so concurrent toasts each auto-dismiss independently after 2.8 s. Success toasts use `--text`/`--bg` (inverted, theme-safe); error toasts are hardcoded red. Both dashboards share the same hook; the `Toast` component is rendered once at the root of each page.
 - **Genre pill deselect** — clicking an active genre pill toggles it off (sets `selectedGenre` to `""`) rather than requiring the user to click the "All" pill. Same behaviour as many filter UIs users already know.
-- **Onboarding tracked per-username in `localStorage`, not the database** — a `seen`/`not seen` flag doesn't warrant a schema change or API round trip; `onboarding_seen_<username>` is simple, works offline, and is trivially resettable (Replay Tour, or clearing the key) without touching the backend.
+- **Onboarding tracked per-username in `localStorage`, not the database** — a `seen`/`not seen` flag doesn't warrant a schema change or API round trip; `onboarding_seen_<username>` is simple, works offline, and is trivially resettable (Replay Tour, or clearing the key) without touching the backend. **The preference quiz is the one exception** — `User.onboarded`/`preferred_genres` live in the database instead, because unlike the tour's flag, the quiz's answer is an input to a server-side ranking query (`/api/recommendations`) that has to work correctly from any device/browser the member later logs in from, not just the one they signed up on.
+- **Quiz recommendations reuse `/api/recommendations` rather than a dedicated endpoint** — `POST /api/auth/onboarding` only persists the picked genres; the quiz then calls the same `GET /api/recommendations` the Books tab strip uses. The endpoint's existing "no borrow history" branch was extended to fall back to `preferred_genres` instead of adding a second scoring implementation, so quiz results and the ordinary recommendations strip can never drift out of sync.
 - **Onboarding bookend card is fixed-size, not content-sized** — steps vary from a one-line paragraph to a 3-item bullet list; letting the card grow/shrink per step made the progress dots and footer buttons jump around between clicks. Fixing `.onboarding-card` at 420×480px and making only the inner content region (`flex: 1; overflow-y: auto`) flexible keeps navigation controls in a constant position. Only the welcome/closing steps use this card — spotlight steps use the smaller `.tour-tooltip` instead, sized to its content.
 - **Spotlight dimming is one box-shadow, not a separate overlay layer** — `.tour-spotlight`'s `box-shadow: 0 0 0 6000px var(--overlay)` dims the whole page and cuts out the highlighted element in a single element, instead of a full-screen dim `<div>` plus a transparent cutout punched through it (e.g. via `clip-path` or an SVG mask). Simpler to position and animate.
 - **Tooltip "above" placement uses CSS `bottom`, not a measured height** — computing `top = target.top - tooltipHeight - gap` would need a two-pass render (measure the tooltip, then position it) since content length varies per step. Anchoring with `bottom: window.innerHeight - target.top + gap` instead lets the browser handle the height, so placement is a single synchronous calculation from the target's `getBoundingClientRect()` alone.

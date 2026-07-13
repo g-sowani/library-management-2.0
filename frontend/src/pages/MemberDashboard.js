@@ -2226,6 +2226,11 @@ function MemberDashboard() {
     if (gameView !== "hangman") return;
     const handleKeydown = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "Enter" && hangman && hangman.status !== "playing") {
+        e.preventDefault();
+        startHangman();
+        return;
+      }
       const letter = e.key.toUpperCase();
       if (/^[A-Z]$/.test(letter)) {
         e.preventDefault();
@@ -2234,7 +2239,7 @@ function MemberDashboard() {
     };
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
-  }, [gameView]); // eslint-disable-line
+  }, [gameView, hangman?.status]); // eslint-disable-line
 
   const startScramble = () => {
     const answer =
@@ -5183,6 +5188,14 @@ function MemberDashboard() {
                         hangman.book &&
                         !hangmanRevealDismissed && (
                           <div className="hangman-reveal-card">
+                            <button
+                              type="button"
+                              className="hangman-reveal-close"
+                              aria-label="Cancel"
+                              onClick={() => setHangmanRevealDismissed(true)}
+                            >
+                              &times;
+                            </button>
                             <div className="hangman-reveal-cover-wrap">
                               {hangman.book.cover_url ? (
                                 <img
@@ -5202,16 +5215,13 @@ function MemberDashboard() {
                             </div>
                             <div className="hangman-reveal-actions">
                               <button
-                                className="btn btn-sm btn-outline"
-                                onClick={() => setHangmanRevealDismissed(true)}
-                              >
-                                Cancel
-                              </button>
-                              <button
                                 className="btn btn-sm"
                                 onClick={() => openBook(hangman.book.id)}
                               >
                                 Explore
+                              </button>
+                              <button className="btn btn-sm" onClick={startHangman}>
+                                Play Again
                               </button>
                             </div>
                           </div>

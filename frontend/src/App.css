@@ -5669,6 +5669,29 @@ td {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
+.hangman-reveal-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-5);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.hangman-reveal-close:hover {
+  background: var(--bg-muted);
+  color: var(--text);
+}
+
 .hangman-reveal-cover-wrap {
   width: 190px;
   height: 285px;

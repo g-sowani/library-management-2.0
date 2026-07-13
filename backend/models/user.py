@@ -11,6 +11,8 @@ class User(db.Model):
     role = db.Column(db.String(10), nullable=False, default='member')
     avatar = db.Column(db.Text, nullable=True)
     xp = db.Column(db.Integer, nullable=False, default=0)
+    preferred_genres = db.Column(db.Text, nullable=True)
+    onboarded = db.Column(db.Boolean, nullable=False, default=False)
     borrows = db.relationship('Borrow', backref='user', lazy=True)
     membership = db.relationship('Membership', backref='user', uselist=False, lazy='joined')
     library = db.relationship('Library', foreign_keys=[library_id])
@@ -21,6 +23,8 @@ class User(db.Model):
             'role': self.role, 'avatar': self.avatar, 'xp': self.xp,
             'library_id': self.library_id,
             'library': self.library.to_dict() if self.library else None,
+            'onboarded': self.onboarded,
+            'preferred_genres': self.preferred_genres.split(',') if self.preferred_genres else [],
         }
         if self.membership:
             d['membership'] = self.membership.to_dict()

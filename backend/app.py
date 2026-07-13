@@ -19,6 +19,9 @@ def create_app():
         from models import seed_data
         seed_data()
 
+    from cli import register_cli
+    register_cli(app)
+
     return app
 
 
@@ -46,10 +49,15 @@ def _migrate_db():
         'cover_url': 'TEXT',
         'cover_color': 'VARCHAR(7)',
     })
+    # Existing accounts predate the onboarding quiz — backfill them as already
+    # onboarded so it only surfaces for genuinely new signups, not on next login.
+    user_cols_before = get_cols('user') or []
     add_missing_cols('user', {
         'avatar': 'TEXT', 'xp': 'INTEGER DEFAULT 0', 'library_id': 'INTEGER', 'email': 'VARCHAR(120)',
-        'google_sub': 'VARCHAR(255)',
+        'google_sub': 'VARCHAR(255)', 'preferred_genres': 'TEXT', 'onboarded': 'BOOLEAN DEFAULT 0',
     })
+    if 'onboarded' not in user_cols_before:
+        db.session.execute(text('UPDATE "user" SET onboarded = 1'))
     add_missing_cols('post_reaction', {'created_at': 'TIMESTAMP'})
     add_missing_cols('comment_reaction', {'created_at': 'TIMESTAMP'})
     add_missing_cols('borrow', {

@@ -959,17 +959,21 @@ textarea::placeholder {
 }
 
 .btn-outline {
-  background: var(--btn-outline-bg);
-  color: var(--btn-outline-color);
-  border-color: var(--btn-border);
+  /* --hero-* vars are set on the cover-tinted book-detail hero so an outline
+     button (Reserve/Return/Wishlist/Change cover) stays WCAG AA against
+     whatever colour the cover happens to be, instead of a fixed theme colour
+     that was only ever checked against the page background. */
+  background: var(--hero-outline-bg, var(--btn-outline-bg));
+  color: var(--hero-fg, var(--btn-outline-color));
+  border-color: var(--hero-fg, var(--btn-border));
 }
 
 .btn-outline:hover {
-  background: var(--btn-outline-hover);
+  background: var(--hero-hover-bg, var(--btn-outline-hover));
 }
 
 .btn-outline:disabled:hover {
-  background: var(--btn-outline-bg);
+  background: var(--hero-outline-bg, var(--btn-outline-bg));
 }
 
 .btn-full {
@@ -2496,6 +2500,63 @@ td {
   margin-top: 20px;
 }
 
+/* ── Onboarding preference quiz ────────────────────────────────────────────── */
+
+.quiz-card {
+  width: 560px;
+  height: auto;
+  max-height: calc(100vh - 48px);
+}
+
+.quiz-genre-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 4px;
+}
+
+.quiz-genre-chip {
+  padding: 7px 16px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg);
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 0.83rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.quiz-genre-chip:hover {
+  border-color: var(--text-5);
+  color: var(--text);
+}
+
+.quiz-genre-chip-active {
+  background: var(--btn-bg);
+  border-color: var(--btn-bg);
+  color: var(--btn-color);
+}
+
+.quiz-error {
+  color: var(--danger, #c0392b);
+  font-size: 0.82rem;
+  margin-top: 12px;
+}
+
+.quiz-loading {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.quiz-results-grid {
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
 /* ── Empty state ────────────────────────────────────────────────────────────── */
 
 .empty {
@@ -2800,7 +2861,9 @@ td {
 /* ── Star display (read-only) ───────────────────────────────────────────────── */
 
 .star-display {
-  color: #f5a623;
+  /* --hero-star-color is set on the cover-tinted book-detail hero so the
+     stars stay WCAG AA against whatever colour the cover happens to be. */
+  color: var(--hero-star-color, #f5a623);
   font-size: 0.95rem;
   letter-spacing: 1px;
 }
@@ -5212,13 +5275,17 @@ td {
 .btn-icon-ghost {
   background: transparent;
   border-color: transparent;
-  color: var(--text-4);
+  /* --hero-fg-soft/--hero-fg/--hero-hover-bg are set on the cover-tinted
+     book-detail hero so Edit/"More actions" stay WCAG AA against whatever
+     colour the cover happens to be, instead of a fixed theme colour that
+     was only ever checked against the page background. */
+  color: var(--hero-fg-soft, var(--text-4));
 }
 
 .btn-icon-ghost:hover {
-  background: var(--bg-muted);
+  background: var(--hero-hover-bg, var(--bg-muted));
   border-color: transparent;
-  color: var(--text);
+  color: var(--hero-fg, var(--text));
 }
 
 /* ── Nav tab notification badge ─────────────────────────────────────────────── */

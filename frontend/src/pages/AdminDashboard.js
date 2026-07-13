@@ -69,6 +69,25 @@ function minAlphaForContrast(fgVal, bgR, bgG, bgB, minRatio) {
   return Math.min(1, hi + 0.005);
 }
 
+function relLuminance(r, g, b) {
+  const lin = (c) => {
+    c /= 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+function contrastRatio(l1, l2) {
+  const hi = Math.max(l1, l2);
+  const lo = Math.min(l1, l2);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+// Default (non-hero) star-rating gold — reused as the hero star colour too,
+// falling back to coverPalette.text (guaranteed 4.5:1) when it doesn't clear
+// contrast against a given cover colour.
+const HERO_STAR_GOLD = "#f5a623";
+
 function NoCoverPlaceholder({ title, className }) {
   return (
     <div className={`no-cover-placeholder${className ? ` ${className}` : ""}`}>
@@ -1459,12 +1478,28 @@ function AdminDashboard() {
     };
     return {
       bg: `rgb(${r}, ${g}, ${b})`,
+      r,
+      g,
+      b,
       text,
       labelColor: mk(isLight ? 0.65 : 0.5),
       subtleColor: mk(isLight ? 0.78 : 0.65),
       faintColor: mk(isLight ? 0.5 : 0.38),
     };
   }, [selectedBook]);
+
+  // Star-rating gold, guaranteed 4.5:1 against the current hero background —
+  // falls back to coverPalette.text (always WCAG-safe) otherwise.
+  const heroStarColor = useMemo(() => {
+    if (!coverPalette) return null;
+    const bgL = relLuminance(coverPalette.r, coverPalette.g, coverPalette.b);
+    const r = parseInt(HERO_STAR_GOLD.slice(1, 3), 16);
+    const g = parseInt(HERO_STAR_GOLD.slice(3, 5), 16);
+    const b = parseInt(HERO_STAR_GOLD.slice(5, 7), 16);
+    return contrastRatio(relLuminance(r, g, b), bgL) >= 4.5
+      ? HERO_STAR_GOLD
+      : coverPalette.text;
+  }, [coverPalette]);
 
   const AUTHOR_BIO_WORD_LIMIT = 50;
   const authorBioTruncated = useMemo(() => {
@@ -1486,6 +1521,20 @@ function AdminDashboard() {
         borderBottomColor: heroIsLight
           ? "rgba(255,255,255,0.18)"
           : "rgba(0,0,0,0.1)",
+      }
+    : {};
+  // CSS custom properties, scoped to the hero zone — .star-display/.btn-icon-ghost/
+  // .btn-outline in App.css read these (with their normal theme value as fallback),
+  // so every rating star and hero action button stays WCAG AA against any cover colour.
+  const heroCssVars = coverPalette
+    ? {
+        "--hero-fg": coverPalette.text,
+        "--hero-fg-soft": coverPalette.labelColor,
+        "--hero-star-color": heroStarColor,
+        "--hero-hover-bg": heroIsLight
+          ? "rgba(255,255,255,0.18)"
+          : "rgba(0,0,0,0.12)",
+        "--hero-outline-bg": "transparent",
       }
     : {};
 
@@ -3995,7 +4044,7 @@ function AdminDashboard() {
             heroBg={coverPalette?.bg ?? "var(--bg-raised)"}
             heroTextColor={coverPalette?.text ?? "var(--text)"}
             heroContent={
-              <div className="book-detail-header">
+              <div className="book-detail-header" style={heroCssVars}>
                 {selectedBook.cover_url ? (
                   <div className="admin-cover-slot">
                     <img

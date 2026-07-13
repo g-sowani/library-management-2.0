@@ -3,7 +3,7 @@
 ## Overview
 A full-stack, **multi-library** management app — a single deployment hosts any number of independent libraries, each with its own catalogue, genres, members/admins, fine policy, and membership pricing. Admins register by creating a brand-new library (getting back a shareable join code) or joining an existing one via that code; members join an existing library the same way. Everything below (books, genres, borrows, fines, donations, communities, etc.) is scoped to the caller's own library — see "Multi-Library System" for details.
 
-Admins manage the book catalogue, monitor borrows, configure fines, track inventory changes, review incoming book donations and book-add requests, and approve member membership-tier requests; every admin tab that can have something awaiting review (Books, Borrows, Fines, Members, Communities, Donations) shows a small notification dot next to its label/icon whenever it does. Members browse books, borrow/return them (an overdue borrow can bundle its fine payment into the same return request for admin verification), reserve books when all copies are out, save books to a wishlist, view their fines, leave optional ratings and reviews when returning a book, donate books to the library in exchange for credit, request that a missing book be added to the catalogue (and get notified on the Home tab once an admin reviews it), and request a membership tier from My Profile (any time after signing up) that activates once an admin approves it. The Books tab surfaces personalised recommendations and trending content to help members discover what to read next. The Home tab is a collapsible dashboard — themed the same as the rest of the app (no bespoke colours) — of the member's own borrows/past-borrows/reservations/wishlist/collection, with a warning banner and a direct link to return overdue books. Members can also switch between a classic tab bar and a Mac-style floating dock for navigation (from either My Profile or the TopBar profile dropdown — the dropdown toggle is also how an admin sets it, since the admin dashboard has no Profile tab of its own). Gold members additionally get community spaces — communities can carry a creator/moderator-set icon and banner image, shown as cards in the Community tab — and a set of book-themed word games (Hangman, Word Scramble, Wordle) that build toward a cumulative XP score.
+Admins manage the book catalogue, monitor borrows, configure fines, track inventory changes, review incoming book donations and book-add requests, and approve member membership-tier requests; every admin tab that can have something awaiting review (Books, Borrows, Fines, Members, Communities, Donations) shows a small notification dot next to its label/icon whenever it does. Members browse books, borrow/return them (an overdue borrow can bundle its fine payment into the same return request for admin verification), reserve books when all copies are out, save books to a wishlist, view their fines, leave optional ratings and reviews when returning a book, donate books to the library in exchange for credit, request that a missing book be added to the catalogue (and get notified on the Home tab once an admin reviews it), and request a membership tier from My Profile (any time after signing up) that activates once an admin approves it. The Books tab surfaces personalised recommendations and trending content to help members discover what to read next. The Home tab is a collapsible dashboard — themed the same as the rest of the app (no bespoke colours, no card/box chrome — a plain divider list) — of the member's own borrows/fines/past-borrows/reservations/wishlist/collection, with a warning banner and a direct link to return overdue books. Members can also switch between a classic tab bar and a Mac-style floating dock for navigation (from either My Profile or the TopBar profile dropdown — the dropdown toggle is also how an admin sets it, since the admin dashboard has no Profile tab of its own). Gold members additionally get community spaces — communities can carry a creator/moderator-set icon and banner image, shown as cards in the Community tab — and a set of book-themed word games (Hangman, Word Scramble, Wordle) that build toward a cumulative XP score.
 
 ---
 
@@ -198,8 +198,15 @@ backend/
                       #     instead) — only seed_extra.py calls it now, once, to give demo accounts
                       #     realistic tiers
   routes/
-    auth.py           # /api/auth/  — register, login, logout, me, avatar (PUT),
+    auth.py           # /api/auth/  — register, login, logout, me, avatar (PUT), profile (PUT),
                       #   google/config, google-login, google-register (see "Google Sign-In" below)
+                      #   profile (PUT): re-authenticated account-details update — requires
+                      #     current_password (checked with check_password_hash) and returns 400 (not
+                      #     401) if it's wrong, since a 401 here would trip the frontend's global
+                      #     response interceptor, which treats any 401 as "session expired" and
+                      #     force-logs-out the still-validly-logged-in caller. Optionally updates
+                      #     username/email (each re-validated for uniqueness/format if changed) and/or
+                      #     sets a new password_hash if new_password is present
                       #   /me now includes membership dict if user has one, plus library_id and
                       #     a nested library {id, name, code}
                       #   register requires email (validated format, globally unique) in addition
@@ -432,15 +439,21 @@ frontend/src/
                             # Axios interceptor: 401 clears user; 403 re-fetches /auth/me
                             # to re-sync React state with the real Flask session
                             # updateUser(patch) merges patch into user state (used after avatar upload)
-    ThemeContext.js         # ThemeProvider + useTheme() — three independent axes:
+    ThemeContext.js         # ThemeProvider + useTheme() — four independent axes:
                             #   appearance ('light'|'dark'|'system') → sets data-color-mode on <html>
                             #   readerTheme ('sepia'|'forest'|'ocean'|'rose'|'') → sets data-theme on <html>
                             #   navStyle ('tabs'|'dock', default 'tabs') → both dashboards read this to
                             #     render NavTabs or Dock instead — set from the Navigation Style picker
                             #     in the member My Profile tab (see "Preferences" below); applies to the
                             #     admin dashboard too since the provider is global, same as appearance
+                            #   accentOverride (hex string, default '') → does NOT touch the DOM itself
+                            #     (unlike the three above); MemberDashboard.js reads it and, when
+                            #     non-empty, uses it as --accent instead of the auto book-cover colour
+                            #     (see "global accent theming" below and My Profile → Preferences →
+                            #     Accent color) — empty string means "no override, use the default"
                             #   'system' appearance listens to OS prefers-color-scheme and updates live
-                            #   All three persisted in localStorage ('appearance', 'readerTheme', 'navStyle')
+                            #   All four persisted in localStorage ('appearance', 'readerTheme',
+                            #     'navStyle', 'accentOverride')
                             #   Combined selectors ([data-color-mode="X"][data-theme="Y"]) give 10 total
                             #   theme combinations (2 base + 4 reader × 2 modes); combined selectors
                             #   have specificity 20 vs single-attribute 10 so reader+mode always wins
@@ -687,7 +700,7 @@ frontend/src/
                             #   A `google-login` 404 with `code: 'no_account'` (email not found)
                             #     flips `isRegister` to true and shows a hint to fill in the form
                             #     and continue with Google again to register instead
-    MemberDashboard.js      # Home · Available Books · Community · Games · My Profile tabs
+    MemberDashboard.js      # Home · Available Books · Donate · Community · Games · My Profile tabs
                             #   TopBar receives avatar, tier, and onReplayTour (reopens onboarding)
                             #   fetches /api/membership on mount alongside books/borrows
                             #   while loading, renders <BookLoader /> (animated CSS open-book
@@ -695,16 +708,28 @@ frontend/src/
                             #   showOnboarding state — set true on mount if
                             #     localStorage["onboarding_seen_<username>"] is unset; renders
                             #     <Onboarding role="member" .../> as a sibling above .layout
-                            #   global accent theming: cover_color of the user's most recently
-                            #     borrowed active book (or latest borrow) sets --accent /
-                            #     --accent-text CSS vars on the layout root; WCAG-safe text
-                            #     colour computed via wcagTextColor(); null if no borrow history
+                            #   global accent theming: autoAccentColor = cover_color of the user's
+                            #     most recently borrowed active book (or latest borrow); null if no
+                            #     borrow history. accentColor = accentOverride || autoAccentColor —
+                            #     a user-picked colour from My Profile → Preferences → Accent color
+                            #     (ThemeContext's accentOverride) always wins when set. Either way,
+                            #     --accent / --accent-text CSS vars are set on the layout root; WCAG-
+                            #     safe text colour computed via wcagTextColor() off whichever hex is
+                            #     active
                             #
                             # Home tab (default landing tab) — themed the same as every other tab
-                            #   (plain .home-card boxes using --bg/--text/--border etc., no bespoke
-                            #   colours), not the earlier flat "What we offer" services-strip design
-                            #   either (SERVICES const, servicesRef/servicesTimerRef/servicesActive
-                            #   state, and its CSS are all gone — replaced by the sections below).
+                            #   (--bg/--text/--border etc., no bespoke colours), not the earlier flat
+                            #   "What we offer" services-strip design either (SERVICES const,
+                            #   servicesRef/servicesTimerRef/servicesActive state, and its CSS are all
+                            #   gone — replaced by the sections below). .home-card sections themselves
+                            #   went through a second simplification after the vivid-redesign revert
+                            #   described below: the boxed-card look (border, background, rounded
+                            #   corners, generous padding) was dropped entirely in favour of a plain
+                            #   divider list — each section is just its toggle row plus a
+                            #   `border-bottom: 1px solid var(--border-subtle)`, no box chrome — and
+                            #   `.home-card-heading` was resized from an oversized 1.65rem/800 down to
+                            #   1.1rem/600, matching `.section-header h3` used everywhere else in the
+                            #   app instead of standing out as a bespoke hero-style heading.
                             #   An earlier "vivid, colour-blocked" redesign (a fixed HOME_PALETTE of
                             #   5 hand-picked hex colours run through wcagTextColor()/
                             #   minAlphaForContrast(), diagonal clip-path slants between sections,
@@ -731,16 +756,26 @@ frontend/src/
                             #   3. Book-request notification banners (conditional; see "Book Request
                             #      System" below) — dismissible approve/reject outcome cards for the
                             #      caller's own book requests that haven't been acknowledged yet
-                            #   4–8. Five collapsible .home-card sections — My Borrowed Books, Past
-                            #      Borrows, My Reservations, My Wishlist (all moved here from the My
-                            #      Profile tab; My Fines and Donate a Book stayed in My Profile), and
-                            #      From the collection (6-book grid, first 6 books from API, "View
-                            #      all →" link to Available Books). Borrowed/Past
+                            #   4–9. Six collapsible .home-card sections — My Borrowed Books, My
+                            #      Fines, Past Borrows, My Reservations, My Wishlist (all moved here
+                            #      from the My Profile tab across two passes — Borrowed/Reservations/
+                            #      Wishlist first, My Fines later, once it became clear fines belong
+                            #      alongside the other borrow-derived lists rather than in Profile),
+                            #      and From the collection (6-book grid, first 6 books from API, "View
+                            #      all →" link to Available Books). Donate a Book did NOT move here —
+                            #      it got its own top-level Donate tab instead (see below), since
+                            #      donating is a bigger, self-contained flow (submit + browse history)
+                            #      rather than a short "my stuff" list. Borrowed/My Fines/Past
                             #      Borrows/Reservations/Wishlist render the same .books-grid/.rec-card
                             #      markup as the Available Books grid (Collection uses
                             #      .home-books-grid/.home-book-card instead) — the exact same
                             #      cover/title/author/meta markup either way, so "my stuff" looks
-                            #      identical to browsing the catalogue:
+                            #      identical to browsing the catalogue. My Fines specifically was
+                            #      originally a .profile-table (Book/Due Date/Fine/Status columns) and
+                            #      was later converted to this same card style for visual consistency
+                            #      with its new siblings — its .rec-card-avail line packs a paid/unpaid
+                            #      Badge + due date + the fine amount (.fine-amount, bold) into one
+                            #      line instead of separate table columns:
                             #      - card is a div (role="button", not a <button>) so it can host a
                             #        stopPropagation'd .admin-card-actions row (Return / Cancel /
                             #        Remove) inside it while the rest of the card still opens the
@@ -755,8 +790,8 @@ frontend/src/
                             #        `books` array (borrow/reservation/wishlist API responses don't
                             #        carry cover_url themselves, wishlist's does via book_cover)
                             #      - Section accordion: openHomeSection state (default "borrowed")
-                            #        — only one of borrowed/history/reservations/wishlist/collection
-                            #        is expanded at a time; toggleHomeSection(key) flips it, or closes
+                            #        — only one of borrowed/fines/history/reservations/wishlist/
+                            #        collection is expanded at a time; toggleHomeSection(key) flips it, or closes
                             #        it entirely if it's already open. Header is a clickable
                             #        .home-section-toggle button (bold heading + ChevronDown that
                             #        rotates 180° via .home-section-chevron.open); collapsed sections
@@ -822,17 +857,16 @@ frontend/src/
                             #       Reviews list
                             #     ✕ close button in modal header (no bottom Close button)
                             #
-                            # My Profile tab:
+                            # My Profile tab — top-to-bottom order: Avatar → Membership → Account
+                            #   Details → Preferences. (Membership was moved above Account Details
+                            #   after an initial pass had it below — the tier/borrow-limit info is
+                            #   what most members check first, so it now leads.) My Borrowed Books,
+                            #   My Fines, My Reservations, and My Wishlist all live on the Home tab,
+                            #   and Donate a Book has its own Donate tab (see both above/below) — none
+                            #   of the four remain on this tab.
                             #   Avatar editor — 80px avatar circle; click to upload image file;
                             #     resized client-side via canvas (max 400×400, JPEG 0.88) before
                             #     PUT /api/auth/avatar; camera icon overlay on hover
-                            #   Preferences section — Navigation Style picker (.nav-style-picker):
-                            #     two cards, "Tab Bar" and "Dock", each with a small CSS-only preview
-                            #     (mini tab strip / mini dock icons) and a label; clicking calls
-                            #     ThemeContext's setNavStyle('tabs' | 'dock'), instantly swapping
-                            #     NavTabs for Dock (see components/Dock.js) in both the header and
-                            #     (were an admin viewing) the admin dashboard, since the preference
-                            #     is stored globally the same way appearance/readerTheme are
                             #   Membership info card — tier badge, borrow limit, monthly rate,
                             #     family group members (family tier only)
                             #   Membership request — shown below the info card whenever there's no
@@ -847,13 +881,75 @@ frontend/src/
                             #     banner replaces the dropdown instead; if the last request was
                             #     rejected, the admin's reason is shown before the dropdown
                             #     reappears — see "Membership Request System" below
-                            #   My Borrowed Books, My Reservations, and My Wishlist moved to the
-                            #     Home tab (see above) — only My Fines and Donate a Book remain here
-                            #   My Fines — fine amount and paid/unpaid status (still a .profile-table;
-                            #     not book-card material)
-                            #   Donate a Book section — Donate button opens modal; table of past
-                            #     donations with status, estimated value, and credit earned;
-                            #     total credits earned card (approved donations only)
+                            #   Account Details — username/email/new-password fields, greyed out
+                            #     (input:disabled) and read-only by default; an "Edit" button reveals
+                            #     them plus Confirm New Password and a required Current Password
+                            #     field, and swaps Edit for Save Changes/Cancel. Save calls
+                            #     PUT /api/auth/profile with { current_password, username, email,
+                            #     new_password? } — a wrong current_password renders inline as
+                            #     accountError instead of navigating away (see the auth.py note above
+                            #     for why the backend returns 400, not 401, for that case); on success
+                            #     updateUser(res.data) refreshes the header/dropdown immediately and
+                            #     the fields re-lock. new_password is entirely optional — omitting it
+                            #     (and Confirm) leaves the password unchanged
+                            #   Preferences section:
+                            #     Navigation Style picker (.nav-style-picker) — two cards, "Tab Bar"
+                            #       and "Dock", each with a small CSS-only preview (mini tab strip /
+                            #       mini dock icons) and a label; clicking calls ThemeContext's
+                            #       setNavStyle('tabs' | 'dock'), instantly swapping NavTabs for Dock
+                            #       (see components/Dock.js) in both the header and (were an admin
+                            #       viewing) the admin dashboard, since the preference is stored
+                            #       globally the same way appearance/readerTheme are
+                            #     Appearance and Reader theme — two .pref-column flex children inside
+                            #       a shared .pref-columns row (gap 24px) so their combined width
+                            #       matches the Navigation Style row above; each renders the same
+                            #       compact .pd-option buttons already used in the TopBar profile
+                            #       dropdown (Light/System/Dark; Sepia/Forest/Ocean/Rose), just full
+                            #       width instead of the dropdown's narrow compact layout — this was
+                            #       previously dropdown-only and got added here for a fuller, second
+                            #       way to reach the same ThemeContext setters
+                            #     Accent color — bottom-most row, ACCENT_PRESETS (12 named colours:
+                            #       Red/Maroon/Blue/Green/Yellow/Purple/White/Gray/Teal/Turquoise/
+                            #       Amber/Orange, each a hardcoded hex) rendered as an
+                            #       .accent-swatch-row "palette strip" of narrow (16px), tall (46px)
+                            #       vertical-rectangle .accent-swatch buttons (rounded top corners
+                            #       only, like paint chips) sitting on a shared baseline
+                            #       (align-items: flex-end); hover/selected lift the swatch up via
+                            #       translateY, selected also gets a drop-shadow and a CheckIcon whose
+                            #       colour is precomputed per-swatch via wcagTextColor() so it's always
+                            #       legible against that swatch's own colour. First swatch is "auto"
+                            #       (accent-swatch-auto) — shows autoAccentColor as its background when
+                            #       one exists (ReaderBookIcon otherwise) and clicking it calls
+                            #       setAccentOverride("") to clear any override, reverting --accent to
+                            #       the borrowed-book default. Last swatch is a rainbow linear-gradient
+                            #       "custom" swatch (accent-swatch-custom) that clicks a hidden
+                            #       `<input type="color" style={opacity:0, 1x1px}>` via a ref — its
+                            #       onChange calls setAccentOverride(e.target.value), so literally any
+                            #       hex is selectable, not just the 12 presets. The White preset uses a
+                            #       `box-shadow: inset 0 0 0 1px var(--border)` outline
+                            #       (.accent-swatch-outlined) so it stays visible against a light page
+                            #       background — an earlier version tried `border` on the swatch and
+                            #       (during an earlier triangle-shaped iteration) a stacked
+                            #       `drop-shadow` outline hack, both made unnecessary once the swatch
+                            #       shape settled on a plain rectangle. isPresetAccent
+                            #       (accentOverride is empty or matches a preset's color) decides
+                            #       whether the custom swatch shows the palette icon or the live
+                            #       preview/checkmark. Shape iterated twice from the original circles:
+                            #       first to narrow upward-pointing triangles (clip-path polygon),
+                            #       then — per explicit correction — to the current narrow rectangles;
+                            #       the triangle version needed a `drop-shadow`-stack outline hack for
+                            #       the White swatch since clip-path drops `border` rendering, which
+                            #       became a plain `border`/`box-shadow` again once rectangles replaced
+                            #       triangles
+                            # Donate tab — its own top-level tab (was a section inside My Profile
+                            #   before this pass; promoted so it reads as a primary destination, not
+                            #   a mid-profile afterthought). Donate button opens the Donate modal (see
+                            #   below); table of past donations with status, estimated value, and
+                            #   credit earned; a "Total credits earned" .membership-card summing
+                            #   credit_amount across approved donations only, shown above the table
+                            #   when it's non-zero. data-tour="member-donations" moved with it, so the
+                            #   onboarding Donations step now switches to tab: 'donate' instead of
+                            #   'profile' before spotlighting the same selector
                             # Return modal: optional 5-star picker, review text, anonymous toggle;
                             #   if the borrow has an unpaid fine (returnHasUnpaidFine), also shows a
                             #   .return-fine-notice with the amount and a "I'm paying this fine now"
@@ -886,22 +982,50 @@ frontend/src/
                             #     ScrambleGameIcon/WordleGameIcon), name, and tagline; header shows
                             #     the caller's total XP (user.xp, "N XP", .games-xp-total)
                             #   Clicking a tile calls openGame(id) → sets gameView and starts that
-                            #     game's state; "← Back to Games" (ChevronLeft icon) returns to the
-                            #     menu without resetting scores already awarded
+                            #     game's state; "Back to Games" (borderless .back-nav-link — ChevronLeft
+                            #     + text, no button box) returns to the menu without resetting scores
+                            #     already awarded; .game-panel-header is now a sibling *before* the
+                            #     centered .game-panel column (not nested inside it) so the back link
+                            #     sits flush against the tab content's left edge instead of being
+                            #     indented by the panel's own centering — the header itself is
+                            #     text-align:center with the back link pulled out via
+                            #     position:absolute so the game title stays centered independent of
+                            #     the link's width
                             #
-                            #   Book Title Hangman — pickHangmanWord() picks a random real book
-                            #     title from the loaded `books` array (letters/digits/spaces/basic
-                            #     punctuation only, 3–26 chars), falling back to a small curated
-                            #     HANGMAN_FALLBACK_TITLES list of classics if the catalogue doesn't
-                            #     have ≥5 eligible titles; 6 wrong guesses allowed; HangmanFigure
-                            #     SVG (gallows always drawn, body parts revealed per wrong guess,
-                            #     stroke="currentColor"); on-screen A–Z keyboard, letters recolour
-                            #     correct/wrong once guessed; XP = max(10, 60 − wrong×10)
+                            #   Book Title Hangman — pickHangmanWord() picks a random real book from
+                            #     the loaded `books` array (title letters/digits/spaces/basic
+                            #     punctuation only, 3–26 chars) and returns { answer, book } — book is
+                            #     the actual catalogue row, not just the title — falling back to
+                            #     { answer, book: null } from a small curated HANGMAN_FALLBACK_TITLES
+                            #     list of classics if the catalogue doesn't have ≥5 eligible titles;
+                            #     6 wrong guesses allowed; HangmanFigure SVG (gallows always drawn,
+                            #     body parts revealed per wrong guess, stroke="currentColor");
+                            #     on-screen A–Z keyboard, letters recolour correct/wrong once guessed;
+                            #     a window keydown listener (active only while gameView==="hangman")
+                            #     maps any A–Z keypress to the same guessHangmanLetter() the on-screen
+                            #     keys call, so typing works interchangeably with clicking; XP =
+                            #     max(10, 60 − wrong×10)
+                            #     Reveal card — once the round ends (won *or* lost) and a real `book`
+                            #     was drawn, a floating card (position:absolute, centered over
+                            #     .hangman-game, box-shadow, no dimmed backdrop behind it) shows the
+                            #     book's cover/title/author with Cancel (dismiss, hangmanRevealDismissed)
+                            #     and Explore (openBook(book.id) — opens the same shared book-detail
+                            #     Modal used everywhere else in the app, not a bespoke one) buttons;
+                            #     resets each new round in startHangman()
                             #   Word Scramble — random word from SCRAMBLE_WORDS (curated library/
                             #     literary vocabulary, 6–11 letters); shuffleWord() Fisher-Yates
-                            #     shuffles until different from the original; Reshuffle re-shuffles
-                            #     the same word, Hint reveals one more letter (uncapped attempts,
-                            #     but each hint lowers the XP payout); XP = max(10, 50 − hints×15)
+                            #     shuffles until different from the original; tiles always render the
+                            #     untouched `scramble.scrambled` string (see the Word Scramble hint
+                            #     bug entry under Key Design Decisions below for why); Reshuffle
+                            #     re-shuffles the same word; Hint reveals one more letter of the
+                            #     *answer* in a separate word-mask row below the tiles/clue (e.g.
+                            #     "C O N _ _ _ _ _", same underline-blank pattern as Hangman's word
+                            #     display) rather than touching the tiles, rate-limited to once every
+                            #     2 seconds (scrambleHintCooldown + scrambleHintTimeoutRef, reset in
+                            #     startScramble()) and disabled while on cooldown; each hint lowers
+                            #     the XP payout; Hint and Reshuffle are removed entirely (not just
+                            #     disabled) once status==="won", leaving only Next Word; XP =
+                            #     max(10, 50 − hints×15)
                             #   Lit Wordle — random 5-letter word from WORDLE_WORDS (literary-
                             #     themed); guesses are validated against WORDLE_VALID_WORDS (
                             #     WORDLE_WORDS ∪ a ~350-word COMMON_FIVE_LETTER_WORDS list) — an
@@ -915,16 +1039,29 @@ frontend/src/
                             #     "Gold Games & XP" below
                             #
                             # Community tab (Gold members only; non-gold sees a locked card):
-                            #   3-level view: list → community → post
+                            #   2-level view: list → community (the separate "post" detail page was
+                            #     removed — see the single-feed entry under Key Design Decisions below)
                             #   List view: approved communities render as `.communities-grid` cards
                             #     (`.community-card` — a `.community-card-banner` image strip with a
                             #     circular `.community-card-icon` overlapping its bottom-left corner,
                             #     falling back to the community's first-letter initial when no
                             #     icon/banner is set) instead of a plain list row; pending/rejected
                             #     requests (from My Communities) render the same card shape above the
-                            #     grid, badge showing status instead of Join/Leave. Create Community
-                            #     button → modal (banner picker, icon picker, name, description);
-                            #     submitted as pending until admin approves
+                            #     grid, badge showing status instead of Join/Leave. A `.search-bar-wide`
+                            #     inside a `.search-trigger-row` (identical wrapper/classes to the
+                            #     Books tab's search bar, for visual consistency) filters `communities`
+                            #     client-side by name/description (`filteredCommunities` useMemo, no
+                            #     new endpoint). Create Community button → modal (banner picker, icon
+                            #     picker, name, description); submitted as pending until admin approves
+                            #   A joined community's whole card is clickable (`.community-card-clickable`,
+                            #     onClick calls openCommunity(c)) instead of exposing a separate "View"
+                            #     button — Leave/Join/Edit stay as their own buttons with
+                            #     e.stopPropagation() so they don't also trigger the card's click. The
+                            #     card's `.btn-row` gets `margin-top: auto` (the card body is already a
+                            #     flex column with `flex: 1`) so Leave/Join sits at a consistent Y
+                            #     position along the bottom edge of every card in a grid row regardless
+                            #     of how long that community's description is or whether the Moderator
+                            #     tag pushed the meta line taller
                             #   Icon/banner upload — same base64-resize-then-PUT pattern as the
                             #     profile avatar editor (resizeImageToBase64(file, maxPx)): icon
                             #     resized to 200px, banner to 1000px, both client-resized before
@@ -936,16 +1073,35 @@ frontend/src/
                             #     "moderator" are the same permission check client-side); the same
                             #     Create/Edit modal is reused for both (communityForm.id set = edit
                             #     mode, PUT instead of POST, title/button text swap accordingly)
-                            #   Community view: community header, member count, Join/Leave button,
-                            #     post list with SVG reaction mini-previews; Create Post button
-                            #   Post view: full post content, SVG reaction bar (like/love/haha/wow/sad/angry),
-                            #     threaded comments at unlimited depth (visual indent capped at depth 4),
-                            #     reply-to-reply at any level
+                            #   Community view: `.community-page-header` — a profile-style banner
+                            #     (`.community-page-banner`) with a large circular icon overlapping its
+                            #     bottom edge (`.community-page-icon-wrap`, same fallback-to-initial as
+                            #     the card), name/description, member count, and Moderator tag, styled
+                            #     like a Reddit/Facebook community page rather than the old plain
+                            #     name+meta `.community-nav` bar (removed) — the community's own
+                            #     icon/banner (already uploaded for the card) now shows again at full
+                            #     size on the page itself. "Back to communities" is the same borderless
+                            #     `.back-nav-link` used by "Back to Games" (see Games tab above)
+                            #   Single feed, no separate post page — each post in `communityPosts`
+                            #     renders full title + meta + content + reaction bar inline as a
+                            #     `.post-card`; a "N comments ▾/▴" toggle (`.post-comments-toggle`,
+                            #     right-aligned in the reaction bar via margin-left:auto) expands that
+                            #     one post's comment thread (unlimited reply depth, visual indent capped
+                            #     at depth 4) directly beneath it. Only one post's comments are fetched/
+                            #     shown at a time — `expandedPostId` decides which `.post-card` is
+                            #     expanded (so the toggle's ▾/▴ label flips immediately on click, before
+                            #     the network round-trip resolves) while `selectedPost` (fetched via
+                            #     togglePostComments(post), a GET to /posts/:id for the comment list)
+                            #     holds the actual comment data once it arrives — decoupling the two
+                            #     avoids the toggle looking unresponsive during the fetch. Reacting to a
+                            #     post (reactPost(post, emoji)) and adding a comment/reply both patch
+                            #     `communityPosts` in place (reactions / comment_count) so the feed list
+                            #     stays in sync with whatever's currently expanded, without a full reload
+                            #   Reaction icons: stroke-based inline SVGs (no icon library),
+                            #     keys: like | love | haha | wow | sad | angry
                             #   Notification badge: red number on the Community tab title showing
                             #     new posts + comments + reactions since last visit; polled every 60 s;
                             #     count stored in localStorage (communityLastSeen); badge clears on tab open
-                            #   Reaction icons: stroke-based inline SVGs (no icon library),
-                            #     keys: like | love | haha | wow | sad | angry
     AdminDashboard.js       # Books · Borrowed · Fines · Members · Communities · Donations tabs
                             #   (Membership Requests and Book Requests no longer have their own
                             #     tabs — folded into Members and Books respectively, see below)
@@ -1251,6 +1407,7 @@ Unless noted otherwise, every endpoint below is scoped to the caller's own libra
 | POST | `/api/auth/login` | — | Login (username + password only — unaffected by multi-library) |
 | POST | `/api/auth/logout` | session | Logout |
 | GET | `/api/auth/me` | session | Current user — includes `email`, `library_id`, and a nested `library: {id, name, code}` |
+| PUT | `/api/auth/profile` | session | Re-authenticated account-details update. Body `{ current_password, username?, email?, new_password? }` — 400 if `current_password` doesn't match (deliberately not 401, see `routes/auth.py` note above); 400 on a taken/invalid username or email; updates only the fields provided |
 | GET | `/api/auth/google/config` | — | `{ client_id }` — the configured `GOOGLE_CLIENT_ID`, or `''` if unset |
 | POST | `/api/auth/google-login` | — | Body `{ credential }` (Google ID token). Verifies it, matches by `google_sub` then verified email; 404 `{ code: 'no_account' }` if no match |
 | POST | `/api/auth/google-register` | — | Body `{ credential, username, role, library_action, library_name\|library_code }`. Verifies the token and creates the account via the same library create/join logic as `register`; 400 if the verified email/`google_sub` already has an account |
@@ -1609,7 +1766,7 @@ Members choose their own tier entirely from My Profile after signing up — regi
 Members can donate physical books to the library. Donations sit in a `pending` queue until an admin reviews them.
 
 **Member flow:**
-1. Member clicks **Donate** in the My Profile tab → modal opens with form fields: title, author, ISBN (optional), genre (optional), condition (new/good/fair/poor), estimated value. A live preview shows the credit they will earn (value ÷ 4).
+1. Member clicks **Donate** in the Donate tab → modal opens with form fields: title, author, ISBN (optional), genre (optional), condition (new/good/fair/poor), estimated value. A live preview shows the credit they will earn (value ÷ 4).
 2. On submit, a `Donation` record is created with `status = 'pending'`. The member sees it immediately in the My Donations table.
 3. Once approved, the credit amount appears in the table and a running total of all earned credits is shown in a summary card.
 
@@ -1654,7 +1811,9 @@ Gold members can create communities, which go through admin approval before beco
 
 **Roles within a community:** `member` (default on join) · `moderator` (creator is auto-assigned on approval).
 
-**Branding (icon/banner):** a community can carry `icon_url` and `banner_url` — nullable TEXT columns storing base64 data-URL images, same convention and validation as `User.avatar` (must start with `data:image/`, size-capped: 2MB icon / 4MB banner). Settable at creation (`POST /api/communities`) and editable later via `PUT /api/communities/:id`, restricted to the creator or a moderator (403 otherwise) — since the creator is auto-assigned `moderator` on approval, "owner" and "moderator" collapse to one permission check. The frontend resizes the source image client-side (icon to 200px, banner to 1000px via the same `resizeImageToBase64()` helper the avatar editor uses) before sending it, so the payload stays well under the backend cap regardless of the original file size. Communities render as cards (banner strip + overlapping circular icon, falling back to the community's first-letter initial when unset) in the Community tab's list view instead of plain rows.
+**Branding (icon/banner):** a community can carry `icon_url` and `banner_url` — nullable TEXT columns storing base64 data-URL images, same convention and validation as `User.avatar` (must start with `data:image/`, size-capped: 2MB icon / 4MB banner). Settable at creation (`POST /api/communities`) and editable later via `PUT /api/communities/:id`, restricted to the creator or a moderator (403 otherwise) — since the creator is auto-assigned `moderator` on approval, "owner" and "moderator" collapse to one permission check. The frontend resizes the source image client-side (icon to 200px, banner to 1000px via the same `resizeImageToBase64()` helper the avatar editor uses) before sending it, so the payload stays well under the backend cap regardless of the original file size. Communities render as cards (banner strip + overlapping circular icon, falling back to the community's first-letter initial when unset) in the Community tab's list view instead of plain rows, and the same branding renders again — larger — as a profile-style header at the top of the community's own page once you open it.
+
+**Feed, not a separate post page:** posts used to open a dedicated `communityView === "post"` page (fetched via a GET to `/posts/:id`) with its own back button. That view was removed — every post now renders its full content inline in the community's post list, and its comment thread expands/collapses in place under a "N comments" toggle instead of navigating away. `GET /posts/:id` is still the endpoint used to fetch a post's comments, just triggered by expanding rather than navigating.
 
 **Threaded comments:** `CommunityComment.parent_id` is a self-referential FK. The backend `to_dict()` recursively serialises replies at any depth. The frontend `CommentItem` component is recursive with a `depth` prop; visual indentation is capped at depth 4 (uses `replies-list-flat` CSS class for lighter styling) but nesting continues in data.
 
@@ -1675,6 +1834,12 @@ A second Gold-only perk alongside Community: three classic word/vocabulary games
 **Where XP is shown:** the Games tab menu header ("N XP") and the TopBar profile dropdown (Gold members only, next to the tier badge). Both read `user.xp` directly off the auth context — no separate fetch.
 
 **Lit Wordle word validation:** unlike a typical "any 5 letters" placeholder implementation, guesses must be real words. `WORDLE_VALID_WORDS` is the union of the literary answer list (`WORDLE_WORDS`) and a ~350-word common-English list (`COMMON_FIVE_LETTER_WORDS`), both hardcoded client-side (no dictionary API/network call). A guess not in that set shows an inline "Not a valid word" message and is not counted as one of the 6 attempts.
+
+**Hangman book reveal:** `pickHangmanWord()` returns `{ answer, book }` instead of just the uppercased title string, so the game can hand back the real catalogue row (when the fallback list wasn't used) once the round ends. This is purely a UI nicety on top of existing data already in the loaded `books` array — no new endpoint, no extra fetch. The reveal card intentionally does *not* reuse the shared book-detail `Modal` component directly for the reveal itself (it opens that modal only if the player clicks Explore) — it's a separate, lighter floating card so the "you got it" moment doesn't get buried under the modal's borrow/wishlist/review UI.
+
+**Hangman keyboard input:** a single `useEffect` keydown listener, scoped to `gameView === "hangman"`, forwards any A–Z keypress to `guessHangmanLetter()` — the same function the on-screen keys call, so there's exactly one code path for "a letter was guessed" regardless of input method (no duplicated validation logic).
+
+**Word Scramble hint bug (fixed):** the hint feature originally spliced `answer[i]` directly into the tile array at index `i` (`i < hintRevealed ? answer[i] : scrambled[i]`), overwriting a scrambled tile with an answer letter at the *same array index*. Since `scrambled` is a shuffled permutation of `answer`'s letters, this positional swap has no reason to preserve the letter multiset — it silently duplicates whatever letter got written in and drops whatever was at that scrambled position, worst after Reshuffle since a freshly-generated permutation has no relationship to which indices were already "hinted." A user-reported example made this concrete: answer `CONFLICT` displayed as tiles `CIFOLCCT` — an extra C, a missing N. Fixed by never mutating the tile array (tiles always render `scramble.scrambled` unchanged) and showing hints as a separate progressive word-mask row instead (`C O N _ _ _ _ _`, the same underline-blank pattern `HangmanFigure`'s word display already used) — revealing the answer no longer has any way to touch what the tiles show. Verified with a 5,000-iteration standalone simulation of `shuffleWord()` + reshuffle-mid-hint, asserting the tile string is always an exact anagram of the answer.
 
 ---
 
@@ -1815,3 +1980,20 @@ Before this pass, `App.css` only had scattered breakpoints (560/800/820/900px) f
 - **Member Overview charts reuse the app's existing tier/status colors, not a new chart palette** — the tier bar chart's colors are the same hex values as `.membership-badge-silver/gold/family` (light + dark variants), and the KPI tiles reuse the existing green/red fine-amount convention, so the new dashboard reads as part of the same design system instead of introducing a second color vocabulary for the same concepts (tier, paid/pending) already shown elsewhere on the same tab.
 - **"Top borrowers" bar chart uses `var(--text)`, not a new accent hue** — this app's theme variants set `--btn-bg` equal to `--text` in every one of its 10 combinations (ink-colored UI chrome, no separate brand hue), so a magnitude bar chart borrows that same ink tone rather than picking an arbitrary blue that would only match one theme.
 - **Borrowed Books / Member Records column filters share one `ActionMenu` popover per table, not one per column** — a single `openBorrowFilter`/`openMemberFilter` state (holding which column, if any, is open) plus one shared trigger ref means only one popover instance is ever mounted per table; each column's header button just toggles which column that shared popover currently represents, instead of managing N independent open/closed states and N `ActionMenu` instances.
+- **Community posts merged into a single feed, the separate post page removed entirely** — the old 3-level view (list → community → post) meant reading a post's comments cost a full navigation away from the feed and back. Collapsing to 2 levels (list → community, with comments expanding in place per post) matches the mental model of every mainstream social feed (Reddit/Facebook-style) the user asked for, and removes an entire `communityView === "post"` branch of near-duplicate JSX rather than keeping two ways to view the same content in sync.
+- **Only one post's comments expand at a time, tracked separately from the fetched data** — `expandedPostId` (which post is expanded) and `selectedPost` (that post's fetched comment data) are two different pieces of state on purpose. Tying "is this post expanded" to "has its detail finished loading" (an earlier version of this feature did that) meant the toggle button's ▾/▴ indicator — and the "Loading comments…" placeholder — didn't appear until the network request resolved, so clicking Hint felt unresponsive; setting `expandedPostId` synchronously on click and letting `selectedPost` arrive later fixes that without adding a loading-state boolean.
+- **Reacting/commenting patches the feed list in place instead of reloading it** — `reactPost(post, emoji)`, `submitComment`, and `submitReply` all update the matching entry in `communityPosts` (reactions / `comment_count`) alongside `selectedPost`, so the collapsed card's reaction counts and comment count stay correct even after you close that post's thread, without a full `GET /posts` refetch.
+- **Community page reuses the same icon/banner already uploaded for the card, styled as a profile header** — no new upload flow or extra fields; `selectedCommunity.icon_url`/`banner_url` (already present on the community object returned by `openCommunity`) are just rendered larger at the top of the page, Reddit/Facebook-style, instead of the old plain text `.community-nav` bar.
+- **A joined community's whole card is clickable instead of exposing a "View" button** — every other action on the card (Leave/Join/Edit) still needs its own button with `e.stopPropagation()`, but "go look at this community" is the single most common action on a card you're already a member of, so it doesn't need a dedicated button competing for space with Leave.
+- **Hangman's book reveal is a small floating card, not the shared book-detail Modal** — reusing the existing `Modal` component directly for the reveal would pull in Borrow/Wishlist/reviews UI that doesn't belong to a "you got it" celebration moment; the reveal card only shows cover/title/author plus Cancel/Explore, and Explore is what opens the real shared Modal if the player actually wants those actions. Went through a few iterations before landing here: first a modal-style dimmed backdrop (felt heavier than the moment warranted and the user explicitly asked for "no box behind it"), then briefly inline-in-flow (lost the "distinct layer" feel and was reverted), settling on `position: absolute` + `box-shadow` with no backdrop — a floating layer without a dimming box behind it.
+- **Hangman reveal fires on loss too, not just a win** — showing the answer's real book only on a win would make losing a dead end; revealing it either way turns every round into "learn about a book," win or lose, which is closer to the feature's actual purpose (surfacing the catalogue) than treating it as a win-only reward.
+- **Word Scramble hint moved from splicing the tile array to a separate word-mask row** — see the "Word Scramble hint bug (fixed)" entry under Gold Games & XP above for the full failure mode; the design lesson is that a "hint" feature must never write into the same data structure a randomizer (`shuffleWord()`) owns, even positionally, since nothing enforces that the two stay consistent once either changes independently (e.g. Reshuffle).
+- **Scramble hint is rate-limited client-side with a plain `setTimeout`, not a server round-trip** — hints have no server-side cost or fairness concern (there's no opponent, no shared leaderboard being gamed in real time), so a `scrambleHintCooldown` boolean flipped by a 2-second `setTimeout` (cleared/reset in `startScramble`) is enough; adding a backend-enforced cooldown would be protecting against a threat model (cheating a single-player XP counter) the rest of the Games system already accepts as out of scope (see "Gameplay is entirely client-side" above).
+- **"Back to Games" pulled out of the centered `.game-panel` column instead of styling it in place** — the game panel is intentionally narrow and centered (`max-width: 480px; margin: 0 auto`) for the games themselves, but that same centering was quietly indenting the back button away from the tab content's true left edge. Moving `.game-panel-header` to a sibling before `.game-panel` (rather than, say, a negative-margin hack on the button) fixes the alignment without fighting the panel's own layout.
+- **Back navigation buttons (`.back-nav-link`) dropped the button box in favor of an icon+text link** — `btn btn-sm btn-outline` reads as an action ("do something"), which is misleading for "go back," a wayfinding control; every other back affordance in the app already avoided a heavy box (e.g. the onboarding tour's chevrons), so Community/Games back navigation was brought in line rather than left as an outlier.
+- **`.btn:disabled` finally has its own visual state** — previously a `disabled` button used the exact same styling as an enabled one (no dimming, no cursor change), relying entirely on click-no-ops to communicate "you can't do this right now." A global `opacity: 0.45` + `cursor: not-allowed` (with hover suppressed) fixes every disabled button app-wide from one rule, not just the Scramble Hint button that prompted it.
+- **Account Details re-auth returns 400 on a wrong password, not 401** — caught live while testing: `AuthContext`'s global axios response interceptor treats *any* 401 anywhere in the app as "session expired" and force-clears the logged-in user, since that's the right behavior for an actually-expired session. Reusing 401 for "you typed your current password wrong while updating your profile" silently logged the (still validly authenticated) member out and bounced them to the landing page instead of showing an inline error. `PUT /api/auth/profile` uses 400 for this specific case instead, with a comment on both the route and the interceptor's call site so the next re-authenticated-action endpoint doesn't repeat it. `POST /admin/verify-password` (an earlier, similar re-auth check) still returns 401 for the same reason and would have the same bug if driven through the UI — left alone since fixing it wasn't part of this session's ask, but worth fixing the same way if it's ever revisited.
+- **My Fines and Donate a Book relocated out of My Profile, in two separate decisions** — My Fines moved to the Home tab as a sixth accordion section (alongside Borrowed/Past Borrows/Reservations/Wishlist, which had already moved there in an earlier pass) because it's the same shape of data — a short list derived from the member's own borrows — and belongs with its siblings rather than living alone in Profile. Donate a Book was promoted to its own top-level Donate tab instead of following Fines to Home, because donating is a bigger, two-part flow (a submission form plus a full history table with a running credits-earned total) that reads better as a primary destination than as one more collapsed section buried in "my stuff."
+- **Accent color is a fourth `ThemeContext` axis with a fallback, not a value forced onto the user** — `accentOverride` (persisted in `localStorage`, default `''`) only ever *replaces* `--accent`; the pre-existing borrowed-book-cover auto-tint (`autoAccentColor`) stays the computed default, and `accentColor = accentOverride || autoAccentColor` keeps that fallback live even after a member has picked a custom colour once, by design — clicking the "auto" swatch clears the override rather than remembering the last book colour, so the tint keeps following whichever book was borrowed most recently unless a member has deliberately opted out of that.
+- **Accent swatches are narrow vertical rectangles, not circles or (briefly) triangles** — the circle version read as generic OS-picker chrome; an upward-pointing-triangle version (`clip-path: polygon(...)`) was tried next for a "palette strip" feel but needed a stacked-`drop-shadow` hack to fake a visible outline on the White swatch (`clip-path` drops normal `border`/`box-shadow` rendering), and was corrected by the user to plain narrow rectangles with rounded top corners instead — visually closer to real paint-chip strips, and simpler CSS (`border`/`box-shadow` work normally again, no clip-path involved).
+- **Per-swatch checkmark colour is computed once, not hardcoded white** — `ACCENT_PRESETS` runs each preset's hex through the existing `wcagTextColor()` helper at module load (`.map()` over the literal array) so the CheckIcon inside, say, the Yellow or White swatch renders in black while every darker swatch's check renders in white, all from one shared contrast function already used elsewhere in this file for cover-tinted UI — no separate "is this color light or dark" heuristic invented for just this feature.

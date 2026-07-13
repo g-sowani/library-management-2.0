@@ -17,6 +17,7 @@ import SearchBar from "../components/SearchBar";
 import Select from "../components/Select";
 import Toast from "../components/Toast";
 import Onboarding from "../components/Onboarding";
+import PreferenceQuiz from "../components/PreferenceQuiz";
 import { useToast } from "../hooks/useToast";
 import { useTheme } from "../context/ThemeContext";
 import { GENRES } from "../constants";
@@ -79,6 +80,11 @@ function contrastRatio(l1, l2) {
 // Preferred "danger" red shades, darkest-context first; falls back to pure
 // black/white (always WCAG-safe against any background) if neither clears 4.5:1.
 const HERO_ERROR_REDS = ["#8c1c1c", "#ffb4ab"];
+
+// Default (non-hero) star-rating gold — reused as the hero star colour too,
+// falling back to coverPalette.text (guaranteed 4.5:1) when it doesn't clear
+// contrast against a given cover colour.
+const HERO_STAR_GOLD = "#f5a623";
 
 const REACTIONS = [
   { key: "like", label: "Like" },
@@ -1549,6 +1555,7 @@ function MemberDashboard() {
   const [membershipRequests, setMembershipRequests] = useState([]);
   const [requestedTier, setRequestedTier] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showQuiz, setShowQuiz] = useState(false);
 
   // Home tab section accordion — only one of borrowed/reservations/wishlist/
   // collection is expanded at a time; the rest collapse to just their heading
@@ -1739,16 +1746,30 @@ function MemberDashboard() {
     load();
   }, [load]);
 
-  useEffect(() => {
-    if (loading || !user) return;
+  const maybeShowTour = useCallback(() => {
     if (!localStorage.getItem(`onboarding_seen_${user.username}`)) {
       setShowOnboarding(true);
     }
-  }, [loading, user]);
+  }, [user]);
+
+  useEffect(() => {
+    if (loading || !user) return;
+    if (!user.onboarded) {
+      setShowQuiz(true);
+    } else {
+      maybeShowTour();
+    }
+  }, [loading, user, maybeShowTour]);
 
   const closeOnboarding = () => {
     localStorage.setItem(`onboarding_seen_${user.username}`, "true");
     setShowOnboarding(false);
+  };
+
+  const closeQuiz = () => {
+    updateUser({ onboarded: true });
+    setShowQuiz(false);
+    maybeShowTour();
   };
 
   // Fetch reviews whenever a book detail is opened
@@ -2743,6 +2764,19 @@ function MemberDashboard() {
     return coverPalette.text;
   }, [coverPalette]);
 
+  // Star-rating gold, guaranteed 4.5:1 against the current hero background —
+  // same guard as heroErrorColor, falling back to coverPalette.text otherwise.
+  const heroStarColor = useMemo(() => {
+    if (!coverPalette) return null;
+    const bgL = relLuminance(coverPalette.r, coverPalette.g, coverPalette.b);
+    const r = parseInt(HERO_STAR_GOLD.slice(1, 3), 16);
+    const g = parseInt(HERO_STAR_GOLD.slice(3, 5), 16);
+    const b = parseInt(HERO_STAR_GOLD.slice(5, 7), 16);
+    return contrastRatio(relLuminance(r, g, b), bgL) >= 4.5
+      ? HERO_STAR_GOLD
+      : coverPalette.text;
+  }, [coverPalette]);
+
   const heroIsLight = coverPalette?.text === "#ffffff";
   const heroLabelStyle = coverPalette ? { color: coverPalette.labelColor } : {};
   const heroSubtleStyle = coverPalette
@@ -2756,12 +2790,33 @@ function MemberDashboard() {
           : "rgba(0,0,0,0.1)",
       }
     : {};
+  // CSS custom properties, scoped to the hero zone — .star-display/.btn-icon-ghost/
+  // .btn-outline in App.css read these (with their normal theme value as fallback),
+  // so every rating star and hero action button stays WCAG AA against any cover colour.
+  const heroCssVars = coverPalette
+    ? {
+        "--hero-fg": coverPalette.text,
+        "--hero-fg-soft": coverPalette.labelColor,
+        "--hero-star-color": heroStarColor,
+        "--hero-hover-bg": heroIsLight
+          ? "rgba(255,255,255,0.18)"
+          : "rgba(0,0,0,0.12)",
+        "--hero-outline-bg": "transparent",
+      }
+    : {};
 
   if (loading) return <BookLoader />;
 
   return (
     <>
-      {showOnboarding && (
+      {showQuiz && (
+        <PreferenceQuiz
+          username={user.username}
+          onFinish={closeQuiz}
+          onOpenBook={openBook}
+        />
+      )}
+      {!showQuiz && showOnboarding && (
         <Onboarding
           role="member"
           username={user.username}
@@ -5400,7 +5455,7 @@ function MemberDashboard() {
             heroTextColor={coverPalette?.text ?? "var(--text)"}
             heroContent={
               <>
-                <div className="book-detail-header">
+                <div className="book-detail-header" style={heroCssVars}>
                   {selectedBook.cover_url && (
                     <img
                       src={selectedBook.cover_url}

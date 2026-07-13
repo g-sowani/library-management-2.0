@@ -10,6 +10,7 @@ from extensions import db
 from models import User, _seed_settings, _seed_genres
 from models.library import Library, generate_library_code
 from models.membership_request import MembershipRequest
+from decorators import login_required
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 libraries_bp = Blueprint('libraries', __name__, url_prefix='/api')
@@ -227,6 +228,73 @@ def update_avatar():
     if avatar and len(avatar) > 3 * 1024 * 1024:
         return jsonify({'error': 'Image too large (max ~2 MB)'}), 400
     user.avatar = avatar  # None clears the avatar
+    db.session.commit()
+    return jsonify(user.to_dict())
+
+
+@auth_bp.route('/profile', methods=['PUT'])
+def update_profile():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    data = request.json or {}
+    current_password = data.get('current_password') or ''
+    if not check_password_hash(user.password_hash, current_password):
+        # 400, not 401: a 401 here would trip the frontend's global
+        # response interceptor, which treats any 401 as "session expired"
+        # and force-logs-out the (still validly logged-in) user.
+        return jsonify({'error': 'Current password is incorrect'}), 400
+
+    username = (data.get('username') or '').strip()
+    if username and username != user.username:
+        if User.query.filter(User.username == username, User.id != user.id).first():
+            return jsonify({'error': 'Username already exists'}), 400
+        user.username = username
+
+    email = (data.get('email') or '').strip().lower()
+    if email and email != user.email:
+        if not _EMAIL_RE.match(email):
+            return jsonify({'error': 'Please enter a valid email address'}), 400
+        if User.query.filter(User.email == email, User.id != user.id).first():
+            return jsonify({'error': 'Email already registered'}), 400
+        user.email = email
+
+    new_password = data.get('new_password') or ''
+    if new_password:
+        if len(new_password) < 6:
+            return jsonify({'error': 'New password must be at least 6 characters'}), 400
+        user.password_hash = generate_password_hash(new_password)
+
+    db.session.commit()
+    return jsonify(user.to_dict())
+
+
+@auth_bp.route('/onboarding', methods=['POST'])
+@login_required
+def complete_onboarding():
+    """Saves the genres a new member picked in the onboarding quiz so
+    GET /recommendations has something to work with before they've borrowed
+    anything, and marks the quiz as done so it doesn't show again."""
+    user = db.session.get(User, session['user_id'])
+    genres = (request.json or {}).get('genres') or []
+    genres = [genre.strip() for genre in genres if isinstance(genre, str) and genre.strip()][:8]
+    if not genres:
+        return jsonify({'error': 'Pick at least one genre'}), 400
+
+    user.preferred_genres = ','.join(genres)
+    user.onboarded = True
+    db.session.commit()
+    return jsonify(user.to_dict())
+
+
+@auth_bp.route('/onboarding/skip', methods=['POST'])
+@login_required
+def skip_onboarding():
+    user = db.session.get(User, session['user_id'])
+    user.onboarded = True
     db.session.commit()
     return jsonify(user.to_dict())
 

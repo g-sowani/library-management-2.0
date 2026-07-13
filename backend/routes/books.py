@@ -495,9 +495,6 @@ def recommendations():
     user_id = session['user_id']
 
     user_borrows = Borrow.query.filter_by(user_id=user_id).all()
-    if not user_borrows:
-        return jsonify([])
-
     user_ratings = {r.book_id: r.rating for r in Review.query.filter_by(user_id=user_id).all()}
     borrowed_ids = {b.book_id for b in user_borrows}
 
@@ -515,6 +512,15 @@ def recommendations():
         if book.genre:
             genre_weights[book.genre] = genre_weights.get(book.genre, 0) + weight
         author_weights[book.author] = author_weights.get(book.author, 0) + weight
+
+    # No borrow history yet (brand-new member) — fall back to the genres they
+    # picked in the onboarding quiz, if any, so recommendations aren't empty.
+    if not user_borrows:
+        user = User.query.get(user_id)
+        picked = user.preferred_genres.split(',') if user and user.preferred_genres else []
+        genre_weights = {genre: 1.0 for genre in picked if genre}
+        if not genre_weights:
+            return jsonify([])
 
     candidates = Book.query.filter(~Book.id.in_(borrowed_ids), Book.library_id == g.library_id).all()
     if not candidates:

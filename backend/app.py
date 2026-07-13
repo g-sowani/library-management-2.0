@@ -54,16 +54,16 @@ def _migrate_db():
     user_cols_before = get_cols('user') or []
     add_missing_cols('user', {
         'avatar': 'TEXT', 'xp': 'INTEGER DEFAULT 0', 'library_id': 'INTEGER', 'email': 'VARCHAR(120)',
-        'google_sub': 'VARCHAR(255)', 'preferred_genres': 'TEXT', 'onboarded': 'BOOLEAN DEFAULT 0',
+        'google_sub': 'VARCHAR(255)', 'preferred_genres': 'TEXT', 'onboarded': 'BOOLEAN DEFAULT FALSE',
     })
     if 'onboarded' not in user_cols_before:
-        db.session.execute(text('UPDATE "user" SET onboarded = 1'))
+        db.session.execute(text('UPDATE "user" SET onboarded = TRUE'))
     add_missing_cols('post_reaction', {'created_at': 'TIMESTAMP'})
     add_missing_cols('comment_reaction', {'created_at': 'TIMESTAMP'})
     add_missing_cols('borrow', {
         'return_requested_at': 'TIMESTAMP',
         'fine_payment_requested_at': 'TIMESTAMP',
-        'is_completed': 'BOOLEAN DEFAULT 0',
+        'is_completed': 'BOOLEAN DEFAULT FALSE',
         'completed_at': 'TIMESTAMP',
     })
     add_missing_cols('community', {'icon_url': 'TEXT', 'banner_url': 'TEXT'})

@@ -3,6 +3,7 @@ import { useLocation, Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../context/AuthContext';
 import Select from '../components/Select';
+import { CURRENCIES } from '../utils/currency';
 
 function Login() {
   const { login } = useAuth();
@@ -16,6 +17,7 @@ function Login() {
 
   const [libraryAction, setLibraryAction] = useState('create');
   const [libraryName, setLibraryName] = useState('');
+  const [libraryCurrency, setLibraryCurrency] = useState('USD');
   const [libraryCode, setLibraryCode] = useState('');
   const [libraries, setLibraries] = useState([]);
 
@@ -29,7 +31,7 @@ function Login() {
   // Google's button callback is registered once via `initialize`, so it can only
   // see fresh form values through a ref rather than through its own closure.
   const formStateRef = useRef();
-  formStateRef.current = { isRegister, username, role, libraryAction, libraryName, libraryCode, needsLibraryCode };
+  formStateRef.current = { isRegister, username, role, libraryAction, libraryName, libraryCurrency, libraryCode, needsLibraryCode };
 
   const [googleClientId, setGoogleClientId] = useState('');
   const googleBtnRef = useRef(null);
@@ -40,7 +42,7 @@ function Login() {
 
   const handleGoogleCredential = async (response) => {
     const credential = response.credential;
-    const { isRegister, username, role, libraryAction, libraryName, libraryCode, needsLibraryCode } = formStateRef.current;
+    const { isRegister, username, role, libraryAction, libraryName, libraryCurrency, libraryCode, needsLibraryCode } = formStateRef.current;
     setError('');
     try {
       if (isRegister) {
@@ -60,6 +62,7 @@ function Login() {
         if (role === 'admin' && libraryAction === 'create') {
           payload.library_action = 'create';
           payload.library_name = libraryName;
+          payload.library_currency = libraryCurrency;
         } else {
           payload.library_action = 'join';
           payload.library_code = libraryCode;
@@ -121,6 +124,7 @@ function Login() {
         if (role === 'admin' && libraryAction === 'create') {
           payload.library_action = 'create';
           payload.library_name = libraryName;
+          payload.library_currency = libraryCurrency;
         } else {
           payload.library_action = 'join';
           payload.library_code = libraryCode;
@@ -189,13 +193,24 @@ function Login() {
                 </button>
               </div>
               {libraryAction === 'create' ? (
-                <input
-                  style={{ marginTop: 8 }}
-                  placeholder="Library name"
-                  value={libraryName}
-                  onChange={(e) => setLibraryName(e.target.value)}
-                  required
-                />
+                <>
+                  <input
+                    style={{ marginTop: 8 }}
+                    placeholder="Library name"
+                    value={libraryName}
+                    onChange={(e) => setLibraryName(e.target.value)}
+                    required
+                  />
+                  <div style={{ marginTop: 8 }}>
+                    <Select value={libraryCurrency} onChange={(e) => setLibraryCurrency(e.target.value)}>
+                      {CURRENCIES.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.label} ({c.symbol})
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                </>
               ) : (
                 <div style={{ marginTop: 8 }}>
                   <Select value={libraryCode} onChange={(e) => setLibraryCode(e.target.value)}>

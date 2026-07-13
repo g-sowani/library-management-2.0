@@ -8,7 +8,7 @@ from google.oauth2 import id_token as google_id_token
 from werkzeug.security import generate_password_hash, check_password_hash
 from extensions import db
 from models import User, _seed_settings, _seed_genres
-from models.library import Library, generate_library_code
+from models.library import Library, generate_library_code, SUPPORTED_CURRENCIES
 from models.membership_request import MembershipRequest
 from decorators import login_required
 
@@ -27,7 +27,10 @@ def _resolve_library(data, role):
         name = (data.get('library_name') or '').strip()
         if not name:
             return None, ('Library name is required', 400)
-        library = Library(name=name, code=generate_library_code())
+        currency = (data.get('library_currency') or 'USD').strip().upper()
+        if currency not in SUPPORTED_CURRENCIES:
+            return None, ('Unsupported currency', 400)
+        library = Library(name=name, code=generate_library_code(), currency=currency)
         db.session.add(library)
         db.session.flush()
         _seed_settings(db, library.id)

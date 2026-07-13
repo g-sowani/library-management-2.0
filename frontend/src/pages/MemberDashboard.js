@@ -21,6 +21,50 @@ import PreferenceQuiz from "../components/PreferenceQuiz";
 import { useToast } from "../hooks/useToast";
 import { useTheme } from "../context/ThemeContext";
 import { GENRES } from "../constants";
+import {
+  wcagTextColor,
+  minAlphaForContrast,
+  relLuminance,
+  contrastRatio,
+  contrastTextFor,
+} from "../utils/colorContrast";
+import { resizeImageToBase64 } from "../utils/resizeImageToBase64";
+import { formatCurrency, getCurrencySymbol } from "../utils/currency";
+import NoCoverPlaceholder from "../components/NoCoverPlaceholder";
+import FilterIcon from "../components/icons/FilterIcon";
+import XIcon from "../components/icons/XIcon";
+import ChevronLeft from "../components/icons/ChevronLeft";
+import ChevronDown from "../components/icons/ChevronDown";
+import AlertTriangleIcon from "../components/icons/AlertTriangleIcon";
+import CheckIcon from "../components/icons/CheckIcon";
+import PaletteIcon from "../components/icons/PaletteIcon";
+import LockIcon from "../components/icons/LockIcon";
+import BookLoader from "../components/BookLoader";
+import BookStrip from "../components/BookStrip";
+import StarPicker from "../components/StarPicker";
+import StarDisplay from "../components/StarDisplay";
+import MembershipBadge from "../components/MembershipBadge";
+import CommentItem from "../components/community/CommentItem";
+import { patchReaction } from "../components/community/patchReaction";
+import { TIER_LABELS, TIER_OPTIONS } from "../constants/membership";
+import {
+  APPEARANCE_OPTIONS,
+  READER_THEME_OPTIONS,
+  ACCENT_PRESETS,
+  ReaderBookIcon,
+} from "../constants/appearance";
+import {
+  SCRAMBLE_WORDS,
+  WORDLE_WORDS,
+  WORDLE_VALID_WORDS,
+} from "../components/games/wordBanks";
+import { GAMES_LIST } from "../components/games/gamesList";
+import {
+  pickHangmanWord,
+  shuffleWord,
+  wordleFeedback,
+} from "../components/games/gameLogic";
+import HangmanFigure from "../components/games/HangmanFigure";
 
 const TABS = [
   { id: "home", label: "My Stuff" },
@@ -31,52 +75,6 @@ const TABS = [
   { id: "profile", label: "My Profile" },
 ];
 
-function wcagTextColor(r, g, b) {
-  const lin = (c) => {
-    c /= 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  };
-  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-  return (L + 0.05) / 0.05 >= 1.05 / (L + 0.05) ? "#000000" : "#ffffff";
-}
-
-// Binary-search the minimum opacity at which rgba(fgVal, fgVal, fgVal, α) composited
-// over rgb(bgR,bgG,bgB) achieves the target contrast ratio. fgVal is 0 (black) or 255 (white).
-function minAlphaForContrast(fgVal, bgR, bgG, bgB, minRatio) {
-  const lin = (c) => {
-    c /= 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  };
-  const bgL = 0.2126 * lin(bgR) + 0.7152 * lin(bgG) + 0.0722 * lin(bgB);
-  let lo = 0,
-    hi = 1;
-  for (let i = 0; i < 16; i++) {
-    const alpha = (lo + hi) / 2;
-    const rc = Math.round(fgVal * alpha + bgR * (1 - alpha));
-    const gc = Math.round(fgVal * alpha + bgG * (1 - alpha));
-    const bc = Math.round(fgVal * alpha + bgB * (1 - alpha));
-    const fL = 0.2126 * lin(rc) + 0.7152 * lin(gc) + 0.0722 * lin(bc);
-    const ratio = (Math.max(fL, bgL) + 0.05) / (Math.min(fL, bgL) + 0.05);
-    if (ratio >= minRatio) hi = alpha;
-    else lo = alpha;
-  }
-  return Math.min(1, hi + 0.005);
-}
-
-function relLuminance(r, g, b) {
-  const lin = (c) => {
-    c /= 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
-
-function contrastRatio(l1, l2) {
-  const hi = Math.max(l1, l2);
-  const lo = Math.min(l1, l2);
-  return (hi + 0.05) / (lo + 0.05);
-}
-
 // Preferred "danger" red shades, darkest-context first; falls back to pure
 // black/white (always WCAG-safe against any background) if neither clears 4.5:1.
 const HERO_ERROR_REDS = ["#8c1c1c", "#ffb4ab"];
@@ -86,1445 +84,9 @@ const HERO_ERROR_REDS = ["#8c1c1c", "#ffb4ab"];
 // contrast against a given cover colour.
 const HERO_STAR_GOLD = "#f5a623";
 
-const REACTIONS = [
-  { key: "like", label: "Like" },
-  { key: "love", label: "Love" },
-  { key: "haha", label: "Haha" },
-  { key: "wow", label: "Wow" },
-  { key: "sad", label: "Sad" },
-  { key: "angry", label: "Angry" },
-];
-
-const sl = "round"; // strokeLinecap / strokeLinejoin shorthand value
-function ReactionIcon({ type, size = 13 }) {
-  const common = {
-    viewBox: "0 0 24 24",
-    width: size,
-    height: size,
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: "2",
-    strokeLinecap: sl,
-    strokeLinejoin: sl,
-  };
-  if (type === "like")
-    return (
-      <svg {...common}>
-        <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z" />
-        <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
-      </svg>
-    );
-  if (type === "love")
-    return (
-      <svg {...common}>
-        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-      </svg>
-    );
-  if (type === "haha")
-    return (
-      <svg {...common}>
-        <circle cx="12" cy="12" r="10" />
-        <path d="M8 13s1.5 3 4 3 4-3 4-3" />
-        <line x1="9" y1="9.5" x2="9.01" y2="9.5" strokeWidth="2.5" />
-        <line x1="15" y1="9.5" x2="15.01" y2="9.5" strokeWidth="2.5" />
-      </svg>
-    );
-  if (type === "wow")
-    return (
-      <svg {...common}>
-        <circle cx="12" cy="12" r="10" />
-        <circle cx="8.5" cy="10" r="1.2" fill="currentColor" stroke="none" />
-        <circle cx="15.5" cy="10" r="1.2" fill="currentColor" stroke="none" />
-        <ellipse cx="12" cy="16" rx="2" ry="2.2" />
-      </svg>
-    );
-  if (type === "sad")
-    return (
-      <svg {...common}>
-        <circle cx="12" cy="12" r="10" />
-        <path d="M16 17s-1.5-2-4-2-4 2-4 2" />
-        <line x1="9" y1="9.5" x2="9.01" y2="9.5" strokeWidth="2.5" />
-        <line x1="15" y1="9.5" x2="15.01" y2="9.5" strokeWidth="2.5" />
-      </svg>
-    );
-  if (type === "angry")
-    return (
-      <svg {...common}>
-        <circle cx="12" cy="12" r="10" />
-        <path d="M16 17s-1.5-2-4-2-4 2-4 2" />
-        <path d="M7.5 7.5l3 2" />
-        <path d="M16.5 7.5l-3 2" />
-      </svg>
-    );
-  return null;
-}
-
-function patchReaction(comments, targetId, reactions) {
-  return comments.map((c) => {
-    if (c.id === targetId) return { ...c, reactions };
-    if (c.replies?.length)
-      return { ...c, replies: patchReaction(c.replies, targetId, reactions) };
-    return c;
-  });
-}
-
-function CommentItem({
-  comment,
-  onReact,
-  onReply,
-  replyingToId,
-  replyContent,
-  setReplyContent,
-  onSubmitReply,
-  depth = 0,
-}) {
-  const isReplying = replyingToId === comment.id;
-  const indentCapped = depth >= 4;
-  return (
-    <div className={`comment-item${depth > 0 ? " comment-reply" : ""}`}>
-      <div className="comment-header">
-        <span className="comment-author">{comment.author_username}</span>
-        <span className="comment-date">
-          {new Date(comment.created_at).toLocaleString()}
-        </span>
-      </div>
-      <div className="comment-content">{comment.content}</div>
-      <div className="comment-actions">
-        {REACTIONS.map(({ key, label }) => {
-          const count = comment.reactions.counts[key] || 0;
-          const active = comment.reactions.user_reaction === key;
-          return (
-            <button
-              key={key}
-              className={`reaction-btn reaction-btn-sm${
-                active ? " reaction-active" : ""
-              }`}
-              onClick={() => onReact(comment.id, key)}
-              title={label}
-            >
-              <ReactionIcon type={key} size={12} />
-              {count > 0 && <span className="reaction-count">{count}</span>}
-            </button>
-          );
-        })}
-        <button
-          className="btn-link"
-          onClick={() => onReply(isReplying ? null : comment.id)}
-        >
-          {isReplying ? "Cancel" : "Reply"}
-        </button>
-      </div>
-      {isReplying && (
-        <div className="reply-form">
-          <textarea
-            className="comment-input"
-            value={replyContent}
-            onChange={(e) => setReplyContent(e.target.value)}
-            placeholder={`Reply to ${comment.author_username}…`}
-            rows={2}
-            autoFocus
-          />
-          <button
-            className="btn btn-sm"
-            onClick={() => onSubmitReply(comment.id)}
-            disabled={!replyContent.trim()}
-          >
-            Reply
-          </button>
-        </div>
-      )}
-      {comment.replies?.length > 0 && (
-        <div
-          className={`replies-list${indentCapped ? " replies-list-flat" : ""}`}
-        >
-          {comment.replies.map((reply) => (
-            <CommentItem
-              key={reply.id}
-              comment={reply}
-              onReact={onReact}
-              onReply={onReply}
-              replyingToId={replyingToId}
-              replyContent={replyContent}
-              setReplyContent={setReplyContent}
-              onSubmitReply={onSubmitReply}
-              depth={indentCapped ? depth : depth + 1}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StarPicker({ value, hover, onRate, onHover, onLeave }) {
-  return (
-    <div className="star-rating">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <button
-          key={star}
-          className={`star ${star <= (hover || value) ? "star-filled" : ""}`}
-          onClick={() => onRate(value === star ? 0 : star)}
-          onMouseEnter={() => onHover(star)}
-          onMouseLeave={onLeave}
-          title={`${star} star${star > 1 ? "s" : ""}`}
-        >
-          ★
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function StarDisplay({ rating }) {
-  const rounded = Math.round(rating);
-  return (
-    <span className="star-display">
-      {"★".repeat(rounded)}
-      {"☆".repeat(5 - rounded)}
-    </span>
-  );
-}
-
-const TIER_LABELS = { silver: "Silver", gold: "Gold", family: "Family" };
-const TIER_OPTIONS = [
-  {
-    id: "silver",
-    name: "Silver",
-    desc: "1 book at a time · Standard access",
-    priceKey: "silver_rate",
-  },
-  {
-    id: "gold",
-    name: "Gold",
-    desc: "3 books at a time · Community & Games access",
-    priceKey: "gold_rate",
-  },
-  {
-    id: "family",
-    name: "Family",
-    desc: "Up to 4 members · 1 book each",
-    priceKey: "family_rate",
-  },
-];
-
-// ── Gold member Games: word banks (client-side only, no backend) ─────────────
-const HANGMAN_FALLBACK_TITLES = [
-  "PRIDE AND PREJUDICE",
-  "MOBY DICK",
-  "GREAT EXPECTATIONS",
-  "JANE EYRE",
-  "LITTLE WOMEN",
-  "WAR AND PEACE",
-  "DON QUIXOTE",
-  "OLIVER TWIST",
-  "THE ODYSSEY",
-  "FRANKENSTEIN",
-  "WUTHERING HEIGHTS",
-  "ANIMAL FARM",
-  "THE HOBBIT",
-  "DRACULA",
-];
-
-const SCRAMBLE_WORDS = [
-  "LIBRARY",
-  "CHAPTER",
-  "FICTION",
-  "MYSTERY",
-  "FANTASY",
-  "THRILLER",
-  "BIOGRAPHY",
-  "GLOSSARY",
-  "NARRATOR",
-  "PUBLISHER",
-  "MANUSCRIPT",
-  "ANTHOLOGY",
-  "BOOKWORM",
-  "PAPERBACK",
-  "HARDCOVER",
-  "LIBRARIAN",
-  "BOOKSHELF",
-  "FOOTNOTE",
-  "PROLOGUE",
-  "EPILOGUE",
-  "APPENDIX",
-  "METAPHOR",
-  "ALLEGORY",
-  "DIALOGUE",
-  "NARRATIVE",
-  "CHARACTER",
-  "CONFLICT",
-  "FLASHBACK",
-  "SEQUEL",
-  "EDITION",
-  "VOLUME",
-  "PASSAGE",
-  "NOVELIST",
-  "SONNET",
-  "BALLAD",
-  "LEGEND",
-  "FOLKLORE",
-  "SATIRE",
-];
-
-const WORDLE_WORDS = [
-  "NOVEL",
-  "STORY",
-  "VERSE",
-  "PROSE",
-  "QUOTE",
-  "GENRE",
-  "TITLE",
-  "PAPER",
-  "PAGES",
-  "WORDS",
-  "PLOTS",
-  "DRAMA",
-  "MAGIC",
-  "GHOST",
-  "CRIME",
-  "TRIAL",
-  "DIARY",
-  "FABLE",
-  "MYTHS",
-  "RHYME",
-  "STYLE",
-  "VOICE",
-  "THEME",
-  "TWIST",
-  "CANON",
-  "IDIOM",
-  "SAGAS",
-  "SPINE",
-  "QUILL",
-  "ELEGY",
-  "BOUND",
-  "LEXIS",
-];
-
-// Common 5-letter English words accepted as valid Lit Wordle guesses, so a guess must
-// always be a real word (not just any 5 letters) — merged with WORDLE_WORDS itself
-// since a couple of answers (e.g. SPINE, QUILL) are more literary than everyday.
-const COMMON_FIVE_LETTER_WORDS = [
-  "ABOUT",
-  "ABOVE",
-  "ABUSE",
-  "ACTOR",
-  "ACUTE",
-  "ADMIT",
-  "ADOPT",
-  "ADULT",
-  "AFTER",
-  "AGAIN",
-  "AGENT",
-  "AGREE",
-  "AHEAD",
-  "ALARM",
-  "ALBUM",
-  "ALERT",
-  "ALIKE",
-  "ALIVE",
-  "ALLOW",
-  "ALONE",
-  "ALONG",
-  "ALTER",
-  "AMONG",
-  "ANGER",
-  "ANGLE",
-  "ANGRY",
-  "APPLE",
-  "APPLY",
-  "ARENA",
-  "ARGUE",
-  "ARISE",
-  "ARRAY",
-  "ASIDE",
-  "ASSET",
-  "AVOID",
-  "AWAIT",
-  "AWAKE",
-  "AWARD",
-  "AWARE",
-  "BADLY",
-  "BAKER",
-  "BASIC",
-  "BASIN",
-  "BEACH",
-  "BEGAN",
-  "BEGIN",
-  "BEING",
-  "BELOW",
-  "BENCH",
-  "BIRTH",
-  "BLAME",
-  "BLANK",
-  "BLAST",
-  "BLIND",
-  "BLOCK",
-  "BLOOD",
-  "BOARD",
-  "BOAST",
-  "BOOST",
-  "BOOTH",
-  "BOUND",
-  "BRAIN",
-  "BRAND",
-  "BREAD",
-  "BREAK",
-  "BREED",
-  "BRIEF",
-  "BRING",
-  "BROAD",
-  "BROKE",
-  "BROWN",
-  "BUILD",
-  "BUILT",
-  "BUYER",
-  "CABLE",
-  "CANDY",
-  "CARGO",
-  "CARRY",
-  "CATCH",
-  "CAUSE",
-  "CHAIN",
-  "CHAIR",
-  "CHAOS",
-  "CHARM",
-  "CHART",
-  "CHASE",
-  "CHEAP",
-  "CHECK",
-  "CHEST",
-  "CHIEF",
-  "CHILD",
-  "CHOSE",
-  "CIVIL",
-  "CLAIM",
-  "CLASS",
-  "CLEAN",
-  "CLEAR",
-  "CLICK",
-  "CLIMB",
-  "CLOCK",
-  "CLOSE",
-  "CLOUD",
-  "COACH",
-  "COAST",
-  "COULD",
-  "COUNT",
-  "COURT",
-  "COVER",
-  "CRAFT",
-  "CRASH",
-  "CRAZY",
-  "CREAM",
-  "CRIME",
-  "CROSS",
-  "CROWD",
-  "CROWN",
-  "CRUDE",
-  "CURVE",
-  "CYCLE",
-  "DAILY",
-  "DANCE",
-  "DEALT",
-  "DEATH",
-  "DEBUT",
-  "DELAY",
-  "DEPTH",
-  "DOUBT",
-  "DOZEN",
-  "DRAFT",
-  "DRAMA",
-  "DRANK",
-  "DREAM",
-  "DRESS",
-  "DRIED",
-  "DRILL",
-  "DRINK",
-  "DRIVE",
-  "DROVE",
-  "EAGER",
-  "EARLY",
-  "EARTH",
-  "EIGHT",
-  "ELITE",
-  "EMPTY",
-  "ENEMY",
-  "ENJOY",
-  "ENTER",
-  "ENTRY",
-  "EQUAL",
-  "ERROR",
-  "EVENT",
-  "EVERY",
-  "EXACT",
-  "EXIST",
-  "EXTRA",
-  "FAITH",
-  "FALSE",
-  "FAULT",
-  "FIBER",
-  "FIELD",
-  "FIFTH",
-  "FIFTY",
-  "FIGHT",
-  "FINAL",
-  "FIRST",
-  "FIXED",
-  "FLASH",
-  "FLEET",
-  "FLOOR",
-  "FLUID",
-  "FOCUS",
-  "FORCE",
-  "FORTH",
-  "FORTY",
-  "FORUM",
-  "FOUND",
-  "FRAME",
-  "FRANK",
-  "FRAUD",
-  "FRESH",
-  "FRONT",
-  "FRUIT",
-  "FULLY",
-  "FUNNY",
-  "GIANT",
-  "GIVEN",
-  "GLASS",
-  "GLOBE",
-  "GRACE",
-  "GRADE",
-  "GRAND",
-  "GRANT",
-  "GRASS",
-  "GREAT",
-  "GREEN",
-  "GROSS",
-  "GROUP",
-  "GROWN",
-  "GUARD",
-  "GUESS",
-  "GUEST",
-  "GUIDE",
-  "HAPPY",
-  "HARSH",
-  "HEART",
-  "HEAVY",
-  "HENCE",
-  "HORSE",
-  "HOTEL",
-  "HOUSE",
-  "HUMAN",
-  "IDEAL",
-  "IMAGE",
-  "INDEX",
-  "INNER",
-  "INPUT",
-  "ISSUE",
-  "JOINT",
-  "JUDGE",
-  "KNOWN",
-  "LABEL",
-  "LARGE",
-  "LASER",
-  "LATER",
-  "LAUGH",
-  "LAYER",
-  "LEARN",
-  "LEAST",
-  "LEAVE",
-  "LEGAL",
-  "LEVEL",
-  "LIGHT",
-  "LIMIT",
-  "LOCAL",
-  "LOGIC",
-  "LOOSE",
-  "LOWER",
-  "LUCKY",
-  "LUNCH",
-  "MAJOR",
-  "MAKER",
-  "MARCH",
-  "MATCH",
-  "MAYBE",
-  "MAYOR",
-  "MEDIA",
-  "METAL",
-  "MIGHT",
-  "MINOR",
-  "MINUS",
-  "MIXED",
-  "MODEL",
-  "MONEY",
-  "MONTH",
-  "MORAL",
-  "MOTOR",
-  "MOUNT",
-  "MOUSE",
-  "MOUTH",
-  "MOVIE",
-  "MUSIC",
-  "NERVE",
-  "NEVER",
-  "NEWLY",
-  "NIGHT",
-  "NOISE",
-  "NORTH",
-  "NOTED",
-  "NURSE",
-  "OCCUR",
-  "OCEAN",
-  "OFFER",
-  "OFTEN",
-  "ORDER",
-  "OTHER",
-  "OUGHT",
-  "OUTER",
-  "OWNER",
-  "PANEL",
-  "PAPER",
-  "PARTY",
-  "PEACE",
-  "PHASE",
-  "PHONE",
-  "PHOTO",
-  "PIECE",
-  "PILOT",
-  "PITCH",
-  "PLACE",
-  "PLAIN",
-  "PLANE",
-  "PLANT",
-  "PLATE",
-  "POINT",
-  "POUND",
-  "POWER",
-  "PRESS",
-  "PRICE",
-  "PRIDE",
-  "PRIME",
-  "PRINT",
-  "PRIOR",
-  "PRIZE",
-  "PROOF",
-  "PROUD",
-  "PROVE",
-  "QUEEN",
-  "QUICK",
-  "QUIET",
-  "QUITE",
-  "RADIO",
-  "RAISE",
-  "RANGE",
-  "RAPID",
-  "RATIO",
-  "REACH",
-  "READY",
-  "REFER",
-  "RELAX",
-  "REPLY",
-  "RIGHT",
-  "RIVAL",
-  "RIVER",
-  "ROBOT",
-  "ROMAN",
-  "ROUGH",
-  "ROUND",
-  "ROUTE",
-  "ROYAL",
-  "RURAL",
-  "SCALE",
-  "SCENE",
-  "SCOPE",
-  "SCORE",
-  "SENSE",
-  "SERVE",
-  "SEVEN",
-  "SHALL",
-  "SHAPE",
-  "SHARE",
-  "SHARP",
-  "SHEET",
-  "SHELF",
-  "SHELL",
-  "SHIFT",
-  "SHIRT",
-  "SHOCK",
-  "SHOOT",
-  "SHORT",
-  "SHOWN",
-  "SIGHT",
-  "SINCE",
-  "SIXTH",
-  "SIXTY",
-  "SKILL",
-  "SLEEP",
-  "SLIDE",
-  "SMALL",
-  "SMART",
-  "SMILE",
-  "SMOKE",
-  "SOLID",
-  "SOLVE",
-  "SORRY",
-  "SOUND",
-  "SOUTH",
-  "SPACE",
-  "SPARE",
-  "SPEAK",
-  "SPEED",
-  "SPEND",
-  "SPENT",
-  "SPLIT",
-  "SPOKE",
-  "SPORT",
-  "STAFF",
-  "STAGE",
-  "STAKE",
-  "STAND",
-  "START",
-  "STATE",
-  "STEAM",
-  "STEEL",
-  "STEEP",
-  "STICK",
-  "STILL",
-  "STOCK",
-  "STONE",
-  "STOOD",
-  "STORE",
-  "STORM",
-  "STORY",
-  "STRIP",
-  "STUCK",
-  "STUDY",
-  "STUFF",
-  "STYLE",
-  "SUGAR",
-  "SUPER",
-  "SWEET",
-  "TABLE",
-  "TAKEN",
-  "TASTE",
-  "TEACH",
-  "TERMS",
-  "THANK",
-  "THEFT",
-  "THEIR",
-  "THEME",
-  "THERE",
-  "THESE",
-  "THICK",
-  "THING",
-  "THINK",
-  "THIRD",
-  "THOSE",
-  "THREE",
-  "THREW",
-  "THROW",
-  "THUMB",
-  "TIGHT",
-  "TIMES",
-  "TIRED",
-  "TITLE",
-  "TODAY",
-  "TOPIC",
-  "TOTAL",
-  "TOUCH",
-  "TOUGH",
-  "TOWER",
-  "TRACK",
-  "TRADE",
-  "TRAIN",
-  "TREAT",
-  "TREND",
-  "TRIAL",
-  "TRIBE",
-  "TRICK",
-  "TRIED",
-  "TRUCK",
-  "TRULY",
-  "TRUST",
-  "TRUTH",
-  "TWICE",
-  "UNDER",
-  "UNION",
-  "UNITY",
-  "UNTIL",
-  "UPPER",
-  "UPSET",
-  "URBAN",
-  "USAGE",
-  "USUAL",
-  "VALID",
-  "VALUE",
-  "VIDEO",
-  "VIRUS",
-  "VISIT",
-  "VITAL",
-  "VOICE",
-  "WASTE",
-  "WATCH",
-  "WATER",
-  "WHEEL",
-  "WHERE",
-  "WHICH",
-  "WHILE",
-  "WHITE",
-  "WHOLE",
-  "WHOSE",
-  "WOMAN",
-  "WOMEN",
-  "WORLD",
-  "WORRY",
-  "WORSE",
-  "WORST",
-  "WORTH",
-  "WOULD",
-  "WOUND",
-  "WRITE",
-  "WRONG",
-  "WROTE",
-  "YIELD",
-  "YOUNG",
-  "YOUTH",
-];
-
-const WORDLE_VALID_WORDS = new Set([
-  ...WORDLE_WORDS,
-  ...COMMON_FIVE_LETTER_WORDS,
-]);
-
-function LockIcon() {
-  return (
-    <svg
-      width="32"
-      height="32"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="4" y="11" width="16" height="10" rx="2" />
-      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-    </svg>
-  );
-}
-
-function HangmanGameIcon() {
-  return (
-    <svg
-      width="28"
-      height="28"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-    </svg>
-  );
-}
-
-function ScrambleGameIcon() {
-  return (
-    <svg
-      width="28"
-      height="28"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="16 3 21 3 21 8" />
-      <line x1="4" y1="20" x2="21" y2="3" />
-      <polyline points="21 16 21 21 16 21" />
-      <line x1="15" y1="15" x2="21" y2="21" />
-      <line x1="4" y1="4" x2="9" y2="9" />
-    </svg>
-  );
-}
-
-function WordleGameIcon() {
-  return (
-    <svg
-      width="28"
-      height="28"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="3" y="3" width="8" height="8" rx="1" />
-      <rect x="13" y="3" width="8" height="8" rx="1" />
-      <rect x="3" y="13" width="8" height="8" rx="1" />
-      <rect x="13" y="13" width="8" height="8" rx="1" />
-    </svg>
-  );
-}
-
-const GAMES_LIST = [
-  {
-    id: "hangman",
-    name: "Book Title Hangman",
-    tagline: "Guess a title from the catalogue, one letter at a time.",
-    Icon: HangmanGameIcon,
-  },
-  {
-    id: "scramble",
-    name: "Word Scramble",
-    tagline: "Unscramble jumbled library & literary vocabulary.",
-    Icon: ScrambleGameIcon,
-  },
-  {
-    id: "wordle",
-    name: "Lit Wordle",
-    tagline: "Guess the 5-letter literary word in 6 tries.",
-    Icon: WordleGameIcon,
-  },
-];
-
-function pickHangmanWord(books) {
-  const candidates = (books || []).filter(
-    (b) =>
-      b.title.length >= 3 &&
-      b.title.length <= 26 &&
-      /^[A-Za-z0-9' .,!?:-]+$/.test(b.title)
-  );
-  if (candidates.length >= 5) {
-    const book = candidates[Math.floor(Math.random() * candidates.length)];
-    return { answer: book.title.toUpperCase(), book };
-  }
-  const answer =
-    HANGMAN_FALLBACK_TITLES[
-      Math.floor(Math.random() * HANGMAN_FALLBACK_TITLES.length)
-    ];
-  return { answer, book: null };
-}
-
-function shuffleWord(word) {
-  let letters = word.split("");
-  let shuffled = word;
-  let tries = 0;
-  while (shuffled === word && tries < 15) {
-    letters = [...letters];
-    for (let i = letters.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [letters[i], letters[j]] = [letters[j], letters[i]];
-    }
-    shuffled = letters.join("");
-    tries++;
-  }
-  return shuffled;
-}
-
-// Standard Wordle-style feedback, duplicate-letter safe
-function wordleFeedback(guess, answer) {
-  const result = new Array(guess.length).fill("absent");
-  const answerLetters = answer.split("");
-  const used = new Array(answer.length).fill(false);
-  for (let i = 0; i < guess.length; i++) {
-    if (guess[i] === answerLetters[i]) {
-      result[i] = "correct";
-      used[i] = true;
-    }
-  }
-  for (let i = 0; i < guess.length; i++) {
-    if (result[i] === "correct") continue;
-    const idx = answerLetters.findIndex((ch, j) => ch === guess[i] && !used[j]);
-    if (idx !== -1) {
-      result[i] = "present";
-      used[idx] = true;
-    }
-  }
-  return result;
-}
-
-function HangmanFigure({ wrong }) {
-  return (
-    <svg
-      width="120"
-      height="140"
-      viewBox="0 0 120 140"
-      className="hangman-figure"
-    >
-      <line
-        x1="10"
-        y1="130"
-        x2="90"
-        y2="130"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <line
-        x1="30"
-        y1="130"
-        x2="30"
-        y2="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <line
-        x1="30"
-        y1="10"
-        x2="80"
-        y2="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <line
-        x1="80"
-        y1="10"
-        x2="80"
-        y2="28"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      {wrong >= 1 && (
-        <circle
-          cx="80"
-          cy="40"
-          r="12"
-          stroke="currentColor"
-          strokeWidth="3"
-          fill="none"
-        />
-      )}
-      {wrong >= 2 && (
-        <line
-          x1="80"
-          y1="52"
-          x2="80"
-          y2="90"
-          stroke="currentColor"
-          strokeWidth="3"
-        />
-      )}
-      {wrong >= 3 && (
-        <line
-          x1="80"
-          y1="60"
-          x2="65"
-          y2="78"
-          stroke="currentColor"
-          strokeWidth="3"
-        />
-      )}
-      {wrong >= 4 && (
-        <line
-          x1="80"
-          y1="60"
-          x2="95"
-          y2="78"
-          stroke="currentColor"
-          strokeWidth="3"
-        />
-      )}
-      {wrong >= 5 && (
-        <line
-          x1="80"
-          y1="90"
-          x2="68"
-          y2="115"
-          stroke="currentColor"
-          strokeWidth="3"
-        />
-      )}
-      {wrong >= 6 && (
-        <line
-          x1="80"
-          y1="90"
-          x2="92"
-          y2="115"
-          stroke="currentColor"
-          strokeWidth="3"
-        />
-      )}
-    </svg>
-  );
-}
-
-function MembershipBadge({ tier }) {
-  if (!tier) return null;
-  return (
-    <span className={`membership-badge membership-badge-${tier}`}>
-      {TIER_LABELS[tier]}
-    </span>
-  );
-}
-
-function FilterIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polygon points="4 4 20 4 14 13 14 20 10 20 10 13 4 4" />
-    </svg>
-  );
-}
-
-function XIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
-
-function ChevronLeft() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="15 18 9 12 15 6" />
-    </svg>
-  );
-}
-
-function ChevronRight() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="9 18 15 12 9 6" />
-    </svg>
-  );
-}
-
-function ChevronDown() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
-
-function AlertTriangleIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-      <line x1="12" y1="9" x2="12" y2="13" />
-      <line x1="12" y1="17" x2="12.01" y2="17" />
-    </svg>
-  );
-}
-
-function BookLoader() {
-  return (
-    <div className="book-loader">
-      <div className="book-loader-scene">
-        <div className="bl-book">
-          <div className="bl-half bl-left">
-            <div className="bl-line" style={{ width: "72%" }} />
-            <div className="bl-line" style={{ width: "55%" }} />
-            <div className="bl-line" style={{ width: "80%" }} />
-            <div className="bl-line" style={{ width: "60%" }} />
-            <div className="bl-line" style={{ width: "68%" }} />
-          </div>
-          <div className="bl-spine" />
-          <div className="bl-half bl-right">
-            <div className="bl-line" style={{ width: "75%" }} />
-            <div className="bl-line" style={{ width: "58%" }} />
-            <div className="bl-line" style={{ width: "82%" }} />
-            <div className="bl-line" style={{ width: "63%" }} />
-            <div className="bl-line" style={{ width: "70%" }} />
-          </div>
-          <div className="bl-page" />
-        </div>
-      </div>
-      <p className="book-loader-label">Loading your library…</p>
-    </div>
-  );
-}
-
-function BookStrip({ children }) {
-  const ref = useRef(null);
-  const timerRef = useRef(null);
-  const [active, setActive] = useState(false);
-  const [overflows, setOverflows] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const check = () => setOverflows(el.scrollWidth > el.clientWidth);
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [children]);
-
-  const scroll = (dir) => {
-    ref.current?.scrollBy({ left: dir * 420, behavior: "smooth" });
-    clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setActive(false), 2000);
-  };
-
-  return (
-    <div
-      className={`book-strip-wrapper${
-        active && overflows ? " arrows-active" : ""
-      }`}
-      onMouseEnter={() => {
-        if (overflows) {
-          clearTimeout(timerRef.current);
-          setActive(true);
-        }
-      }}
-      onMouseLeave={() => {
-        clearTimeout(timerRef.current);
-        setActive(false);
-      }}
-    >
-      {overflows && (
-        <button
-          className="strip-arrow strip-arrow-left"
-          onClick={() => scroll(-1)}
-          aria-label="Scroll left"
-        >
-          <ChevronLeft />
-        </button>
-      )}
-      <div className="rec-strip" ref={ref}>
-        {children}
-      </div>
-      {overflows && (
-        <button
-          className="strip-arrow strip-arrow-right"
-          onClick={() => scroll(1)}
-          aria-label="Scroll right"
-        >
-          <ChevronRight />
-        </button>
-      )}
-    </div>
-  );
-}
-
-function resizeImageToBase64(file, maxPx = 400) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = (e) => {
-      img.src = e.target.result;
-      img.onerror = reject;
-      img.onload = () => {
-        const scale = Math.min(maxPx / img.width, maxPx / img.height, 1);
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        canvas
-          .getContext("2d")
-          .drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.88));
-      };
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-function NoCoverPlaceholder({ title, className }) {
-  return (
-    <div className={`no-cover-placeholder${className ? ` ${className}` : ""}`}>
-      <span className="no-cover-title">{title}</span>
-    </div>
-  );
-}
-
-function SunIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="5" />
-      <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
-      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-      <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
-      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-    </svg>
-  );
-}
-
-function MoonIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-    </svg>
-  );
-}
-
-function MonitorIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-      <line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
-    </svg>
-  );
-}
-
-function ReaderBookIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-    </svg>
-  );
-}
-
-function LeafIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M11 20A7 7 0 0 1 4 13c0-7 7-11 7-11s7 4 7 11a7 7 0 0 1-7 7z" />
-      <line x1="11" y1="20" x2="11" y2="13" />
-    </svg>
-  );
-}
-
-function WavesIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2" />
-      <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2" />
-      <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2" />
-    </svg>
-  );
-}
-
-function FlowerIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 2a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4z" />
-      <path d="M12 14a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4z" />
-      <path d="M2 12a4 4 0 0 1 4-4 4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4z" />
-      <path d="M14 12a4 4 0 0 1 4-4 4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4z" />
-    </svg>
-  );
-}
-
-const APPEARANCE_OPTIONS = [
-  { key: "light", label: "Light", Icon: SunIcon },
-  { key: "system", label: "System", Icon: MonitorIcon },
-  { key: "dark", label: "Dark", Icon: MoonIcon },
-];
-
-const READER_THEME_OPTIONS = [
-  { key: "sepia", label: "Sepia", Icon: ReaderBookIcon },
-  { key: "forest", label: "Forest", Icon: LeafIcon },
-  { key: "ocean", label: "Ocean", Icon: WavesIcon },
-  { key: "rose", label: "Rose", Icon: FlowerIcon },
-];
-
-const ACCENT_PRESETS = [
-  { key: "red", label: "Red", color: "#e53935" },
-  { key: "maroon", label: "Maroon", color: "#6d1b2f" },
-  { key: "blue", label: "Blue", color: "#1e88e5" },
-  { key: "green", label: "Green", color: "#43a047" },
-  { key: "yellow", label: "Yellow", color: "#fdd835" },
-  { key: "purple", label: "Purple", color: "#8e24aa" },
-  { key: "white", label: "White", color: "#ffffff" },
-  { key: "gray", label: "Gray", color: "#757575" },
-  { key: "teal", label: "Teal", color: "#00897b" },
-  { key: "turquoise", label: "Turquoise", color: "#26c6da" },
-  { key: "amber", label: "Amber", color: "#ffb300" },
-  { key: "orange", label: "Orange", color: "#fb8c00" },
-].map((p) => ({
-  ...p,
-  text: wcagTextColor(
-    parseInt(p.color.slice(1, 3), 16),
-    parseInt(p.color.slice(3, 5), 16),
-    parseInt(p.color.slice(5, 7), 16)
-  ),
-}));
-
-function contrastTextFor(hex) {
-  if (!hex) return undefined;
-  return wcagTextColor(
-    parseInt(hex.slice(1, 3), 16),
-    parseInt(hex.slice(3, 5), 16),
-    parseInt(hex.slice(5, 7), 16)
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  );
-}
-
-function PaletteIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2a10 10 0 1 0 0 20 2.5 2.5 0 0 0 1.8-4.2 1.9 1.9 0 0 1 1.4-3.2H17a5 5 0 0 0 5-5c0-4.4-4.5-7.6-10-7.6z" />
-      <circle cx="7.5" cy="11" r="1.3" fill="currentColor" stroke="none" />
-      <circle cx="10.5" cy="7" r="1.3" fill="currentColor" stroke="none" />
-      <circle cx="15" cy="8" r="1.3" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
 function MemberDashboard() {
   const { user, logout, updateUser } = useAuth();
+  const currency = user?.library?.currency;
   const {
     navStyle,
     setNavStyle,
@@ -2945,15 +1507,17 @@ function MemberDashboard() {
                         {overdueBorrows.length > 0 && unpaidFines.length > 0
                           ? `You have ${overdueBorrows.length} overdue book${
                               overdueBorrows.length !== 1 ? "s" : ""
-                            } and $${totalUnpaidFines.toFixed(
-                              2
+                            } and ${formatCurrency(
+                              totalUnpaidFines,
+                              currency
                             )} in unpaid fines`
                           : overdueBorrows.length > 0
                           ? `You have ${overdueBorrows.length} overdue book${
                               overdueBorrows.length !== 1 ? "s" : ""
                             }`
-                          : `You have $${totalUnpaidFines.toFixed(
-                              2
+                          : `You have ${formatCurrency(
+                              totalUnpaidFines,
+                              currency
                             )} in unpaid fines`}
                       </div>
                       <div className="overdue-alert-desc">
@@ -3044,8 +1608,8 @@ function MemberDashboard() {
                     <>
                       <div className="reading-goal-progress-row">
                         <div className="reading-goal-progress-text">
-                          <strong>{readingProgress}</strong> / {readingGoal.target}{" "}
-                          books this{" "}
+                          <strong>{readingProgress}</strong> /{" "}
+                          {readingGoal.target} books this{" "}
                           {readingGoal.period === "weekly"
                             ? "week"
                             : readingGoal.period === "monthly"
@@ -3072,7 +1636,7 @@ function MemberDashboard() {
                       </div>
                       {readingProgress >= readingGoal.target && (
                         <div className="reading-goal-achieved">
-                          🎉 Goal reached — nice work!
+                          Goal reached — nice work!
                         </div>
                       )}
                     </>
@@ -3088,7 +1652,7 @@ function MemberDashboard() {
                     </div>
                   )}
                   <div className="reading-goal-year-stat">
-                    📚 {booksReadThisYear} book
+                    {booksReadThisYear} book
                     {booksReadThisYear !== 1 ? "s" : ""} read this year
                   </div>
                   {goalEditOpen && (
@@ -3266,7 +1830,7 @@ function MemberDashboard() {
                               · Due {new Date(b.due_date).toLocaleDateString()}
                               {" · "}
                               <span className="fine-amount">
-                                ${b.fine.toFixed(2)}
+                                {formatCurrency(b.fine, currency)}
                               </span>
                             </div>
                           </div>
@@ -3338,8 +1902,8 @@ function MemberDashboard() {
                                     }
                                   >
                                     {b.fine_paid
-                                      ? `Fine paid $${b.fine.toFixed(2)}`
-                                      : `Unpaid $${b.fine.toFixed(2)}`}
+                                      ? `Fine paid ${formatCurrency(b.fine, currency)}`
+                                      : `Unpaid ${formatCurrency(b.fine, currency)}`}
                                   </Badge>
                                 </>
                               )}
@@ -4276,12 +2840,14 @@ function MemberDashboard() {
                             Monthly rate
                           </span>
                           <span className="membership-stat-value">
-                            $
-                            {membershipInfo.membership.tier === "silver"
-                              ? membershipInfo.pricing.silver_rate.toFixed(2)
-                              : membershipInfo.membership.tier === "gold"
-                              ? membershipInfo.pricing.gold_rate.toFixed(2)
-                              : membershipInfo.pricing.family_rate.toFixed(2)}
+                            {formatCurrency(
+                              membershipInfo.membership.tier === "silver"
+                                ? membershipInfo.pricing.silver_rate
+                                : membershipInfo.membership.tier === "gold"
+                                ? membershipInfo.pricing.gold_rate
+                                : membershipInfo.pricing.family_rate,
+                              currency
+                            )}
                           </span>
                         </div>
                         {membershipInfo.membership.tier === "family" &&
@@ -4358,8 +2924,9 @@ function MemberDashboard() {
                         <option key={t.id} value={t.id}>
                           {t.name}
                           {membershipInfo.pricing
-                            ? ` — $${membershipInfo.pricing[t.priceKey].toFixed(
-                                2
+                            ? ` — ${formatCurrency(
+                                membershipInfo.pricing[t.priceKey],
+                                currency
                               )}/mo`
                             : ""}
                         </option>
@@ -4405,7 +2972,9 @@ function MemberDashboard() {
                   <label>Username</label>
                   <input
                     type="text"
-                    value={accountEditing ? accountForm.username : user.username}
+                    value={
+                      accountEditing ? accountForm.username : user.username
+                    }
                     disabled={!accountEditing}
                     onChange={(e) =>
                       setAccountForm({
@@ -4419,7 +2988,9 @@ function MemberDashboard() {
                   <label>Email</label>
                   <input
                     type="email"
-                    value={accountEditing ? accountForm.email : user.email || ""}
+                    value={
+                      accountEditing ? accountForm.email : user.email || ""
+                    }
                     disabled={!accountEditing}
                     onChange={(e) =>
                       setAccountForm({ ...accountForm, email: e.target.value })
@@ -4474,7 +3045,9 @@ function MemberDashboard() {
                         autoFocus
                       />
                     </div>
-                    {accountError && <div className="error">{accountError}</div>}
+                    {accountError && (
+                      <div className="error">{accountError}</div>
+                    )}
                     <div style={{ display: "flex", gap: 10 }}>
                       <button
                         className="btn btn-sm"
@@ -4648,11 +3221,7 @@ function MemberDashboard() {
                         : undefined
                     }
                   >
-                    {!accentOverride ? (
-                      <CheckIcon />
-                    ) : (
-                      <ReaderBookIcon />
-                    )}
+                    {!accentOverride ? <CheckIcon /> : <ReaderBookIcon />}
                   </button>
                   {ACCENT_PRESETS.map(({ key, label, color, text }) => (
                     <button
@@ -4751,7 +3320,7 @@ function MemberDashboard() {
                               Total credits earned
                             </span>
                             <span className="membership-stat-value">
-                              ${totalCredit.toFixed(2)}
+                              {formatCurrency(totalCredit, currency)}
                             </span>
                           </div>
                         </div>
@@ -4774,13 +3343,13 @@ function MemberDashboard() {
                         <tr key={d.id}>
                           <td>{d.title}</td>
                           <td>{d.author}</td>
-                          <td>${d.estimated_price.toFixed(2)}</td>
+                          <td>{formatCurrency(d.estimated_price, currency)}</td>
                           <td>
                             {d.status === "approved" ? (
                               <span
                                 style={{ color: "#2e7d32", fontWeight: 600 }}
                               >
-                                ${(d.credit_amount || 0).toFixed(2)}
+                                {formatCurrency(d.credit_amount || 0, currency)}
                               </span>
                             ) : (
                               <span className="muted">—</span>
@@ -4948,7 +3517,9 @@ function MemberDashboard() {
                           className={`community-card${
                             c.is_member ? " community-card-clickable" : ""
                           }`}
-                          onClick={c.is_member ? () => openCommunity(c) : undefined}
+                          onClick={
+                            c.is_member ? () => openCommunity(c) : undefined
+                          }
                         >
                           <div
                             className="community-card-banner"
@@ -5171,9 +3742,7 @@ function MemberDashboard() {
                               {postLoading ||
                               !selectedPost ||
                               selectedPost.id !== post.id ? (
-                                <div className="empty">
-                                  Loading comments…
-                                </div>
+                                <div className="empty">Loading comments…</div>
                               ) : (
                                 <>
                                   <form
@@ -5290,297 +3859,308 @@ function MemberDashboard() {
                   </div>
 
                   <div className="game-panel">
-                  {gameView === "hangman" && hangman && (
-                    <div className="hangman-game">
-                      <HangmanFigure wrong={hangman.wrong} />
-                      <div className="hangman-word">
-                        {hangman.answer.split("").map((ch, i) => (
-                          <span key={i} className="hangman-letter">
-                            {/[A-Z]/.test(ch)
-                              ? hangman.guessed.has(ch) ||
-                                hangman.status !== "playing"
-                                ? ch
-                                : "_"
-                              : ch === " "
-                              ? "  "
-                              : ch}
-                          </span>
-                        ))}
-                      </div>
-                      {hangman.status === "won" && (
-                        <div className="game-result game-result-won">
-                          You got it! +{hangman.xpEarned} XP
-                        </div>
-                      )}
-                      {hangman.status === "lost" && (
-                        <div className="game-result game-result-lost">
-                          Out of guesses — it was "{hangman.answer}"
-                        </div>
-                      )}
-                      {hangman.status !== "playing" &&
-                        hangman.book &&
-                        !hangmanRevealDismissed && (
-                          <div className="hangman-reveal-card">
-                            <button
-                              type="button"
-                              className="hangman-reveal-close"
-                              aria-label="Cancel"
-                              onClick={() => setHangmanRevealDismissed(true)}
-                            >
-                              &times;
-                            </button>
-                            <div className="hangman-reveal-cover-wrap">
-                              {hangman.book.cover_url ? (
-                                <img
-                                  src={hangman.book.cover_url}
-                                  alt=""
-                                  className="hangman-reveal-cover"
-                                />
-                              ) : (
-                                <NoCoverPlaceholder title={hangman.book.title} />
-                              )}
-                            </div>
-                            <div className="hangman-reveal-book-title">
-                              {hangman.book.title}
-                            </div>
-                            <div className="hangman-reveal-book-author">
-                              {hangman.book.author}
-                            </div>
-                            <div className="hangman-reveal-actions">
-                              <button
-                                className="btn btn-sm"
-                                onClick={() => openBook(hangman.book.id)}
-                              >
-                                Explore
-                              </button>
-                              <button className="btn btn-sm" onClick={startHangman}>
-                                Play Again
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      <div className="game-wrong-count">
-                        Wrong guesses: {hangman.wrong} / {HANGMAN_MAX_WRONG}
-                        {hangman.status === "playing" &&
-                          " · type a letter to guess"}
-                      </div>
-                      <div className="hangman-keyboard">
-                        {"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                          .split("")
-                          .map((letter) => {
-                            const used = hangman.guessed.has(letter);
-                            const correct =
-                              used && hangman.answer.includes(letter);
-                            return (
-                              <button
-                                key={letter}
-                                className={`hangman-key ${
-                                  used
-                                    ? correct
-                                      ? "hangman-key-correct"
-                                      : "hangman-key-wrong"
-                                    : ""
-                                }`}
-                                disabled={used || hangman.status !== "playing"}
-                                onClick={() => guessHangmanLetter(letter)}
-                              >
-                                {letter}
-                              </button>
-                            );
-                          })}
-                      </div>
-                      {hangman.status !== "playing" && (
-                        <button className="btn btn-sm" onClick={startHangman}>
-                          Play Again
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {gameView === "scramble" && scramble && (
-                    <div className="scramble-game">
-                      <div className="scramble-letters">
-                        {scramble.scrambled.split("").map((ch, i) => (
-                          <span key={i} className="scramble-tile">
-                            {ch}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="scramble-clue">
-                        {scramble.answer.length} letters · library & literary
-                        vocabulary
-                      </div>
-                      {scramble.hintRevealed > 0 && (
-                        <div className="scramble-hint-word">
-                          {scramble.answer.split("").map((ch, i) => (
-                            <span key={i} className="scramble-hint-letter">
-                              {i < scramble.hintRevealed ? ch : "_"}
+                    {gameView === "hangman" && hangman && (
+                      <div className="hangman-game">
+                        <HangmanFigure wrong={hangman.wrong} />
+                        <div className="hangman-word">
+                          {hangman.answer.split("").map((ch, i) => (
+                            <span key={i} className="hangman-letter">
+                              {/[A-Z]/.test(ch)
+                                ? hangman.guessed.has(ch) ||
+                                  hangman.status !== "playing"
+                                  ? ch
+                                  : "_"
+                                : ch === " "
+                                ? "  "
+                                : ch}
                             </span>
                           ))}
                         </div>
-                      )}
-                      <form
-                        className="scramble-form"
-                        onSubmit={submitScrambleGuess}
-                      >
-                        <input
-                          type="text"
-                          className="scramble-input"
-                          value={scramble.guess}
-                          onChange={(e) =>
-                            setScramble((prev) => ({
-                              ...prev,
-                              guess: e.target.value,
-                            }))
-                          }
-                          disabled={scramble.status === "won"}
-                          placeholder="Your guess…"
-                          autoFocus
-                        />
-                        <button
-                          type="submit"
-                          className="btn btn-sm"
-                          disabled={
-                            scramble.status === "won" || !scramble.guess.trim()
-                          }
+                        {hangman.status === "won" && (
+                          <div className="game-result game-result-won">
+                            You got it! +{hangman.xpEarned} XP
+                          </div>
+                        )}
+                        {hangman.status === "lost" && (
+                          <div className="game-result game-result-lost">
+                            Out of guesses — it was "{hangman.answer}"
+                          </div>
+                        )}
+                        {hangman.status !== "playing" &&
+                          hangman.book &&
+                          !hangmanRevealDismissed && (
+                            <div className="hangman-reveal-card">
+                              <button
+                                type="button"
+                                className="hangman-reveal-close"
+                                aria-label="Cancel"
+                                onClick={() => setHangmanRevealDismissed(true)}
+                              >
+                                &times;
+                              </button>
+                              <div className="hangman-reveal-cover-wrap">
+                                {hangman.book.cover_url ? (
+                                  <img
+                                    src={hangman.book.cover_url}
+                                    alt=""
+                                    className="hangman-reveal-cover"
+                                  />
+                                ) : (
+                                  <NoCoverPlaceholder
+                                    title={hangman.book.title}
+                                  />
+                                )}
+                              </div>
+                              <div className="hangman-reveal-book-title">
+                                {hangman.book.title}
+                              </div>
+                              <div className="hangman-reveal-book-author">
+                                {hangman.book.author}
+                              </div>
+                              <div className="hangman-reveal-actions">
+                                <button
+                                  className="btn btn-sm"
+                                  onClick={() => openBook(hangman.book.id)}
+                                >
+                                  Explore
+                                </button>
+                                <button
+                                  className="btn btn-sm"
+                                  onClick={startHangman}
+                                >
+                                  Play Again
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        <div className="game-wrong-count">
+                          Wrong guesses: {hangman.wrong} / {HANGMAN_MAX_WRONG}
+                          {hangman.status === "playing" &&
+                            " · type a letter to guess"}
+                        </div>
+                        <div className="hangman-keyboard">
+                          {"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                            .split("")
+                            .map((letter) => {
+                              const used = hangman.guessed.has(letter);
+                              const correct =
+                                used && hangman.answer.includes(letter);
+                              return (
+                                <button
+                                  key={letter}
+                                  className={`hangman-key ${
+                                    used
+                                      ? correct
+                                        ? "hangman-key-correct"
+                                        : "hangman-key-wrong"
+                                      : ""
+                                  }`}
+                                  disabled={
+                                    used || hangman.status !== "playing"
+                                  }
+                                  onClick={() => guessHangmanLetter(letter)}
+                                >
+                                  {letter}
+                                </button>
+                              );
+                            })}
+                        </div>
+                        {hangman.status !== "playing" && (
+                          <button className="btn btn-sm" onClick={startHangman}>
+                            Play Again
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {gameView === "scramble" && scramble && (
+                      <div className="scramble-game">
+                        <div className="scramble-letters">
+                          {scramble.scrambled.split("").map((ch, i) => (
+                            <span key={i} className="scramble-tile">
+                              {ch}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="scramble-clue">
+                          {scramble.answer.length} letters · library & literary
+                          vocabulary
+                        </div>
+                        {scramble.hintRevealed > 0 && (
+                          <div className="scramble-hint-word">
+                            {scramble.answer.split("").map((ch, i) => (
+                              <span key={i} className="scramble-hint-letter">
+                                {i < scramble.hintRevealed ? ch : "_"}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <form
+                          className="scramble-form"
+                          onSubmit={submitScrambleGuess}
                         >
-                          Submit
-                        </button>
-                      </form>
-                      {scramble.status === "wrong" && (
-                        <div className="game-result game-result-lost">
-                          Not quite — try again!
-                        </div>
-                      )}
-                      {scramble.status === "won" && (
-                        <div className="game-result game-result-won">
-                          Correct! It was "{scramble.answer}" · +
-                          {scramble.xpEarned} XP
-                        </div>
-                      )}
-                      <div className="scramble-actions">
-                        {scramble.status !== "won" && (
-                          <>
+                          <input
+                            type="text"
+                            className="scramble-input"
+                            value={scramble.guess}
+                            onChange={(e) =>
+                              setScramble((prev) => ({
+                                ...prev,
+                                guess: e.target.value,
+                              }))
+                            }
+                            disabled={scramble.status === "won"}
+                            placeholder="Your guess…"
+                            autoFocus
+                          />
+                          <button
+                            type="submit"
+                            className="btn btn-sm"
+                            disabled={
+                              scramble.status === "won" ||
+                              !scramble.guess.trim()
+                            }
+                          >
+                            Submit
+                          </button>
+                        </form>
+                        {scramble.status === "wrong" && (
+                          <div className="game-result game-result-lost">
+                            Not quite — try again!
+                          </div>
+                        )}
+                        {scramble.status === "won" && (
+                          <div className="game-result game-result-won">
+                            Correct! It was "{scramble.answer}" · +
+                            {scramble.xpEarned} XP
+                          </div>
+                        )}
+                        <div className="scramble-actions">
+                          {scramble.status !== "won" && (
+                            <>
+                              <button
+                                className="btn btn-sm btn-outline"
+                                onClick={reshuffleScramble}
+                              >
+                                Reshuffle
+                              </button>
+                              <button
+                                className="btn btn-sm btn-outline"
+                                onClick={revealScrambleHint}
+                                disabled={scrambleHintCooldown}
+                              >
+                                Hint
+                              </button>
+                            </>
+                          )}
+                          {scramble.status === "won" && (
                             <button
-                              className="btn btn-sm btn-outline"
-                              onClick={reshuffleScramble}
+                              className="btn btn-sm"
+                              onClick={startScramble}
                             >
-                              Reshuffle
+                              Next Word
                             </button>
-                            <button
-                              className="btn btn-sm btn-outline"
-                              onClick={revealScrambleHint}
-                              disabled={scrambleHintCooldown}
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {gameView === "wordle" && wordle && (
+                      <div className="wordle-game">
+                        <div className="wordle-grid">
+                          {Array.from({ length: 6 }).map((_, row) => {
+                            const guess = wordle.guesses[row];
+                            const isCurrentRow =
+                              row === wordle.guesses.length &&
+                              wordle.status === "playing";
+                            const rowLetters = guess
+                              ? guess.split("")
+                              : isCurrentRow
+                              ? wordle.current.padEnd(5, " ").split("")
+                              : ["", "", "", "", ""];
+                            const feedback = guess
+                              ? wordleFeedback(guess, wordle.answer)
+                              : null;
+                            return (
+                              <div key={row} className="wordle-row">
+                                {rowLetters.map((ch, i) => (
+                                  <span
+                                    key={i}
+                                    className={`wordle-tile ${
+                                      feedback
+                                        ? `wordle-tile-${feedback[i]}`
+                                        : ch.trim()
+                                        ? "wordle-tile-filled"
+                                        : ""
+                                    }`}
+                                  >
+                                    {ch.trim()}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {wordle.status === "playing" ? (
+                          <>
+                            <form
+                              className="wordle-form"
+                              onSubmit={submitWordleGuess}
                             >
-                              Hint
+                              <input
+                                type="text"
+                                className="wordle-input"
+                                value={wordle.current}
+                                maxLength={5}
+                                onChange={(e) =>
+                                  setWordle((prev) => ({
+                                    ...prev,
+                                    current: e.target.value
+                                      .replace(/[^a-zA-Z]/g, "")
+                                      .toUpperCase(),
+                                    error: "",
+                                  }))
+                                }
+                                placeholder="5-letter word"
+                                autoFocus
+                              />
+                              <button
+                                type="submit"
+                                className="btn btn-sm"
+                                disabled={wordle.current.length !== 5}
+                              >
+                                Guess
+                              </button>
+                            </form>
+                            {wordle.error && (
+                              <div className="game-result game-result-lost">
+                                {wordle.error}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {wordle.status === "won" && (
+                              <div className="game-result game-result-won">
+                                Solved in {wordle.guesses.length}/6! +
+                                {wordle.xpEarned} XP
+                              </div>
+                            )}
+                            {wordle.status === "lost" && (
+                              <div className="game-result game-result-lost">
+                                Out of guesses — it was "{wordle.answer}"
+                              </div>
+                            )}
+                            <button
+                              className="btn btn-sm"
+                              onClick={startWordle}
+                            >
+                              Play Again
                             </button>
                           </>
                         )}
-                        {scramble.status === "won" && (
-                          <button
-                            className="btn btn-sm"
-                            onClick={startScramble}
-                          >
-                            Next Word
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  )}
-
-                  {gameView === "wordle" && wordle && (
-                    <div className="wordle-game">
-                      <div className="wordle-grid">
-                        {Array.from({ length: 6 }).map((_, row) => {
-                          const guess = wordle.guesses[row];
-                          const isCurrentRow =
-                            row === wordle.guesses.length &&
-                            wordle.status === "playing";
-                          const rowLetters = guess
-                            ? guess.split("")
-                            : isCurrentRow
-                            ? wordle.current.padEnd(5, " ").split("")
-                            : ["", "", "", "", ""];
-                          const feedback = guess
-                            ? wordleFeedback(guess, wordle.answer)
-                            : null;
-                          return (
-                            <div key={row} className="wordle-row">
-                              {rowLetters.map((ch, i) => (
-                                <span
-                                  key={i}
-                                  className={`wordle-tile ${
-                                    feedback
-                                      ? `wordle-tile-${feedback[i]}`
-                                      : ch.trim()
-                                      ? "wordle-tile-filled"
-                                      : ""
-                                  }`}
-                                >
-                                  {ch.trim()}
-                                </span>
-                              ))}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {wordle.status === "playing" ? (
-                        <>
-                          <form
-                            className="wordle-form"
-                            onSubmit={submitWordleGuess}
-                          >
-                            <input
-                              type="text"
-                              className="wordle-input"
-                              value={wordle.current}
-                              maxLength={5}
-                              onChange={(e) =>
-                                setWordle((prev) => ({
-                                  ...prev,
-                                  current: e.target.value
-                                    .replace(/[^a-zA-Z]/g, "")
-                                    .toUpperCase(),
-                                  error: "",
-                                }))
-                              }
-                              placeholder="5-letter word"
-                              autoFocus
-                            />
-                            <button
-                              type="submit"
-                              className="btn btn-sm"
-                              disabled={wordle.current.length !== 5}
-                            >
-                              Guess
-                            </button>
-                          </form>
-                          {wordle.error && (
-                            <div className="game-result game-result-lost">
-                              {wordle.error}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          {wordle.status === "won" && (
-                            <div className="game-result game-result-won">
-                              Solved in {wordle.guesses.length}/6! +
-                              {wordle.xpEarned} XP
-                            </div>
-                          )}
-                          {wordle.status === "lost" && (
-                            <div className="game-result game-result-lost">
-                              Out of guesses — it was "{wordle.answer}"
-                            </div>
-                          )}
-                          <button className="btn btn-sm" onClick={startWordle}>
-                            Play Again
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
+                    )}
                   </div>
                 </>
               )}
@@ -5915,7 +4495,7 @@ function MemberDashboard() {
                   </Select>
                 </div>
                 <div className="form-group">
-                  <label>Estimated Value ($) *</label>
+                  <label>Estimated Value ({getCurrencySymbol(currency)}) *</label>
                   <input
                     type="number"
                     min="0.01"
@@ -5934,7 +4514,10 @@ function MemberDashboard() {
                     <p className="field-hint">
                       You will earn{" "}
                       <strong>
-                        ${(Number(donationForm.estimated_price) / 4).toFixed(2)}
+                        {formatCurrency(
+                          Number(donationForm.estimated_price) / 4,
+                          currency
+                        )}
                       </strong>{" "}
                       in library credit upon approval.
                     </p>
@@ -6315,7 +4898,7 @@ function MemberDashboard() {
             {returnHasUnpaidFine && (
               <div className="return-fine-notice">
                 <div className="return-fine-amount">
-                  Fine due: <strong>${returnModal.fine.toFixed(2)}</strong>
+                  Fine due: <strong>{formatCurrency(returnModal.fine, currency)}</strong>
                 </div>
                 <div className="anonymous-row">
                   <input

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 const ThemeContext = createContext();
 
@@ -40,28 +40,33 @@ export function ThemeProvider({ children }) {
     }
   }, [appearance, readerTheme]);
 
-  const setAppearance = (a) => {
+  const setAppearance = useCallback((a) => {
     localStorage.setItem('appearance', a);
     setAppearanceState(a);
-  };
+  }, []);
 
-  const setReaderTheme = (t) => {
+  const setReaderTheme = useCallback((t) => {
     localStorage.setItem('readerTheme', t);
     setReaderThemeState(t);
-  };
+  }, []);
 
-  const setNavStyle = (s) => {
+  const setNavStyle = useCallback((s) => {
     localStorage.setItem('navStyle', s);
     setNavStyleState(s);
-  };
+  }, []);
 
-  const setAccentOverride = (c) => {
+  const setAccentOverride = useCallback((c) => {
     localStorage.setItem('accentOverride', c);
     setAccentOverrideState(c);
-  };
+  }, []);
+
+  const value = useMemo(
+    () => ({ appearance, setAppearance, readerTheme, setReaderTheme, navStyle, setNavStyle, accentOverride, setAccentOverride }),
+    [appearance, setAppearance, readerTheme, setReaderTheme, navStyle, setNavStyle, accentOverride, setAccentOverride]
+  );
 
   return (
-    <ThemeContext.Provider value={{ appearance, setAppearance, readerTheme, setReaderTheme, navStyle, setNavStyle, accentOverride, setAccentOverride }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   );

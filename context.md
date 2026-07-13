@@ -3,7 +3,7 @@
 ## Overview
 A full-stack, **multi-library** management app — a single deployment hosts any number of independent libraries, each with its own catalogue, genres, members/admins, fine policy, and membership pricing. Admins register by creating a brand-new library (getting back a shareable join code) or joining an existing one via that code; members join an existing library the same way. Everything below (books, genres, borrows, fines, donations, communities, etc.) is scoped to the caller's own library — see "Multi-Library System" for details.
 
-Admins manage the book catalogue, monitor borrows, configure fines, track inventory changes, review incoming book donations and book-add requests, and approve member membership-tier requests; every admin tab that can have something awaiting review (Books, Borrows, Fines, Members, Communities, Donations) shows a small notification dot next to its label/icon whenever it does. Members browse books, borrow/return them (an overdue borrow can bundle its fine payment into the same return request for admin verification), reserve books when all copies are out, save books to a wishlist, view their fines, leave optional ratings and reviews when returning a book, donate books to the library in exchange for credit, request that a missing book be added to the catalogue (and get notified on the Home tab once an admin reviews it), and request a membership tier from My Profile (any time after signing up) that activates once an admin approves it. The Books tab surfaces personalised recommendations and trending content to help members discover what to read next — a brand-new member with no borrow history is first asked a one-question genre-preference quiz on their first login so those recommendations aren't empty from day one. The Home tab is a collapsible dashboard — themed the same as the rest of the app (no bespoke colours, no card/box chrome — a plain divider list) — of the member's own borrows/fines/past-borrows/reservations/wishlist/collection, with a warning banner and a direct link to return overdue books. Members can also switch between a classic tab bar and a Mac-style floating dock for navigation (from either My Profile or the TopBar profile dropdown — the dropdown toggle is also how an admin sets it, since the admin dashboard has no Profile tab of its own). Gold members additionally get community spaces — communities can carry a creator/moderator-set icon and banner image, shown as cards in the Community tab — and a set of book-themed word games (Hangman, Word Scramble, Wordle) that build toward a cumulative XP score.
+Admins manage the book catalogue, monitor borrows, configure fines, track inventory changes, review incoming book donations and book-add requests, and approve member membership-tier requests; every admin tab that can have something awaiting review (Books, Borrows, Fines, Members, Communities, Donations) shows a small notification dot next to its label/icon whenever it does. Members browse books, borrow/return them (an overdue borrow can bundle its fine payment into the same return request for admin verification), optionally mark a returned book "complete" toward a personal reading goal (weekly/monthly/yearly target, tracked on the Home tab), reserve books when all copies are out, save books to a wishlist, view their fines, leave optional ratings and reviews when returning a book, donate books to the library in exchange for credit, request that a missing book be added to the catalogue (and get notified on the Home tab once an admin reviews it), and request a membership tier from My Profile (any time after signing up) that activates once an admin approves it. The Books tab surfaces personalised recommendations and trending content to help members discover what to read next — a brand-new member with no borrow history is first asked a one-question genre-preference quiz on their first login so those recommendations aren't empty from day one. The Home tab is a collapsible dashboard — themed the same as the rest of the app (no bespoke colours, no card/box chrome — a plain divider list) — of the member's own borrows/fines/past-borrows/reservations/wishlist/collection, with a warning banner and a direct link to return overdue books. Members can also switch between a classic tab bar and a Mac-style floating dock for navigation (from either My Profile or the TopBar profile dropdown — the dropdown toggle is also how an admin sets it, since the admin dashboard has no Profile tab of its own). Gold members additionally get community spaces — communities can carry a creator/moderator-set icon and banner image, shown as cards in the Community tab — and a set of book-themed word games (Hangman, Word Scramble, Wordle) that build toward a cumulative XP score.
 
 ---
 
@@ -137,6 +137,11 @@ backend/
                       #   return_requested_at when the member opts to submit fine payment together
                       #   with an overdue return, cleared (and fine_paid flipped True) on admin
                       #   approve, or just cleared on reject — see "Return Approval Workflow" below)
+                      #   is_completed: Boolean default False, completed_at: nullable DateTime —
+                      #     set together when the member checks "Mark as complete" while requesting
+                      #     a return (POST /api/return/:id, see below); stamped immediately at
+                      #     request time, independent of admin approval, since finishing the book
+                      #     isn't gated on the copy actually being released — see "Reading Goals" below
     reservation.py    # Reservation (user↔book, created_at, status: pending|ready)
     book_log.py       # BookLog (audit log per book — action, details, admin, timestamp)
     setting.py        # Setting (id, library_id FK, key, value; UNIQUE(library_id, key)) — every
@@ -186,6 +191,10 @@ backend/
                       #     — emoji column stores string keys: like|love|haha|wow|sad|angry
                       #   CommentReaction (comment_id, user_id, emoji VARCHAR, created_at)
                       #   VALID_REACTIONS = {'like','love','haha','wow','sad','angry'}
+    reading_goal.py    # ReadingGoal (id, user_id unique FK, period: weekly|monthly|yearly,
+                      #   target int, created_at, updated_at) — one row per member, upserted by
+                      #   POST /api/reading-goal; to_dict() returns just {period, target} (progress
+                      #   is computed on read, not stored — see "Reading Goals" below)
     __init__.py       # re-exports all models + seed_data() + _seed_settings()/_seed_genres()
                       #     (both take a library_id and are called both from seed_data() for the
                       #     one auto-created default library, and from auth.py's register() every
@@ -292,6 +301,21 @@ backend/
                       #     fine_payment_requested_at is stamped alongside return_requested_at so
                       #     the same admin approval finalizes both. See "Return Approval Workflow"
                       #     below for the admin side
+                      #     the body may also include `mark_complete: true` — stamps
+                      #     `is_completed`/`completed_at` on the Borrow right away (not gated on
+                      #     admin approval); powers the reading-goal progress counters — see
+                      #     "Reading Goals" below
+    reading_goals.py  # GET/POST /api/reading-goal — member's own reading goal + live progress
+                      #   GET  — returns {goal: {period, target} | null, progress, books_read_this_year}
+                      #   POST — body {period: weekly|monthly|yearly, target: int>=1}; upserts the
+                      #     caller's single ReadingGoal row, returns the same shape as GET
+                      #   progress is computed on every call, not stored — counts Borrow rows for
+                      #     the caller with is_completed=True and completed_at on/after the current
+                      #     period's start (Monday for weekly, 1st of month, Jan 1 for yearly);
+                      #     books_read_this_year always uses the yearly boundary regardless of the
+                      #     goal's own period, so the "N books read this year" stat stays constant
+                      #     even if the member's goal period is weekly/monthly
+                      #   see "Reading Goals" below for the full design
     reservations.py   # /api/reserve/, /api/cancel-reservation/, /api/my-reservations
                       #   reserve_book() verifies the target book belongs to the caller's library
     wishlist.py       # GET /api/my-wishlist — caller's saved books, newest first
@@ -428,9 +452,11 @@ backend/
 ### DB migrations
 `app.py` runs `_migrate_db()` on every startup. It uses a reusable `add_missing_cols(table, additions)` helper that calls `ALTER TABLE` for any column in models not yet present in the SQLite file. New tables (e.g. `community`, `community_membership`, `membership_request`, `book_request`, `library`) are created automatically by `db.create_all()`. `_seed_memberships()` is no longer called automatically on startup — see "Membership Request System" below.
 
-Tables currently patched via simple `ALTER TABLE ADD COLUMN` by `add_missing_cols`: `book` (genre, description, author_bio, cover_url, cover_color), `user` (avatar, xp, library_id, email, google_sub, preferred_genres, onboarded), `post_reaction` (created_at), `comment_reaction` (created_at), `borrow` (return_requested_at, fine_payment_requested_at), `community` (icon_url, banner_url). A `CREATE UNIQUE INDEX IF NOT EXISTS` (partial, `WHERE google_sub IS NOT NULL`) backs `user.google_sub` on every startup, same pattern as the `email` index below. All raw SQL touching the `user` table double-quotes it (`"user"`) since `user` is a reserved keyword in Postgres — see "Deployment" above.
+Tables currently patched via simple `ALTER TABLE ADD COLUMN` by `add_missing_cols`: `book` (genre, description, author_bio, cover_url, cover_color), `user` (avatar, xp, library_id, email, google_sub, preferred_genres, onboarded), `post_reaction` (created_at), `comment_reaction` (created_at), `borrow` (return_requested_at, fine_payment_requested_at, is_completed, completed_at), `community` (icon_url, banner_url). A `CREATE UNIQUE INDEX IF NOT EXISTS` (partial, `WHERE google_sub IS NOT NULL`) backs `user.google_sub` on every startup, same pattern as the `email` index below. All raw SQL touching the `user` table double-quotes it (`"user"`) since `user` is a reserved keyword in Postgres — see "Deployment" above. `reading_goal` is a brand-new table (no `ALTER TABLE` needed) — `db.create_all()` creates it on both a fresh DB and an existing one that predates it.
 
-**Onboarding-quiz backfill** — `onboarded` is added with a `DEFAULT 0`, which would ambush every pre-existing account with the quiz on their next login. `_migrate_db()` checks whether `onboarded` was missing from `user` *before* `add_missing_cols` runs; if so, it immediately `UPDATE`s every existing row to `onboarded = 1` in the same pass, so the column addition and the backfill happen together, once, and only real new signups (created after this migration ran) start out `onboarded = False`.
+**Onboarding-quiz backfill** — `onboarded` is added with a `DEFAULT FALSE`, which would ambush every pre-existing account with the quiz on their next login. `_migrate_db()` checks whether `onboarded` was missing from `user` *before* `add_missing_cols` runs; if so, it immediately `UPDATE`s every existing row to `onboarded = TRUE` in the same pass, so the column addition and the backfill happen together, once, and only real new signups (created after this migration ran) start out `onboarded = False`.
+
+**Postgres boolean-default gotcha** — raw `ALTER TABLE ... ADD COLUMN <col> BOOLEAN DEFAULT 0` (and `UPDATE ... SET <col> = 1`) works on SQLite, which treats booleans as loosely-typed integers, but fails on Postgres with `column "..." is of type boolean but default expression is of type integer` — Postgres requires literal `TRUE`/`FALSE`, not `1`/`0`. This broke the `onboarded` migration in production (Render/Postgres) the first time it ran there, taking the whole app down until fixed. Every boolean column added via `add_missing_cols` (currently `user.onboarded`, `borrow.is_completed`) uses `DEFAULT FALSE`, and any raw `UPDATE` of a boolean column uses `TRUE`/`FALSE` literals, not `1`/`0`. Worth checking for the same mistake if any future migration adds another boolean column this way.
 
 **Multi-library migration** (`_migrate_to_multi_library()`) — four tables (`book`, `genre`, `community`, `setting`) each had a *global* unique constraint (or, for `setting`, a bare-string primary key) that had to become per-library, and SQLite can't `ALTER` a constraint in place. Each is rebuilt: rename the old table aside, `db.create_all()` recreates it fresh with the new schema (composite `UNIQUE(library_id, ...)`), copy every row across while backfilling `library_id`, drop the renamed original. A "Default Library" is created (or reused if one already exists) to backfill onto every pre-existing row. Detected via column-presence (`library_id` missing) so it's a no-op on both a fresh DB (already has the new schema from `db.create_all()`) and an already-migrated one (safe to run on every startup).
 
@@ -793,7 +819,16 @@ frontend/src/
                             #   3. Book-request notification banners (conditional; see "Book Request
                             #      System" below) — dismissible approve/reject outcome cards for the
                             #      caller's own book requests that haven't been acknowledged yet
-                            #   4–9. Six collapsible .home-card sections — My Borrowed Books, My
+                            #   4. Reading Goals card (.home-card, non-collapsible — no accordion
+                            #      toggle, always expanded) — sits directly above My Borrowed Books,
+                            #      the first thing a member sees after any alert/notification banners.
+                            #      Progress bar + "N / target books this week/month/year" when a goal
+                            #      is set, an "Edit Goal" button that reveals a period Select + target
+                            #      number input + Save; a "Set a Goal" prompt in its place when no
+                            #      goal exists yet. A constant "N books read this year" line renders
+                            #      underneath regardless of the goal's own period. See "Reading Goals"
+                            #      below for the full design
+                            #   5–10. Six collapsible .home-card sections — My Borrowed Books, My
                             #      Fines, Past Borrows, My Reservations, My Wishlist (all moved here
                             #      from the My Profile tab across two passes — Borrowed/Reservations/
                             #      Wishlist first, My Fines later, once it became clear fines belong
@@ -987,13 +1022,17 @@ frontend/src/
                             #   when it's non-zero. data-tour="member-donations" moved with it, so the
                             #   onboarding Donations step now switches to tab: 'donate' instead of
                             #   'profile' before spotlighting the same selector
-                            # Return modal: optional 5-star picker, review text, anonymous toggle;
-                            #   if the borrow has an unpaid fine (returnHasUnpaidFine), also shows a
-                            #   .return-fine-notice with the amount and a "I'm paying this fine now"
-                            #   checkbox (payFineWithReturn) — submit is disabled until it's checked,
-                            #   sends { pay_fine: true } to POST /api/return/:id so the same admin
-                            #   approval finalizes the return and the fine payment together (see
-                            #   "Return Approval Workflow" below)
+                            # Return modal: a "Mark as complete — count this toward my reading goals"
+                            #   checkbox (markComplete, defaults checked on open) sits right below the
+                            #   book title, above everything else — sends { mark_complete: true } to
+                            #   POST /api/return/:id, which stamps is_completed/completed_at
+                            #   immediately (see "Reading Goals" below); optional 5-star picker,
+                            #   review text, anonymous toggle; if the borrow has an unpaid fine
+                            #   (returnHasUnpaidFine), also shows a .return-fine-notice with the
+                            #   amount and a "I'm paying this fine now" checkbox (payFineWithReturn) —
+                            #   submit is disabled until it's checked, sends { pay_fine: true } to
+                            #   POST /api/return/:id so the same admin approval finalizes the return
+                            #   and the fine payment together (see "Return Approval Workflow" below)
                             # Donate modal: title, author, ISBN (optional), genre (optional),
                             #   condition — all dropdowns use the custom Select component
                             #   estimated value field with live credit preview (value/4);
@@ -1476,9 +1515,15 @@ Unless noted otherwise, every endpoint below is scoped to the caller's own libra
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | POST | `/api/borrow/:bookId` | member | Borrow a book |
-| POST | `/api/return/:borrowId` | member | **Files a return request** (doesn't finalize the return — see "Return Approval Workflow"); sets `return_requested_at`. Optional JSON body `{ rating, review_text, is_anonymous }` still submits a review immediately. If the borrow has an unpaid fine, the body must also include `{ pay_fine: true }` (sets `fine_payment_requested_at` alongside the return request) or the call 400s. 400 if a return is already requested |
+| POST | `/api/return/:borrowId` | member | **Files a return request** (doesn't finalize the return — see "Return Approval Workflow"); sets `return_requested_at`. Optional JSON body `{ rating, review_text, is_anonymous }` still submits a review immediately. If the borrow has an unpaid fine, the body must also include `{ pay_fine: true }` (sets `fine_payment_requested_at` alongside the return request) or the call 400s. `{ mark_complete: true }` stamps `is_completed`/`completed_at` right away (not gated on admin approval) — see "Reading Goals". 400 if a return is already requested |
 | GET | `/api/my-borrows` | member | Caller's borrow history |
 | GET | `/api/my-fines` | member | Caller's unpaid fines |
+
+### Reading Goals
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/reading-goal` | member | Caller's goal (`{ period, target }` or `null`) plus computed `progress` (books completed in the current period) and `books_read_this_year` |
+| POST | `/api/reading-goal` | member | Set/update the caller's goal; body `{ period: weekly\|monthly\|yearly, target: int>=1 }`; upserts the single `ReadingGoal` row and returns the same shape as GET |
 
 ### Reservations
 | Method | Path | Auth | Description |
@@ -1755,6 +1800,25 @@ Members can no longer finalize their own returns — every return now goes throu
 **Admin flow (Borrowed Books tab):** a pending request shows an amber "Return Requested" `.status-tag` next to the book's normal due/overdue tag — plus a second "Fine Payment $X Pending" tag if a fine payment was bundled in — and Approve/Reject buttons in the row's action column. Pending rows sort to the top of the table (see "Borrowed Books tab" above). Approving calls `PUT /api/admin/returns/:id/approve`, which does everything the old member-facing `return_book()` used to do inline: lock the book row, set `return_date = return_requested_at` (frozen at the moment the member requested it, so the fine doesn't keep accruing while the request sits waiting on the admin), recalculate the fine, and either promote the next pending `Reservation` to `'ready'` or increment `available_copies` — and, if `fine_payment_requested_at` is set, also flips `fine_paid = True` and clears it, so one Approve click verifies both the return and the payment. Rejecting clears both `return_requested_at` and `fine_payment_requested_at` (the fine itself stays unpaid either way — only `mark-paid` or a fresh bundled request can clear it).
 
 **Schema:** `Borrow.return_requested_at` (nullable DateTime) — NULL means no pending request; set means pending; cleared again (by reject) or superseded by a real `return_date` (by approve). `Borrow.fine_payment_requested_at` (nullable DateTime) — mirrors `return_requested_at` but only ever set alongside it (never standalone — bundled fine payment is only offered inside the Return flow, not as its own action); cleared by reject, or turned into `fine_paid = True` by approve. `PUT /api/admin/fines/:id/mark-paid` (unbundled, admin-initiated) is unaffected by any of this — it stays the path for an admin recording an in-person cash payment on a borrow that isn't going through a return request at all.
+
+---
+
+## Reading Goals
+
+Members can set a personal reading target (weekly, monthly, or yearly) and track how many books they've finished against it, from a card at the top of the Home tab's "my stuff" area — above My Borrowed Books, so it's the first thing a returning member sees.
+
+**Why "complete" is separate from "returned":** the existing `return_date`/`return_requested_at` fields track library-facing state (is the copy back in circulation, has the fine been settled) — none of that says anything about whether the member actually *finished* the book. A borrow can be returned unread (borrowed on a whim, renewed away, or just abandoned), so counting every return toward a reading goal would overcount. Instead, finishing is its own explicit signal: a "Mark as complete" checkbox in the Return modal (checked by default), independent of the admin return-approval workflow.
+
+**Schema:** `Borrow.is_completed` (Boolean, default False) and `Borrow.completed_at` (nullable DateTime), set together. `ReadingGoal` (`models/reading_goal.py`) holds one row per member — `period` (`weekly`/`monthly`/`yearly`) and `target` (int ≥ 1) — upserted by `POST /api/reading-goal`; there's no history of past goals, only the current one.
+
+**Member flow:**
+1. On the Home tab, the Reading Goals card shows `{progress} / {target} books this {period}` with a progress bar, plus a constant "N books read this year" line underneath (always yearly, regardless of the goal's own period — a weekly-goal member still sees their year-to-date total). A member with no goal yet sees a "Set a Goal" prompt instead.
+2. **Edit Goal** reveals a period `Select` (Per week / Per month / Per year) and a number input for the target; **Save** calls `POST /api/reading-goal`.
+3. When returning a book (Return modal), the "Mark as complete — count this toward my reading goals" checkbox is checked by default; unchecking it (e.g. for a book given up on, or one being renewed under a technical "return") excludes it from the counters. Submitting sends `{ mark_complete: true }` alongside whatever else the return already carries (rating, `pay_fine`), and the backend stamps `is_completed`/`completed_at` on the `Borrow` row **immediately** — it does not wait for admin approval of the return itself, since finishing the book and the copy being released back into circulation are independent facts.
+
+**Progress calculation (`routes/reading_goals.py`):** computed on every `GET`/`POST`, not stored. `_period_start(period, now)` returns the start of the current week (Monday 00:00 UTC), month (1st), or year (Jan 1) depending on the goal's period; `_books_completed_since(user_id, start)` counts `Borrow` rows for that user with `is_completed=True` and `completed_at >= start`. `books_read_this_year` always uses the yearly boundary independent of the goal's period, so switching goal period doesn't change what the year-to-date stat means.
+
+**Why progress isn't a stored counter:** a running counter would need careful incrementing/decrementing logic if a member changes their goal's period mid-cycle, or if a return-complete gets reversed. Recomputing from `Borrow` rows on read is simpler, always correct, and cheap at this scale (one filtered `COUNT` per request).
 
 ---
 

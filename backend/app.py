@@ -67,6 +67,7 @@ def _migrate_db():
         'completed_at': 'TIMESTAMP',
     })
     add_missing_cols('community', {'icon_url': 'TEXT', 'banner_url': 'TEXT'})
+    add_missing_cols('library', {'currency': "VARCHAR(3) DEFAULT 'USD'"})
     db.session.execute(text(
         'CREATE UNIQUE INDEX IF NOT EXISTS ix_user_google_sub ON "user" (google_sub) WHERE google_sub IS NOT NULL'
     ))

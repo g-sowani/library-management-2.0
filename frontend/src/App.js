@@ -1,19 +1,24 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
-import MemberDashboard from './pages/MemberDashboard';
-import AdminDashboard from './pages/AdminDashboard';
 import './App.css';
+
+const MemberDashboard = lazy(() => import('./pages/MemberDashboard'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 
 function AppRoutes() {
   const { user, loading } = useAuth();
 
   if (loading) return <div className="loading">Loading...</div>;
 
-  const dashboard = user?.role === 'admin' ? <AdminDashboard /> : <MemberDashboard />;
+  const dashboard = (
+    <Suspense fallback={<div className="loading">Loading...</div>}>
+      {user?.role === 'admin' ? <AdminDashboard /> : <MemberDashboard />}
+    </Suspense>
+  );
 
   return (
     <BrowserRouter>

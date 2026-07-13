@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import api from '../api';
 
 const AuthContext = createContext(null);
@@ -43,12 +43,17 @@ export function AuthProvider({ children }) {
     return () => api.interceptors.response.eject(interceptor);
   }, []);
 
-  const login = (userData) => setUser(userData);
-  const logout = () => api.post('/auth/logout').then(() => setUser(null));
-  const updateUser = (patch) => setUser((prev) => ({ ...prev, ...patch }));
+  const login = useCallback((userData) => setUser(userData), []);
+  const logout = useCallback(() => api.post('/auth/logout').then(() => setUser(null)), []);
+  const updateUser = useCallback((patch) => setUser((prev) => ({ ...prev, ...patch })), []);
+
+  const value = useMemo(
+    () => ({ user, loading, login, logout, updateUser }),
+    [user, loading, login, logout, updateUser]
+  );
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, updateUser }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

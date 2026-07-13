@@ -7,6 +7,7 @@ from models import Borrow, Book, Reservation
 from models.user import User
 from models.membership import Membership
 from models.setting import get_setting, set_setting
+from models.library import Library, SUPPORTED_CURRENCIES
 from decorators import admin_required
 from utils import lock_book
 
@@ -324,3 +325,31 @@ def update_policy():
         'fine_per_day': get_setting('fine_per_day', g.library_id, default=1.0, cast=float),
         'borrow_days': get_setting('borrow_days', g.library_id, default=14, cast=int),
     })
+
+
+@admin_bp.route('/library', methods=['PUT'])
+@admin_required
+def update_library():
+    data = request.json or {}
+    library = db.session.get(Library, g.library_id)
+    errors = {}
+
+    if 'name' in data:
+        name = (data['name'] or '').strip()
+        if not name:
+            errors['name'] = 'Library name is required'
+        else:
+            library.name = name
+
+    if 'currency' in data:
+        currency = (data['currency'] or '').strip().upper()
+        if currency not in SUPPORTED_CURRENCIES:
+            errors['currency'] = 'Unsupported currency'
+        else:
+            library.currency = currency
+
+    if errors:
+        return jsonify({'errors': errors}), 400
+
+    db.session.commit()
+    return jsonify(library.to_dict())
